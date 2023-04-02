@@ -1,0 +1,27 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    depends_on:
+      - db
+    environment:
+      DATABASE_URL: "postgresql://user:password@db:5432/dbname?schema=public"
+      POSTGRES_DB: dbname
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+
+  db:
+    image: "postgres:13"
+    restart: always
+    environment:
+      POSTGRES_DB: dbname
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    volumes:
+      - "db-data:/var/lib/postgresql/data"
+
+volumes:
+  db-data:
