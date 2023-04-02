@@ -22,7 +22,6 @@ export async function fetchRedditPosts(username: string, limit?: number) {
 	const client = getRedditClient();
 	const user = client.getUser(username);
 	const posts = await user.getSubmissions({ limit });
-	console.log(posts);
 
 	return posts.map(
 		(post) =>

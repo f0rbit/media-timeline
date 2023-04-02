@@ -1,7 +1,7 @@
 // this file handles the server, which fetches posts from various website periodically and stores them in the database
 import { Platform } from "@prisma/client";
 import Twitter from "twitter";
-import { addPost, getRedditPosts, getTweets } from "./api/posts";
+import { addPost, getPosts } from "./api/posts";
 import { fetchRedditPosts } from "./api/reddit";
 import { fetchTweets } from "./api/twitter";
 import config from "./config";
@@ -27,8 +27,8 @@ async function updateTwitter() {
 		favorite_count: tweet.favorite_count,
 	}));
 
-	const existing_tweets = await getTweets();
-	const existing_ids = new Set(existing_tweets.map((tweet) => tweet.twitter_id));
+	const existing_tweets = await getPosts(Platform.TWITTER);
+	const existing_ids = new Set(existing_tweets.map((tweet) => (tweet.platform == Platform.TWITTER ? tweet.data.twitter_id : null)));
 	const new_tweets = parsed_tweets.filter((tweet) => !existing_ids.has(tweet.twitter_id));
 
 	console.log("Fetched " + parsed_tweets.length + " tweets, " + existing_tweets.length + " existing tweets, " + new_tweets.length + " new tweets.");
@@ -49,8 +49,9 @@ async function updateReddit() {
 	// fetch posts from reddit
 	const fetched_posts = await fetchRedditPosts("f0rbit");
 
-	const existing_posts = await getRedditPosts();
-	const existing_ids = new Set(existing_posts.map((post) => post.reddit_id));
+	const existing_posts = await getPosts(Platform.REDDIT);
+	const existing_ids = new Set(existing_posts.map((post) => (post.platform == Platform.REDDIT ? post.data.reddit_id : null)));
+
 	const new_posts = fetched_posts.filter((post) => !existing_ids.has(post.reddit_id));
 
 	console.log("Fetched " + fetched_posts.length + " posts, " + existing_posts.length + " existing posts, " + new_posts.length + " new posts.");
