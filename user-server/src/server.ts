@@ -10,7 +10,6 @@ import { TwitterResponseData } from "./types";
 export async function update() {
 	console.log("Updating posts...");
 	await updateTwitter();
-	// fetch posts from reddit
 	await updateReddit();
 	// fetch commits on github
 }
@@ -19,25 +18,24 @@ async function updateTwitter() {
 	if (!config.TWITTER) return;
 	// fetch posts from twitter
 	const fetched_tweets = await fetchTweets("f0rbit");
-	const parsed_tweets: TwitterResponseData[] = fetched_tweets.map((tweet: Twitter.ResponseData) => ({
-		twitter_id: tweet.id,
-		created_at: tweet.created_at,
-		text: tweet.full_text,
-		retweet_count: tweet.retweet_count,
-		favorite_count: tweet.favorite_count,
+	const parsed_tweets: TwitterResponseData[] = fetched_tweets.map(({ id, created_at, full_text, retweet_count, favorite_count }: Twitter.ResponseData) => ({
+		twitter_id: id,
+		created_at,
+		text: full_text,
+		retweet_count,
+		favorite_count,
 	}));
 
-	const existing_tweets = await getPosts(Platform.TWITTER);
-	const existing_ids = new Set(existing_tweets.map((tweet) => (tweet.platform == Platform.TWITTER ? tweet.data.twitter_id : null)));
-	const new_tweets = parsed_tweets.filter((tweet) => !existing_ids.has(tweet.twitter_id));
+	const existing_ids = await getExistingIds(Platform.TWITTER);
+	const new_tweets = parsed_tweets.filter(({ twitter_id }) => !existing_ids.has(twitter_id));
 
-	console.log("Fetched " + parsed_tweets.length + " tweets, " + existing_tweets.length + " existing tweets, " + new_tweets.length + " new tweets.");
+	console.log(`Fetched ${parsed_tweets.length} tweets, ${existing_ids.size} existing tweets, ${new_tweets.length} new tweets.`);
 
 	for (const tweet of new_tweets) {
 		await addPost({
 			platform: Platform.TWITTER,
 			data: JSON.stringify(tweet),
-			title: "Tweet",
+			title: "Tweet by @user",
 			posted_at: new Date(tweet.created_at),
 			published: true,
 		});
@@ -49,12 +47,10 @@ async function updateReddit() {
 	// fetch posts from reddit
 	const fetched_posts = await fetchRedditPosts("f0rbit");
 
-	const existing_posts = await getPosts(Platform.REDDIT);
-	const existing_ids = new Set(existing_posts.map((post) => (post.platform == Platform.REDDIT ? post.data.reddit_id : null)));
+	const existing_ids = await getExistingIds(Platform.REDDIT);
+	const new_posts = fetched_posts.filter(({ reddit_id }) => !existing_ids.has(reddit_id));
 
-	const new_posts = fetched_posts.filter((post) => !existing_ids.has(post.reddit_id));
-
-	console.log("Fetched " + fetched_posts.length + " posts, " + existing_posts.length + " existing posts, " + new_posts.length + " new posts.");
+	console.log(`Fetched ${fetched_posts.length} posts, ${existing_ids.size} existing posts, ${new_posts.length} new posts.`);
 
 	for (const post of new_posts) {
 		await addPost({
@@ -64,5 +60,17 @@ async function updateReddit() {
 			posted_at: new Date(post.created_utc * 1000),
 			published: true,
 		});
+	}
+}
+
+async function getExistingIds(platform: Platform): Promise<Set<string | number | null>> {
+	const existing = await getPosts(platform);
+	switch (platform) {
+		case Platform.TWITTER:
+			return new Set(existing.map(({ data, platform }) => (platform == Platform.TWITTER ? data.twitter_id : null)));
+		case Platform.REDDIT:
+			return new Set(existing.map(({ data, platform }) => (platform == Platform.REDDIT ? data.reddit_id : null)));
+		default:
+			return new Set<string>();
 	}
 }
