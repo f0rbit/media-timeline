@@ -12,6 +12,8 @@ services:
       POSTGRES_DB: dbname
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
+      MODE: "DEV"
+      PORT: "3000"
 
   db:
     image: "postgres:13"
