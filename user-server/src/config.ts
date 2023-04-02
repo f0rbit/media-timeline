@@ -1,6 +1,5 @@
 // Import the dotenv library
-import { config as dotenv } from "https://deno.land/x/dotenv/mod.ts";
-
+import { dotenv } from "./deps.ts";
 // Load the environment variables from the .env file
 dotenv();
 

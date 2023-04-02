@@ -11,5 +11,7 @@ app.use(router.allowedMethods());
 // Read port from config, default to 3000 if not found
 const port = config?.port ?? 3000;
 
-console.log(`Server running on port ${port}`);
+console.log(`API Server running on port ${port}`);
 await app.listen({ port });
+
+
