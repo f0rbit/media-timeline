@@ -1,20 +1,12 @@
-# Use the official Deno image as the base
-FROM denoland/deno:latest
+FROM node:14
 
-# Set the working directory
 WORKDIR /app
 
-# Copy the dependencies file
-COPY src/deps.ts src/
+COPY package*.json ./
+RUN npm install
 
-# Cache the dependencies
-RUN deno cache src/deps.ts
+COPY . .
 
-# Copy the source files
-COPY src/ ./src/
+RUN npm run build
 
-# Expose the server port
-EXPOSE 3000
-
-# Start the Deno server
-CMD ["deno", "run", "--allow-net", "--allow-read", "--allow-env", "src/server.ts"]
+CMD [ "npm", "run", "serve" ]

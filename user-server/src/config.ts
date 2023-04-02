@@ -1,20 +1,21 @@
-// Import the dotenv library
-import { dotenv } from "./deps.ts";
-// Load the environment variables from the .env file
-dotenv();
+import dotenv from 'dotenv';
 
-const port = Deno.env.get("PORT");
+dotenv.config();
 
-// Define the configuration object
-const config = {
-  databaseUrl: Deno.env.get("DATABASE_URL"),
-  mode: Deno.env.get("MODE") as "DEV" | "PROD",
-  port: port ? parseInt(port) : 3000,
-  twitterSecret: Deno.env.get("TWITTER_SECRET"),
-  twitterPublic: Deno.env.get("TWITTER_PUBLIC"),
-  redditSecret: Deno.env.get("REDDIT_SECRET"),
-  redditPublic: Deno.env.get("REDDIT_PUBLIC"),
+interface Config {
+  DATABASE_URL: string;
+  PORT: number;
+}
+
+const config: Config = {
+  DATABASE_URL: process.env.DATABASE_URL || "",
+  PORT: Number(process.env.PORT) || 3000,
 };
 
-// Export the configuration object
+if (config.DATABASE_URL === "") {
+  throw new Error("DATABASE_URL is not set");
+}
+
+console.log("Loaded Config: ", config);
+
 export default config;

@@ -8,11 +8,10 @@ services:
     depends_on:
       - db
     environment:
-      DATABASE_URL: "postgresql://user:password@db:5432/dbname?schema=public"
+      DATABASE_URL: "postgresql://user:password@db:5432/dbname"
       POSTGRES_DB: dbname
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
-      MODE: "DEV"
       PORT: "3000"
 
   db:
