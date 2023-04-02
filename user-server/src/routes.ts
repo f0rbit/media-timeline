@@ -1,6 +1,6 @@
 import { Express } from "express";
-import { update } from "./server";
 import { getPosts } from "./api/posts";
+import { update } from "./server";
 
 export function configureRoutes(app: Express) {
 	app.get("/hello", (req, res) => {
@@ -13,6 +13,8 @@ export function configureRoutes(app: Express) {
 	});
 
 	app.get("/posts", async (req, res) => {
-		res.json(await getPosts());
+		const posts = await getPosts();
+		const parsed = posts.map((post) => ({ ...post, data: JSON.parse(post.data?.toString() ?? "") }));
+		res.json(parsed);
 	});
 }

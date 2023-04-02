@@ -1,12 +1,11 @@
 // this file handles the server, which fetches posts from various website periodically and stores them in the database
-import Twitter from "twitter";
-import prisma from "./api/prisma";
-import { fetchTweets, getTwitterClient, parseTwitterData } from "./api/twitter";
-import { TwitterConfig, TwitterResponseData } from "./types";
 import { Platform } from "@prisma/client";
+import Twitter from "twitter";
 import { addPost, getRedditPosts, getTweets } from "./api/posts";
-import config from "./config";
 import { fetchRedditPosts } from "./api/reddit";
+import { fetchTweets } from "./api/twitter";
+import config from "./config";
+import { TwitterResponseData } from "./types";
 
 export async function update() {
 	console.log("Updating posts...");
@@ -61,7 +60,7 @@ async function updateReddit() {
 			platform: Platform.REDDIT,
 			data: JSON.stringify(post),
 			title: post.post_title,
-			posted_at: new Date(post.created_utc),
+			posted_at: new Date(post.created_utc * 1000),
 			published: true,
 		});
 	}

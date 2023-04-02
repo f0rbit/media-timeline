@@ -1,5 +1,6 @@
 import { Post } from "@prisma/client";
 import { parseTwitterData } from "./api/twitter";
+import { parseRedditData } from "./api/reddit";
 
 export interface Config {
 	DATABASE_URL: string;
@@ -26,3 +27,5 @@ export type RedditConfig = {
 export type TwitterResponseData = ReturnType<typeof parseTwitterData>;
 
 export type Tweet = Post & Omit<TwitterResponseData, "created_at">;
+
+export type RedditResponseData = ReturnType<typeof parseRedditData>;

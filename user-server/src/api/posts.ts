@@ -1,8 +1,7 @@
-import { Platform, Post, Prisma } from "@prisma/client";
+import { Platform, Prisma } from "@prisma/client";
 import prisma from "./prisma";
-import { Tweet, TwitterResponseData } from "../types";
-import { parseTwitterData } from "./twitter";
 import { parseRedditData } from "./reddit";
+import { parseTwitterData } from "./twitter";
 
 export async function addPost(post: Prisma.PostCreateInput) {
 	console.log("Adding post", post);

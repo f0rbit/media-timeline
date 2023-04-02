@@ -1,6 +1,7 @@
 import Snoowrap from "snoowrap";
-import config from "../config";
 import { z } from "zod";
+import config from "../config";
+import { RedditResponseData } from "../types";
 
 var client: Snoowrap | null = null;
 
@@ -21,6 +22,7 @@ export async function fetchRedditPosts(username: string, limit?: number) {
 	const client = getRedditClient();
 	const user = client.getUser(username);
 	const posts = await user.getSubmissions({ limit });
+	console.log(posts);
 
 	return posts.map(
 		(post) =>
@@ -32,11 +34,10 @@ export async function fetchRedditPosts(username: string, limit?: number) {
 				comments: post.num_comments,
 				reddit_id: post.name,
 				created_utc: post.created_utc,
+				permalink: post.permalink,
 			} as RedditResponseData)
 	);
 }
-
-type RedditResponseData = ReturnType<typeof parseRedditData>;
 
 export function parseRedditData(data: any) {
 	return z
@@ -48,6 +49,7 @@ export function parseRedditData(data: any) {
 			url: z.string(),
 			comments: z.number(),
 			created_utc: z.number(),
+			permalink: z.string(),
 		})
 		.parse(data);
 }

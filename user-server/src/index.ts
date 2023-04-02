@@ -1,8 +1,7 @@
 import express from "express";
 import config from "./config";
-import { update } from "./server";
 import { configureRoutes } from "./routes";
-import { Post } from "@prisma/client";
+import { update } from "./server";
 
 const app = express();
 const port = config.PORT;

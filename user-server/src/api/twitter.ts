@@ -1,7 +1,6 @@
 import Twitter from "twitter";
-import config from "../config";
-import { TwitterResponseData } from "../types";
 import { z } from "zod";
+import config from "../config";
 
 var client: Twitter | null = null;
 
