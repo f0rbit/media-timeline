@@ -11,11 +11,18 @@ datasource db {
 }
 
 model Post {
-    id        Int      @id @default(autoincrement())
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
-    title     String
-    published Boolean  @default(false)
-    postedAt  DateTime
-    data      Json
+    id         Int      @id @default(autoincrement())
+    created_at DateTime @default(now())
+    updated_at DateTime @updatedAt
+    title      String
+    published  Boolean  @default(false)
+    posted_at  DateTime
+    data       Json
+    platform   Platform
+}
+
+enum Platform {
+    REDDIT
+    TWITTER
+    GITHUB
 }

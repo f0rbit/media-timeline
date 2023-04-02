@@ -15,6 +15,6 @@ app.listen(port, () => {
 
 setInterval(() => {
 	update();
-}, 1000 * 60 * 5); // 5 minutes
+}, 1000 * 60 * 5);
 
 update();

@@ -1,22 +1,35 @@
-import { Post, Prisma } from "@prisma/client";
+import { Platform, Post, Prisma } from "@prisma/client";
 import prisma from "./prisma";
+import { Tweet, TwitterResponseData } from "../types";
+import { parseTwitterData } from "./twitter";
+import { parseRedditData } from "./reddit";
 
-var posts: Post[] = [];
-
-export function setPosts(posts: Post[]) {
-	posts = posts;
-}
-
-export function getPosts() {
-	return posts;
-}
-
-function addPost(post: Prisma.PostCreateInput) {
-	prisma.post.create({
+export async function addPost(post: Prisma.PostCreateInput) {
+	console.log("Adding post", post);
+	const new_post = await prisma.post.create({
 		data: post,
 	});
 }
 
-function hasPost(post: Post) {
-	return posts.some((p) => p.id === post.id);
+export async function getTweets() {
+	const tweets = await prisma.post.findMany({
+		where: {
+			platform: Platform.TWITTER,
+		},
+	});
+	return tweets.map((tweet) => ({ ...tweet, ...parseTwitterData(JSON.parse(tweet.data?.toString() ?? "")) }));
+}
+
+export async function getRedditPosts() {
+	const posts = await prisma.post.findMany({
+		where: {
+			platform: Platform.REDDIT,
+		},
+	});
+
+	return posts.map((post) => ({ ...post, ...parseRedditData(JSON.parse(post.data?.toString() ?? "")) }));
+}
+
+export async function getPosts() {
+	return await prisma.post.findMany();
 }

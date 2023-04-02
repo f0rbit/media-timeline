@@ -12,7 +12,7 @@ export function configureRoutes(app: Express) {
 		res.status(200).end();
 	});
 
-	app.get("/posts", (req, res) => {
-		res.json(getPosts());
+	app.get("/posts", async (req, res) => {
+		res.json(await getPosts());
 	});
 }
