@@ -1,11 +1,15 @@
 import getConfig from 'next/config';
 
 import Layout from '@/components/Layout';
+import { signIn, useSession } from 'next-auth/react';
 
 const { publicRuntimeConfig } = getConfig();
 const { name } = publicRuntimeConfig.site;
 
 const Home = () => {
+  // get session from next-auth
+  const { data: session, status } = useSession();
+  
   return (
     <Layout>
       <section className="py-12">
@@ -13,6 +17,8 @@ const Home = () => {
           <div className="prose prose-blue mx-auto">
             <h1>{name}</h1>
             <p>Welcome to my Next.js + Tailwind CSS starter template.</p>
+            <p>{JSON.stringify(session)}</p>
+            <button onClick={() => signIn()}>Sign in</button>
 
             <h2>Features:</h2>
             <ul>
