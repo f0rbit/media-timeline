@@ -14,7 +14,6 @@ export function configureRoutes(app: Express) {
 
 	app.get("/posts", async (req, res) => {
 		const posts = await getPosts();
-		const parsed = posts.map((post) => ({ ...post, data: JSON.parse(post.data?.toString() ?? "") }));
-		res.json(parsed);
+		res.json(posts);
 	});
 }
