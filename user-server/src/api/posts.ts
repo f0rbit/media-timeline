@@ -32,18 +32,6 @@ export async function loadPosts() {
 }
 
 export async function getPosts(platform?: Platform, skip?: number, take?: number) {
-	// const posts = await prisma.post.findMany({
-	// 	where: {
-	// 		platform,
-	// 	},
-	// 	orderBy: {
-	// 		posted_at: "desc",
-	// 	},
-	// 	skip: skip,
-	// 	take: take,
-	// });
-	// return posts.map((post) => getPostWithData(post));
-
 	return post_cache.filter((post) => (platform ? post.platform === platform : true)).slice(skip || 0, (skip || 0) + (take || post_cache.length));
 }
 

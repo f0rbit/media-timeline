@@ -17,8 +17,6 @@ services:
   db:
     image: "postgres:13"
     restart: always
-    ports:
-      - "5432:5432"
     environment:
       POSTGRES_DB: dbname
       POSTGRES_USER: user
