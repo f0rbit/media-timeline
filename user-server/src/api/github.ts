@@ -22,10 +22,6 @@ export async function fetchGithubCommits() {
 		per_page: 100,
 	});
 
-	// let count = 0;
-
-	const ONE_MONTH_AGO = new Date().getTime() - 1000 * 60 * 60 * 24 * 30;
-
 	// const existing_ids = await
 	const fetched_commits: GithubResponseData[] = [];
 
@@ -34,7 +30,7 @@ export async function fetchGithubCommits() {
 			owner: repo.owner.login,
 			repo: repo.name,
 			author: config.GITHUB?.USERNAME,
-			since: new Date(ONE_MONTH_AGO).toISOString(),
+			// since: new Date(ONE_MONTH_AGO).toISOString(),
 		})) as any[];
 
 		for (const ghCommit of commits) {

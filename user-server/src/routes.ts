@@ -18,13 +18,21 @@ export function configureRoutes(app: Express) {
 		const groupByDate = req.query.groupByDate as "day" | "month" | undefined;
 		const combineCommits = req.query.combineCommits === "true";
 
-		let posts = await (groupByDate ? getGroupedPosts(platform, groupByDate) : getPosts(platform));
-
-		if (combineCommits) {
-			posts = groupSequentialCommits(posts);
+		if (groupByDate) {
+			const groupedPosts = await getGroupedPosts(platform, groupByDate);
+			if (combineCommits) {
+				const combinedGroupedPosts = groupedPosts.map(({ date, posts }) => ({
+					date,
+					posts: groupSequentialCommits(posts),
+				}));
+				res.json(combinedGroupedPosts);
+			} else {
+				res.json(groupedPosts);
+			}
+		} else {
+			const posts = await getPosts(platform);
+			res.json(combineCommits ? groupSequentialCommits(posts) : posts);
 		}
-
-		res.json(posts);
 	});
 }
 
@@ -41,10 +49,10 @@ function groupSequentialCommits(posts: any[]) {
 			(new Date(post.posted_at).getTime() - new Date(lastPost.posted_at).getTime()) / 1000 < 60
 		) {
 			if (!lastPost.data.commits) {
-				const object = lastPost;
-				lastPost.commits = [object.data];
+				const object = { ...lastPost.data, id: lastPost.id, posted_at: lastPost.posted_at };
+				lastPost.commits = [object];
 			}
-			lastPost.commits.push(post.data);
+			lastPost.commits.push({ ...post.data, id: post.id, posted_at: post.posted_at });
 			lastPost.posted_at = post.posted_at;
 		} else {
 			combinedPosts.push(post);
