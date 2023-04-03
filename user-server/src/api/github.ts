@@ -1,9 +1,6 @@
-import { addPost } from "../api/posts";
 import { Octokit } from "@octokit/rest";
-import config from "../config";
-import { Platform } from "@prisma/client";
-import { getPosts } from "../api/posts";
 import { z } from "zod";
+import config from "../config";
 import { GithubResponseData } from "../types";
 
 var client: Octokit | null = null;

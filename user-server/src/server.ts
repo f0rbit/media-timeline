@@ -1,12 +1,12 @@
 // this file handles the server, which fetches posts from various website periodically and stores them in the database
 import { Platform } from "@prisma/client";
 import Twitter from "twitter";
+import { fetchGithubCommits } from "./api/github";
 import { addPost, getPosts } from "./api/posts";
 import { fetchRedditPosts } from "./api/reddit";
 import { fetchTweets } from "./api/twitter";
 import config from "./config";
 import { TwitterResponseData } from "./types";
-import { fetchGithubCommits } from "./api/github";
 
 export async function update() {
 	console.log("Updating posts...");

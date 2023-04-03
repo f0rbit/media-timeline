@@ -7,8 +7,8 @@ export function configureRoutes(app: Express) {
 		res.send("Hello World!");
 	});
 
-	app.get("/reload", (req, res) => {
-		update();
+	app.get("/reload", async (req, res) => {
+		await update();
 		res.status(200).end();
 	});
 

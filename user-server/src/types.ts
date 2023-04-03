@@ -1,7 +1,7 @@
 import { Post } from "@prisma/client";
-import { parseTwitterData } from "./api/twitter";
-import { parseRedditData } from "./api/reddit";
 import { parseGithubData } from "./api/github";
+import { parseRedditData } from "./api/reddit";
+import { parseTwitterData } from "./api/twitter";
 
 export interface Config {
 	DATABASE_URL: string;
