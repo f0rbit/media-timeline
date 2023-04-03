@@ -1,4 +1,5 @@
-module.exports = {
+/** @type {import('next').NextConfig} */
+const nextConfig = {
   publicRuntimeConfig: {
     site: {
       name: 'Next.js + Tailwind CSS template',
@@ -16,4 +17,9 @@ module.exports = {
     locales: ['en-US'],
     defaultLocale: 'en-US',
   },
+  experimental: {
+    appDir: true
+  }
 };
+
+module.exports = nextConfig;
