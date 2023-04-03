@@ -2,7 +2,7 @@
 import { Platform } from "@prisma/client";
 import Twitter from "twitter";
 import { fetchGithubCommits } from "./api/github";
-import { addPost, getPosts } from "./api/posts";
+import { addPost, getPosts, sortPosts } from "./api/posts";
 import { fetchRedditPosts } from "./api/reddit";
 import { fetchTweets } from "./api/twitter";
 import config from "./config";
@@ -13,6 +13,10 @@ export async function update() {
 	await updateTwitter();
 	await updateReddit();
 	await updateGithub();
+
+	// incase there were any additions, sort the posts
+	sortPosts();
+	console.log("Finished Update");
 }
 
 async function updateTwitter() {

@@ -1,6 +1,6 @@
 import { Express } from "express";
 import { Platform, Post } from "@prisma/client";
-import { getPosts, getGroupedPosts, PostWithData } from "./api/posts";
+import { getPosts, getGroupedPosts, PostWithData, loadPosts } from "./api/posts";
 import { update } from "./server";
 
 export function configureRoutes(app: Express) {
@@ -9,6 +9,7 @@ export function configureRoutes(app: Express) {
 	});
 
 	app.get("/reload", async (req, res) => {
+		await loadPosts();
 		await update();
 		res.status(200).end();
 	});

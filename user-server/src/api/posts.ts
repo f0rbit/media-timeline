@@ -4,26 +4,47 @@ import { parseRedditData } from "./reddit";
 import { parseTwitterData } from "./twitter";
 import { parseGithubData } from "./github";
 
+var post_cache: PostWithData[] = [];
+
 export async function addPost(post: Prisma.PostCreateInput) {
 	console.log("Adding post", post);
 	const new_post = await prisma.post.create({
 		data: post,
 	});
+
+	post_cache.push(getPostWithData(new_post));
 }
 
-export async function getPosts(platform?: Platform, skip?: number, take?: number) {
+export function sortPosts() {
+	post_cache.sort((a, b) => b.posted_at.getTime() - a.posted_at.getTime());
+}
+
+export async function loadPosts() {
 	const posts = await prisma.post.findMany({
-		where: {
-			platform,
-		},
 		orderBy: {
 			posted_at: "desc",
 		},
-		skip: skip,
-		take: take,
 	});
 
-	return posts.map((post) => getPostWithData(post));
+	post_cache = [];
+	post_cache.push(...posts.map((post) => getPostWithData(post)));
+	console.log("Loaded " + post_cache.length + " posts.");
+}
+
+export async function getPosts(platform?: Platform, skip?: number, take?: number) {
+	// const posts = await prisma.post.findMany({
+	// 	where: {
+	// 		platform,
+	// 	},
+	// 	orderBy: {
+	// 		posted_at: "desc",
+	// 	},
+	// 	skip: skip,
+	// 	take: take,
+	// });
+	// return posts.map((post) => getPostWithData(post));
+
+	return post_cache.filter((post) => (platform ? post.platform === platform : true)).slice(skip || 0, (skip || 0) + (take || post_cache.length));
 }
 
 export async function getGroupedPosts(platform: Platform | undefined, groupByDate: "day" | "month", skip?: number, take?: number): Promise<{ date: string; posts: PostWithData[] }[]> {

@@ -2,6 +2,7 @@ import express from "express";
 import config from "./config";
 import { configureRoutes } from "./routes";
 import { update } from "./server";
+import { loadPosts } from "./api/posts";
 
 const app = express();
 const port = config.PORT;
@@ -16,4 +17,4 @@ setInterval(() => {
 	update();
 }, 1000 * 60 * 5);
 
-update();
+loadPosts().then(() => update());
