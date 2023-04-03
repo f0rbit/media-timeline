@@ -2,6 +2,7 @@ import { Platform, Post, Prisma } from "@prisma/client";
 import prisma from "./prisma";
 import { parseRedditData } from "./reddit";
 import { parseTwitterData } from "./twitter";
+import { parseGithubData } from "./github";
 
 export async function addPost(post: Prisma.PostCreateInput) {
 	console.log("Adding post", post);
@@ -26,6 +27,8 @@ function getPostWithData(post: Post) {
 			return { ...post, data: parseTwitterData(JSON.parse(post.data?.toString() ?? "")), platform: Platform.TWITTER };
 		case Platform.REDDIT:
 			return { ...post, data: parseRedditData(JSON.parse(post.data?.toString() ?? "")), platform: Platform.REDDIT };
+		case Platform.GITHUB:
+			return { ...post, data: parseGithubData(JSON.parse(post.data?.toString() ?? "")), platform: Platform.GITHUB };
 		default:
 			return { ...post, data: {}, platform: null };
 	}

@@ -6,12 +6,13 @@ import { fetchRedditPosts } from "./api/reddit";
 import { fetchTweets } from "./api/twitter";
 import config from "./config";
 import { TwitterResponseData } from "./types";
+import { fetchGithubCommits } from "./api/github";
 
 export async function update() {
 	console.log("Updating posts...");
 	await updateTwitter();
 	await updateReddit();
-	// fetch commits on github
+	await updateGithub();
 }
 
 async function updateTwitter() {
@@ -63,6 +64,27 @@ async function updateReddit() {
 	}
 }
 
+async function updateGithub() {
+	if (!config.GITHUB) return;
+
+	const fetched_commits = await fetchGithubCommits();
+
+	const existing_ids = await getExistingIds(Platform.GITHUB);
+	const new_commits = fetched_commits.filter(({ sha }) => !existing_ids.has(sha));
+
+	console.log(`Fetched ${fetched_commits.length} commits, ${existing_ids.size} existing commits, ${new_commits.length} new commits.`);
+
+	for (const commit of new_commits) {
+		await addPost({
+			platform: Platform.GITHUB,
+			data: JSON.stringify(commit),
+			title: commit.title,
+			posted_at: new Date(commit.date),
+			published: !commit.private,
+		});
+	}
+}
+
 async function getExistingIds(platform: Platform): Promise<Set<string | number | null>> {
 	const existing = await getPosts(platform);
 	switch (platform) {
@@ -70,6 +92,8 @@ async function getExistingIds(platform: Platform): Promise<Set<string | number |
 			return new Set(existing.map(({ data, platform }) => (platform == Platform.TWITTER ? data.twitter_id : null)));
 		case Platform.REDDIT:
 			return new Set(existing.map(({ data, platform }) => (platform == Platform.REDDIT ? data.reddit_id : null)));
+		case Platform.GITHUB:
+			return new Set(existing.map(({ data, platform }) => (platform == Platform.GITHUB ? data.sha : null)));
 		default:
 			return new Set<string>();
 	}

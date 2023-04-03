@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-import { Config, RedditConfig, TwitterConfig } from "./types";
+import { Config, GithubConfig, RedditConfig, TwitterConfig } from "./types";
 
 dotenv.config();
 
@@ -30,17 +30,27 @@ if (reddit.CLIENT_ID === undefined || reddit.CLIENT_SECRET === undefined || redd
 	invalid_reddit = true;
 }
 
+const github = {
+	AUTH_TOKEN: process.env.GITHUB_AUTH_TOKEN,
+	USERNAME: process.env.GITHUB_USERNAME,
+};
+
+var invalid_github = false;
+if (github.AUTH_TOKEN === undefined || github.USERNAME === undefined) {
+	console.log("Github API Keys not set.");
+	invalid_github = true;
+}
+
 const config: Config = {
 	DATABASE_URL: process.env.DATABASE_URL || "",
 	PORT: Number(process.env.PORT) || 3000,
 	TWITTER: invalid_twitter ? null : (twitter as TwitterConfig),
 	REDDIT: invalid_reddit ? null : (reddit as RedditConfig),
+	GITHUB: invalid_github ? null : (github as GithubConfig),
 };
 
 if (config.DATABASE_URL === "") {
 	throw new Error("DATABASE_URL is not set");
 }
-
-console.log("Loaded Config: ", config);
 
 export default config;
