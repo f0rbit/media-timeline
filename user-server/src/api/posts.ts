@@ -11,8 +11,7 @@ export async function addPost(post: Prisma.PostCreateInput) {
 	});
 }
 
-// Modify getPosts function to remove the commitType filter
-export async function getPosts(platform?: Platform, groupByDate?: "day" | "month"): Promise<PostWithData[]> {
+export async function getPosts(platform?: Platform, skip?: number, take?: number) {
 	const posts = await prisma.post.findMany({
 		where: {
 			platform,
@@ -20,13 +19,15 @@ export async function getPosts(platform?: Platform, groupByDate?: "day" | "month
 		orderBy: {
 			posted_at: "desc",
 		},
+		skip: skip,
+		take: take,
 	});
 
 	return posts.map((post) => getPostWithData(post));
 }
 
-export async function getGroupedPosts(platform: Platform | undefined, groupByDate: "day" | "month"): Promise<{ date: string; posts: PostWithData[] }[]> {
-	const posts = await getPosts(platform);
+export async function getGroupedPosts(platform: Platform | undefined, groupByDate: "day" | "month", skip?: number, take?: number): Promise<{ date: string; posts: PostWithData[] }[]> {
+	const posts = await getPosts(platform, skip, take);
 
 	const groupedPosts: { [key: string]: PostWithData[] } = {};
 

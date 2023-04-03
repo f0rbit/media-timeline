@@ -17,9 +17,11 @@ export function configureRoutes(app: Express) {
 		const platform = req.query.platform as Platform | undefined;
 		const groupByDate = req.query.groupByDate as "day" | "month" | undefined;
 		const combineCommits = req.query.combineCommits === "true";
+		const skip = req.query.skip ? parseInt(req.query.skip as string) : undefined;
+		const take = req.query.take ? parseInt(req.query.take as string) : undefined;
 
 		if (groupByDate) {
-			const groupedPosts = await getGroupedPosts(platform, groupByDate);
+			const groupedPosts = await getGroupedPosts(platform, groupByDate, skip, take);
 			if (combineCommits) {
 				const combinedGroupedPosts = groupedPosts.map(({ date, posts }) => ({
 					date,
@@ -30,7 +32,7 @@ export function configureRoutes(app: Express) {
 				res.json(groupedPosts);
 			}
 		} else {
-			const posts = await getPosts(platform);
+			const posts = await getPosts(platform, skip, take);
 			res.json(combineCommits ? groupSequentialCommits(posts) : posts);
 		}
 	});
