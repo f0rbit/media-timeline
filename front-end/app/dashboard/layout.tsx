@@ -29,7 +29,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 						<Links />
 					</nav>
 				</section>
-				<section className="w-full bg-base-primary h-full flex flex-col">
+				<section className="w-full bg-base-primary h-full flex flex-col text-white">
 					<header className="flex flex-row gap-2 justify-end p-2 pr-4">
 						<HeaderProfile session={session} />
 					</header>
