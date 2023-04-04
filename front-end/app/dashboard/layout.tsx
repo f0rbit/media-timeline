@@ -1,8 +1,9 @@
 import { CustomerProvider } from "@/components/CustomerProvider";
 import Links from "@/components/DashboardLinks";
 import HeaderProfile from "@/components/HeaderProfile";
-import { getCustomerData } from "api/users";
+import { FetchedCustomerData, getCustomerData } from "api/users";
 import { redirect } from "next/navigation";
+import getPrismaClient from "utils/prisma";
 import { getSession } from "utils/session";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -12,7 +13,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
 		return <div>Redirecting...</div>;
 	}
 
-	const data = await getCustomerData(session.user.id);
+	const data = (await getCustomerData(session.user.id)) as FetchedCustomerData[];
+	const clusters = await getPrismaClient().serverCluster.findMany();
 
 	// the dashboard will be split into 3 sections:
 	// there is a sidebar, which will have the title in the top left, and then a list of links to the different pages below it
@@ -21,7 +23,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
 	// the profile button will either be "login" or the user's icon and "logout"
 	// the main section will be the page itself, and will be the main content of the page
 	return (
-		<CustomerProvider data={data}>
+		<CustomerProvider data={data} clusters={clusters}>
 			<div className="flex flex-row min-h-screen h-full overflow-hidden">
 				<section className="flex-shrink-0 w-80 bg-base-secondary overflow-y-auto">
 					<nav className="flex flex-col gap-4 text-gray-500 p-4">

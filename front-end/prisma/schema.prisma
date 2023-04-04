@@ -54,6 +54,7 @@ model VerificationToken {
 
 model Client {
   id         String   @id @default(uuid())
+  name       String
   user_id    String?
   user       User?    @relation(fields: [user_id], references: [id], onDelete: Cascade)
   created_at DateTime @default(now())
@@ -77,12 +78,23 @@ model Integration {
 
 model ClientServer {
   id         String   @id @default(uuid())
-  name       String
-  url        String
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
   client Client?
+
+  cluster      ServerCluster @relation(fields: [cluster_name], references: [name])
+  cluster_name String
+}
+
+model ServerCluster {
+  name       String   @unique
+  ipv4       String
+  ipv6       String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  servers ClientServer[]
 }
 
 enum Platform {
