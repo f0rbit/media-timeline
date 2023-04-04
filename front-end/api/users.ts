@@ -1,9 +1,13 @@
-import { Platform } from "@prisma/client";
+import { Platform, Prisma } from "@prisma/client";
 import { ClientCreationInput, IntegrationUpdateInput } from "types/types";
 import getPrismaClient from "utils/prisma";
 
 const CLIENT_INCLUDE = {
-	server: true,
+	server: {
+		include: {
+			cluster: true,
+		},
+	},
 	integrations: true,
 };
 

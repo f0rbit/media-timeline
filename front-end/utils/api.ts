@@ -1,5 +1,6 @@
 import { NextApiRequest, NextApiResponse } from "next";
 import { getServerAuthSession } from "./session";
+import { FetchedCustomerData } from "api/users";
 
 export async function getSessionID(req: NextApiRequest, res: NextApiResponse) {
 	const session = await getServerAuthSession({ req, res });
