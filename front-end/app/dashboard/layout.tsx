@@ -24,14 +24,16 @@ export default async function DashboardLayout({ children }: { children: React.Re
 	// the main section will be the page itself, and will be the main content of the page
 	return (
 		<CustomerProvider data={data} clusters={clusters}>
-			<div className="flex flex-row min-h-screen h-full overflow-hidden">
-				<section className="flex-shrink-0 w-80 bg-base-secondary overflow-y-auto">
-					<nav className="flex flex-col gap-4 text-gray-500 p-4">
-						<h1 className="font-bold text-center text-gray-200 text-3xl">media-timeline</h1>
-						<Links />
-					</nav>
+			<div className="flex flex-row min-h-screen h-full overflow-hidden bg-base-primary">
+				<section className="flex-shrink-0 w-80 h-full overflow-y-auto">
+					<div className=" p-4 h-full">
+						<nav className="flex flex-col gap-4 p-4 rounded-2xl bg-base-secondary h-full border-2 border-base-border">
+							<h1 className="font-bold text-center text-gray-200 text-3xl">media-timeline</h1>
+							<Links />
+						</nav>
+					</div>
 				</section>
-				<section className="w-full bg-base-primary h-full flex flex-col text-white">
+				<section className="w-full  h-full flex flex-col text-white">
 					<header className="flex flex-row gap-2 justify-end p-2 pr-4">
 						<HeaderProfile session={session} />
 					</header>

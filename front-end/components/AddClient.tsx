@@ -36,13 +36,13 @@ export default function AddClient() {
 
 	return (
 		<>
-			<button onClick={() => setShowing(true)} className="border rounded-md px-4 py-0.5">
+			<button onClick={() => setShowing(true)} className="border-2 hover:bg-base-secondary border-base-border rounded-xl px-4 py-1 duration-300 transition-colors">
 				Add Client
 			</button>
 			<BaseModal isOpen={showing} onClose={() => setShowing(false)}>
 				<ModalLayout onClose={() => setShowing(false)} className="w-1/4">
 					<h2 className="font-bold text-2xl">Add Client</h2>
-					<hr className="border-[#282c3e] my-2" />
+					<hr className="border-[#282c3e] my-2 border" />
 					<fieldset className="flex flex-col gap-2 justify-start w-full">
 						<label>Name</label>
 						<input value={data.name} type="text" className="w-full" onChange={(e) => setData((data) => ({ ...data, name: e.target.value }))} />
@@ -56,7 +56,7 @@ export default function AddClient() {
 						</select>
 					</fieldset>
 					<div className="flex gap-2 justify-center pt-4">
-						<button type="submit" className="border-[#282c3e] border text-white rounded-md px-4 py-1 hover:bg-base-secondary transition-colors  duration-300" onClick={submit}>
+						<button type="submit" className="border-[#282c3e] border-2 text-white rounded-xl px-4 py-1 hover:bg-base-secondary transition-colors  duration-300" onClick={submit}>
 							Add Client
 						</button>
 					</div>

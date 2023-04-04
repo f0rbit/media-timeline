@@ -1,8 +1,5 @@
-export default async function Integrations() {
-	return (
-		<div>
-			<h1>Integrations</h1>
-			<p>Integrations page</p>
-		</div>
-	);
+import Integrations from "@/components/Integrations";
+
+export default async function IntegrationsPage() {
+	return <Integrations />;
 }

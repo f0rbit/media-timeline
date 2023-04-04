@@ -68,12 +68,12 @@ model Client {
 
 model Integration {
   client_id String
-  user_id   String
   platform  Platform
   data      Json
+  enabled   Boolean  @default(true)
   client    Client?  @relation(fields: [client_id], references: [id])
 
-  @@unique([user_id, platform])
+  @@unique([client_id, platform])
 }
 
 model ClientServer {

@@ -9,12 +9,12 @@ const NAV_LINKS = [
 		href: "/dashboard",
 	},
 	{
-		name: "Integrations",
-		href: "/dashboard/integrations",
+		name: "Clients",
+		href: "/dashboard/clients",
 	},
 	{
-		name: "Targets",
-		href: "/dashboard/targets",
+		name: "Integrations",
+		href: "/dashboard/integrations",
 	},
 	{
 		name: "Usage",
@@ -30,7 +30,11 @@ export default function Links() {
 				const isActive = path === link.href;
 
 				return (
-					<Link key={index} href={link.href} className={`rounded-md w-full text-left font-bold px-4 py-2 ${isActive ? "bg-button-selected text-button-accent" : ""}`}>
+					<Link
+						key={index}
+						href={link.href}
+						className={`rounded-xl w-full text-left font-bold px-4 py-2 border-2 ${isActive ? "bg-base-primary text-gray-300 border-base-border" : " border-transparent text-gray-500"}`}
+					>
 						{link.name}
 					</Link>
 				);

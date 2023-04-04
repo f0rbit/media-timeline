@@ -65,7 +65,7 @@ export default Modal;
 
 export function ModalLayout({ children, onClose, className }: { children: React.ReactNode; onClose: () => void; className?: string }) {
 	return (
-		<div className={"relative bg-base-primary border border-base-secondary shadow-sm py-4 px-6 rounded mx-auto max-w-[90vw] " + className}>
+		<div className={"relative bg-base-primary border-2 border-base-secondary shadow-sm py-4 px-6 rounded mx-auto max-w-[90vw] " + className}>
 			<button className="absolute top-0 right-0 cursor-pointer flex flex-col items-center mt-4 mr-4 text-white text-sm z-50 hover:text-gray-200" onClick={onClose}>
 				<X />
 			</button>

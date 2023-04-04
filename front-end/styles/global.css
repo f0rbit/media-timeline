@@ -10,5 +10,10 @@ body,
 
 input[type="text"],
 select {
-	@apply bg-base-primary rounded-md border-[#282c3e] focus:bg-base-secondary py-1 px-2;
+	@apply bg-base-primary focus:bg-base-secondary rounded-xl border-base-border border-2  py-1 px-2;
+}
+
+.integration-form input[type="text"],
+.integration-form select {
+	@apply bg-base-secondary focus:bg-base-tertiary;
 }
