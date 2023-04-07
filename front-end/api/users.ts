@@ -63,47 +63,12 @@ export async function createClientServer(cluster_name: string, id: string) {
 export async function updateIntegrations(input: IntegrationUpdateInput, id: string) {
 	try {
 		if (input.github) {
-			// if (input.github.enabled) {
-			// 	await upsertIntegration(Platform.GITHUB, input.client_id, input.github);
-			// } else {
-			// 	// remove github integration if exists
-			// 	await getPrismaClient().integration.deleteMany({
-			// 		where: {
-			// 			client_id: input.client_id,
-			// 			platform: Platform.GITHUB,
-			// 		},
-			// 	});
-			// }
 			await upsertIntegration(Platform.GITHUB, input.client_id, input.github);
 		}
 		if (input.twitter) {
-			// if (input.twitter.enabled) {
-			// 	// upsert twitter integration with data
-			// 	await upsertIntegration(Platform.TWITTER, input.client_id, input.twitter);
-			// } else {
-			// 	// remove twitter integration if exists
-			// 	await getPrismaClient().integration.deleteMany({
-			// 		where: {
-			// 			client_id: input.client_id,
-			// 			platform: Platform.TWITTER,
-			// 		},
-			// 	});
-			// }
 			await upsertIntegration(Platform.TWITTER, input.client_id, input.twitter);
 		}
 		if (input.reddit) {
-			// if (input.reddit.enabled) {
-			// 	// upsert reddit integration with data
-			// 	await upsertIntegration(Platform.REDDIT, input.client_id, input.reddit);
-			// } else {
-			// 	// remove reddit integration if exists
-			// 	await getPrismaClient().integration.deleteMany({
-			// 		where: {
-			// 			client_id: input.client_id,
-			// 			platform: Platform.REDDIT,
-			// 		},
-			// 	});
-			// }
 			await upsertIntegration(Platform.REDDIT, input.client_id, input.reddit);
 		}
 

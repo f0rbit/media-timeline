@@ -8,6 +8,7 @@ import { FetchedCustomerData } from "api/users";
 import { ChevronDown, ChevronUp, Github, Twitter } from "lucide-react";
 import { Transition } from "react-transition-group";
 import { IntegrationIcons, getPlatformIcon } from "@/components/IntegrationIcons";
+import moment from "moment";
 
 /** @todo fetch integration data from customer */
 export default function Integrations() {
@@ -65,20 +66,23 @@ function IntegrationSection({ client }: { client: FetchedCustomerData }) {
 	);
 }
 
-function getIntegrationData(client: FetchedCustomerData) {
+function getIntegrationData(client: FetchedCustomerData): IntegrationUpdateInput {
+	const DEFAULT_DATA = {
+		username: "",
+		enabled: false,
+		total_posts: 0,
+		last_fetched: null as Date | null,
+	};
 	const result = {
 		client_id: client.id,
 		reddit: {
-			username: "",
-			enabled: false,
+			...DEFAULT_DATA,
 		},
 		twitter: {
-			username: "",
-			enabled: false,
+			...DEFAULT_DATA,
 		},
 		github: {
-			username: "",
-			enabled: false,
+			...DEFAULT_DATA,
 			auth_token: "",
 		},
 	};
@@ -94,14 +98,20 @@ function getIntegrationData(client: FetchedCustomerData) {
 			case "REDDIT":
 				result.reddit = data;
 				result.reddit.enabled = integration.enabled;
+				result.reddit.total_posts = integration.total_posts;
+				result.reddit.last_fetched = integration.last_fetched;
 				break;
 			case "TWITTER":
 				result.twitter = data;
 				result.twitter.enabled = integration.enabled;
+				result.twitter.total_posts = integration.total_posts;
+				result.twitter.last_fetched = integration.last_fetched;
 				break;
 			case "GITHUB":
 				result.github = data;
 				result.github.enabled = integration.enabled;
+				result.github.total_posts = integration.total_posts;
+				result.github.last_fetched = integration.last_fetched;
 				break;
 		}
 	});
@@ -148,6 +158,10 @@ function IntegrationInterface({ client }: { client: FetchedCustomerData }) {
 						<label>Username</label>
 						<input type="text" value={input.twitter.username} onChange={(e) => setInput((input) => ({ ...input, twitter: { ...input.twitter, username: e.target.value } }))} />
 					</fieldset>
+					<div className="flex flex-row gap-2 justify-center text-gray-500 text-sm mt-2">
+						{input.twitter.last_fetched && <p>Last Fetched: {moment(input.twitter.last_fetched).calendar()}</p>}
+						<p>Total Posts: {input.twitter.total_posts}</p>
+					</div>
 				</div>
 				<div className="w-full">
 					<div className="flex flex-row gap-2 items-center">
@@ -165,6 +179,10 @@ function IntegrationInterface({ client }: { client: FetchedCustomerData }) {
 						<label>Username</label>
 						<input type="text" value={input.reddit.username} onChange={(e) => setInput((input) => ({ ...input, reddit: { ...input.reddit, username: e.target.value } }))} />
 					</fieldset>
+					<div className="flex flex-row gap-2 justify-center text-gray-500 text-sm mt-2">
+						{input.reddit.last_fetched && <p>Last Fetched: {moment(input.reddit.last_fetched).calendar()}</p>}
+						<p>Total Posts: {input.reddit.total_posts}</p>
+					</div>
 				</div>
 
 				<div className="w-full">
@@ -190,6 +208,10 @@ function IntegrationInterface({ client }: { client: FetchedCustomerData }) {
 							onChange={(e) => setInput((input) => ({ ...input, github: { ...input.github, auth_token: e.target.value } }))}
 						/>
 					</fieldset>
+					<div className="flex flex-row gap-2 justify-center text-gray-500 text-sm mt-2">
+						{input.github.last_fetched && <p>Last Fetched: {moment(input.github.last_fetched).calendar()}</p>}
+						<p>Total Posts: {input.github.total_posts}</p>
+					</div>
 				</div>
 			</div>
 			<div className="flex justify-center items-center">

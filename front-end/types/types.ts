@@ -19,14 +19,20 @@ export const integrationUpdateInputValidator = z.object({
 	reddit: z.object({
 		enabled: z.boolean(),
 		username: z.string(),
+		total_posts: z.number(),
+		last_fetched: z.date().nullable(),
 	}),
 	twitter: z.object({
 		enabled: z.boolean(),
 		username: z.string(),
+		total_posts: z.number(),
+		last_fetched: z.date().nullable(),
 	}),
 	github: z.object({
 		enabled: z.boolean(),
 		username: z.string(),
+		total_posts: z.number(),
+		last_fetched: z.date().nullable(),
 		auth_token: z.string(),
 	}),
 });

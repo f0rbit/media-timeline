@@ -67,11 +67,14 @@ model Client {
 }
 
 model Integration {
-  client_id String
-  platform  Platform
-  data      Json
-  enabled   Boolean  @default(true)
-  client    Client?  @relation(fields: [client_id], references: [id])
+  client_id    String
+  platform     Platform
+  data         Json
+  enabled      Boolean   @default(true)
+  client       Client?   @relation(fields: [client_id], references: [id])
+  created_at   DateTime  @default(now())
+  total_posts  Int       @default(0)
+  last_fetched DateTime?
 
   @@unique([client_id, platform])
 }
