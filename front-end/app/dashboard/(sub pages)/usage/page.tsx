@@ -1,8 +1,12 @@
-export default async function Usage() {
+import Usage from "@/components/Usage";
+
+export default async function UsagePage() {
 	return (
-		<div>
-			<h1>Usage</h1>
-			<p>Usage page</p>
-		</div>
+		<section className="flex flex-col gap-2 w-full pl-2 pr-6">
+			<div className="flex flex-row gap-2 items-center w-full h-10">
+				<h2 className="font-bold text-xl h-10">Usage</h2>
+			</div>
+			<Usage />
+		</section>
 	);
 }
