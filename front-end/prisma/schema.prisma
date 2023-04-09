@@ -80,14 +80,28 @@ model Integration {
 }
 
 model ClientServer {
-  id         String   @id @default(uuid())
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  id         String         @id @default(uuid())
+  created_at DateTime       @default(now())
+  updated_at DateTime       @updatedAt
+  metrics    MetricRecord[]
 
   client Client?
 
   cluster      ServerCluster @relation(fields: [cluster_name], references: [name])
   cluster_name String
+}
+
+model MetricRecord {
+  id              String   @id @default(uuid())
+  created_at      DateTime @default(now())
+  request_url     String
+  response_code   Int
+  response_time   Int
+  request_address String
+  request_region  String
+
+  server    ClientServer? @relation(fields: [server_id], references: [id])
+  server_id String?
 }
 
 model ServerCluster {

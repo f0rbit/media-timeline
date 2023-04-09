@@ -6,6 +6,7 @@ const CLIENT_INCLUDE = {
 	server: {
 		include: {
 			cluster: true,
+			metrics: true,
 		},
 	},
 	integrations: true,
