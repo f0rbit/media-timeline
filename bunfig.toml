@@ -1,0 +1,11 @@
+[test]
+coverage = true
+coverageDir = "coverage"
+coverageReporter = ["text", "lcov"]
+
+# Exclude test files and node_modules from coverage
+coverageIgnore = [
+  "**/node_modules/**",
+  "**/__tests__/**",
+  "**/dist/**"
+]

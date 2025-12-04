@@ -1,0 +1,458 @@
+import { Database } from "bun:sqlite";
+import { create_corpus, create_memory_backend, define_store, json_codec, type Store } from "@f0rbit/corpus";
+import { encrypt, hashApiKey, type Platform, unwrap, unwrapErr, uuid } from "@media-timeline/core";
+import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, YouTubeMemoryProvider } from "@media-timeline/providers";
+import { z } from "zod";
+
+export { hashApiKey };
+
+const RawDataSchema = z.record(z.unknown());
+const TimelineDataSchema = z.record(z.unknown());
+export type MemberRole = "owner" | "member";
+
+export type UserSeed = {
+	id: string;
+	email?: string;
+	name?: string;
+};
+
+export type AccountSeed = {
+	id: string;
+	platform: Platform;
+	platform_user_id?: string;
+	platform_username?: string;
+	access_token: string;
+	refresh_token?: string;
+	is_active?: boolean;
+};
+
+export type RateLimitSeed = {
+	remaining?: number | null;
+	limit_total?: number | null;
+	reset_at?: Date | null;
+	consecutive_failures?: number;
+	last_failure_at?: Date | null;
+	circuit_open_until?: Date | null;
+};
+
+export type TestProviders = {
+	github: GitHubMemoryProvider;
+	bluesky: BlueskyMemoryProvider;
+	youtube: YouTubeMemoryProvider;
+	devpad: DevpadMemoryProvider;
+};
+
+export type D1PreparedStatement = {
+	bind(...params: unknown[]): D1PreparedStatement;
+	first<T = unknown>(column?: string): Promise<T | null>;
+	all<T = unknown>(): Promise<{ results: T[] }>;
+	run(): Promise<{ success: boolean; changes: number }>;
+};
+
+export type D1Database = {
+	prepare(query: string): D1PreparedStatement;
+	batch<T = unknown>(statements: D1PreparedStatement[]): Promise<T[]>;
+	exec(query: string): Promise<void>;
+};
+
+export type R2Object = {
+	key: string;
+	body: ReadableStream<Uint8Array>;
+	arrayBuffer(): Promise<ArrayBuffer>;
+};
+
+export type R2Bucket = {
+	get(key: string): Promise<R2Object | null>;
+	put(key: string, value: ArrayBuffer | Uint8Array | string | ReadableStream): Promise<void>;
+	delete(key: string): Promise<void>;
+	head(key: string): Promise<{ key: string } | null>;
+	list(options?: { prefix?: string }): Promise<{ objects: Array<{ key: string }> }>;
+};
+
+export type TestEnv = {
+	DB: D1Database;
+	BUCKET: R2Bucket;
+	ENCRYPTION_KEY: string;
+	ENVIRONMENT: string;
+};
+
+export type TestCorpus = {
+	backend: ReturnType<typeof create_memory_backend>;
+	createRawStore(platform: Platform, accountId: string): Store<Record<string, unknown>>;
+	createTimelineStore(userId: string): Store<Record<string, unknown>>;
+};
+
+export type TestContext = {
+	db: Database;
+	d1: D1Database;
+	r2: R2Bucket;
+	providers: TestProviders;
+	env: TestEnv;
+	corpus: TestCorpus;
+	cleanup(): void;
+};
+
+const ENCRYPTION_KEY = "test-encryption-key-32-bytes-long!";
+
+const SCHEMA = `
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT UNIQUE,
+    name TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS accounts (
+    id TEXT PRIMARY KEY,
+    platform TEXT NOT NULL,
+    platform_user_id TEXT,
+    platform_username TEXT,
+    access_token_encrypted TEXT NOT NULL,
+    refresh_token_encrypted TEXT,
+    token_expires_at TEXT,
+    is_active INTEGER DEFAULT 1,
+    last_fetched_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_accounts_platform_user ON accounts(platform, platform_user_id);
+
+  CREATE TABLE IF NOT EXISTS account_members (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    role TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, account_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_account_members_user ON account_members(user_id);
+  CREATE INDEX IF NOT EXISTS idx_account_members_account ON account_members(account_id);
+
+  CREATE TABLE IF NOT EXISTS api_keys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    key_hash TEXT NOT NULL UNIQUE,
+    name TEXT,
+    last_used_at TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+
+  CREATE TABLE IF NOT EXISTS rate_limits (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id),
+    remaining INTEGER,
+    limit_total INTEGER,
+    reset_at TEXT,
+    consecutive_failures INTEGER DEFAULT 0,
+    last_failure_at TEXT,
+    circuit_open_until TEXT,
+    updated_at TEXT NOT NULL,
+    UNIQUE(account_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS corpus_snapshots (
+    store_id TEXT NOT NULL,
+    version TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    tags TEXT,
+    metadata TEXT,
+    PRIMARY KEY (store_id, version)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_corpus_snapshots_store ON corpus_snapshots(store_id);
+  CREATE INDEX IF NOT EXISTS idx_corpus_snapshots_created ON corpus_snapshots(store_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS corpus_parents (
+    child_store_id TEXT NOT NULL,
+    child_version TEXT NOT NULL,
+    parent_store_id TEXT NOT NULL,
+    parent_version TEXT NOT NULL,
+    role TEXT,
+    PRIMARY KEY (child_store_id, child_version, parent_store_id, parent_version),
+    FOREIGN KEY (child_store_id, child_version) REFERENCES corpus_snapshots(store_id, version),
+    FOREIGN KEY (parent_store_id, parent_version) REFERENCES corpus_snapshots(store_id, version)
+  );
+`;
+
+export const encryptToken = async (plaintext: string, key: string = ENCRYPTION_KEY): Promise<string> => {
+	return encrypt(plaintext, key);
+};
+
+const createD1FromSqlite = (db: Database): D1Database => {
+	const createPreparedStatement = (query: string): D1PreparedStatement => {
+		let boundParams: unknown[] = [];
+
+		const statement: D1PreparedStatement = {
+			bind(...params: unknown[]): D1PreparedStatement {
+				boundParams = params;
+				return statement;
+			},
+			async first<T>(column?: string): Promise<T | null> {
+				const stmt = db.prepare(query);
+				const row = stmt.get(...boundParams) as Record<string, unknown> | null;
+				if (!row) return null;
+				if (column) return row[column] as T;
+				return row as T;
+			},
+			async all<T>(): Promise<{ results: T[] }> {
+				const stmt = db.prepare(query);
+				const rows = stmt.all(...boundParams) as T[];
+				return { results: rows };
+			},
+			async run(): Promise<{ success: boolean; changes: number }> {
+				const stmt = db.prepare(query);
+				stmt.run(...boundParams);
+				return { success: true, changes: db.changes };
+			},
+		};
+		return statement;
+	};
+
+	return {
+		prepare: createPreparedStatement,
+		async batch<T>(statements: D1PreparedStatement[]): Promise<T[]> {
+			const results: T[] = [];
+			for (const stmt of statements) {
+				const result = await stmt.run();
+				results.push(result as T);
+			}
+			return results;
+		},
+		async exec(query: string): Promise<void> {
+			db.exec(query);
+		},
+	};
+};
+
+const createMemoryR2 = (): R2Bucket => {
+	const storage = new Map<string, ArrayBuffer>();
+
+	return {
+		async get(key: string): Promise<R2Object | null> {
+			const data = storage.get(key);
+			if (!data) return null;
+			const body = new ReadableStream({
+				start(controller) {
+					controller.enqueue(new Uint8Array(data));
+					controller.close();
+				},
+			});
+			return {
+				key,
+				body,
+				async arrayBuffer() {
+					return data;
+				},
+			};
+		},
+		async put(key: string, value: ArrayBuffer | Uint8Array | string | ReadableStream): Promise<void> {
+			if (value instanceof ArrayBuffer) {
+				storage.set(key, value);
+			} else if (value instanceof Uint8Array) {
+				storage.set(key, value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+			} else if (typeof value === "string") {
+				storage.set(key, new TextEncoder().encode(value).buffer as ArrayBuffer);
+			} else {
+				const reader = value.getReader();
+				const chunks: Uint8Array[] = [];
+				let done = false;
+				while (!done) {
+					const result = await reader.read();
+					done = result.done;
+					if (result.value) chunks.push(result.value);
+				}
+				const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+				const combined = new Uint8Array(totalLength);
+				let offset = 0;
+				for (const chunk of chunks) {
+					combined.set(chunk, offset);
+					offset += chunk.length;
+				}
+				storage.set(key, combined.buffer as ArrayBuffer);
+			}
+		},
+		async delete(key: string): Promise<void> {
+			storage.delete(key);
+		},
+		async head(key: string): Promise<{ key: string } | null> {
+			return storage.has(key) ? { key } : null;
+		},
+		async list(options?: { prefix?: string }): Promise<{ objects: Array<{ key: string }> }> {
+			const prefix = options?.prefix ?? "";
+			const objects = Array.from(storage.keys())
+				.filter(k => k.startsWith(prefix))
+				.map(key => ({ key }));
+			return { objects };
+		},
+	};
+};
+
+const createTestProviders = (): TestProviders => ({
+	github: new GitHubMemoryProvider({}),
+	bluesky: new BlueskyMemoryProvider({}),
+	youtube: new YouTubeMemoryProvider({}),
+	devpad: new DevpadMemoryProvider({}),
+});
+
+export const createTestCorpus = (): TestCorpus => {
+	const backend = create_memory_backend();
+	const stores = new Map<string, Store<Record<string, unknown>>>();
+
+	const createRawStore = (platform: Platform, accountId: string): Store<Record<string, unknown>> => {
+		const storeId = `raw/${platform}/${accountId}`;
+		const existing = stores.get(storeId);
+		if (existing) return existing;
+
+		const corpus = create_corpus()
+			.with_backend(backend)
+			.with_store(define_store(storeId, json_codec(RawDataSchema)))
+			.build();
+
+		const store = corpus.stores[storeId];
+		if (!store) throw new Error(`Failed to create store: ${storeId}`);
+		stores.set(storeId, store);
+		return store;
+	};
+
+	const createTimelineStore = (userId: string): Store<Record<string, unknown>> => {
+		const storeId = `timeline/${userId}`;
+		const existing = stores.get(storeId);
+		if (existing) return existing;
+
+		const corpus = create_corpus()
+			.with_backend(backend)
+			.with_store(define_store(storeId, json_codec(TimelineDataSchema)))
+			.build();
+
+		const store = corpus.stores[storeId];
+		if (!store) throw new Error(`Failed to create store: ${storeId}`);
+		stores.set(storeId, store);
+		return store;
+	};
+
+	return { backend, createRawStore, createTimelineStore };
+};
+
+export const createTestContext = (): TestContext => {
+	const db = new Database(":memory:");
+	db.exec(SCHEMA);
+
+	const d1 = createD1FromSqlite(db);
+	const r2 = createMemoryR2();
+	const providers = createTestProviders();
+	const corpus = createTestCorpus();
+
+	const env: TestEnv = {
+		DB: d1,
+		BUCKET: r2,
+		ENCRYPTION_KEY,
+		ENVIRONMENT: "test",
+	};
+
+	const cleanup = () => {
+		db.close();
+		providers.github.reset();
+		providers.bluesky.reset();
+		providers.youtube.reset();
+		providers.devpad.reset();
+	};
+
+	return { db, d1, r2, providers, env, corpus, cleanup };
+};
+
+const now = () => new Date().toISOString();
+
+export const seedUser = async (ctx: TestContext, user: UserSeed): Promise<void> => {
+	const timestamp = now();
+	await ctx.d1
+		.prepare("INSERT INTO users (id, email, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+		.bind(user.id, user.email ?? null, user.name ?? null, timestamp, timestamp)
+		.run();
+};
+
+export const seedAccount = async (ctx: TestContext, userId: string, account: AccountSeed, role: MemberRole = "owner"): Promise<void> => {
+	const timestamp = now();
+	const encryptedAccessToken = await encryptToken(account.access_token, ctx.env.ENCRYPTION_KEY);
+	const encryptedRefreshToken = account.refresh_token ? await encryptToken(account.refresh_token, ctx.env.ENCRYPTION_KEY) : null;
+
+	await ctx.d1
+		.prepare(`
+      INSERT INTO accounts (
+        id, platform, platform_user_id, platform_username,
+        access_token_encrypted, refresh_token_encrypted,
+        is_active, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+		.bind(account.id, account.platform, account.platform_user_id ?? null, account.platform_username ?? null, encryptedAccessToken, encryptedRefreshToken, (account.is_active ?? true) ? 1 : 0, timestamp, timestamp)
+		.run();
+
+	await ctx.d1.prepare("INSERT INTO account_members (id, user_id, account_id, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(uuid(), userId, account.id, role, timestamp).run();
+};
+
+export const seedRateLimit = async (ctx: TestContext, accountId: string, state: RateLimitSeed): Promise<void> => {
+	const timestamp = now();
+	await ctx.d1
+		.prepare(`
+      INSERT INTO rate_limits (
+        id, account_id, remaining, limit_total, reset_at,
+        consecutive_failures, last_failure_at, circuit_open_until, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+		.bind(
+			uuid(),
+			accountId,
+			state.remaining ?? null,
+			state.limit_total ?? null,
+			state.reset_at?.toISOString() ?? null,
+			state.consecutive_failures ?? 0,
+			state.last_failure_at?.toISOString() ?? null,
+			state.circuit_open_until?.toISOString() ?? null,
+			timestamp
+		)
+		.run();
+};
+
+export const seedApiKey = async (ctx: TestContext, userId: string, keyValue: string, name?: string): Promise<string> => {
+	const keyId = uuid();
+	const keyHash = await hashApiKey(keyValue);
+	const timestamp = now();
+
+	await ctx.d1
+		.prepare("INSERT INTO api_keys (id, user_id, key_hash, name, created_at) VALUES (?, ?, ?, ?, ?)")
+		.bind(keyId, userId, keyHash, name ?? null, timestamp)
+		.run();
+
+	return keyId;
+};
+
+export const addAccountMember = async (ctx: TestContext, userId: string, accountId: string, role: MemberRole): Promise<void> => {
+	const timestamp = now();
+	await ctx.d1.prepare("INSERT INTO account_members (id, user_id, account_id, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(uuid(), userId, accountId, role, timestamp).run();
+};
+
+export const getUser = async (ctx: TestContext, userId: string) => ctx.d1.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+
+export const getAccount = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(accountId).first();
+
+export const getAccountMembers = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM account_members WHERE account_id = ?").bind(accountId).all();
+
+export const getRateLimit = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM rate_limits WHERE account_id = ?").bind(accountId).first();
+
+export const getUserAccounts = async (ctx: TestContext, userId: string) =>
+	ctx.d1
+		.prepare(`
+      SELECT a.*, am.role
+      FROM accounts a
+      INNER JOIN account_members am ON a.id = am.account_id
+      WHERE am.user_id = ?
+    `)
+		.bind(userId)
+		.all();
+
+export { unwrap as assertResultOk, unwrapErr as assertResultErr };
