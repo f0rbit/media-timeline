@@ -1,6 +1,9 @@
 import { create_cloudflare_backend, create_corpus, define_store, json_codec, type Store } from "@f0rbit/corpus/cloudflare";
+import { err, ok, type Result } from "@media-timeline/core";
 import { z } from "zod";
 import type { Bindings } from "./bindings";
+
+export type CorpusError = { kind: "store_not_found"; store_id: string };
 
 export type RawStoreId = `raw/${string}/${string}`;
 export type TimelineStoreId = `timeline/${string}`;
@@ -31,24 +34,24 @@ const toCorpusBackend = (env: Bindings): CorpusBackend => ({
 export type RawStore = { store: Store<Record<string, unknown>>; id: RawStoreId };
 export type TimelineStore = { store: Store<Record<string, unknown>>; id: TimelineStoreId };
 
-export function createRawStore(platform: string, accountId: string, env: Bindings): RawStore {
+export function createRawStore(platform: string, accountId: string, env: Bindings): Result<RawStore, CorpusError> {
 	const id = rawStoreId(platform, accountId);
 	const corpus = create_corpus()
 		.with_backend(create_cloudflare_backend(toCorpusBackend(env)))
 		.with_store(define_store(id, json_codec(RawDataSchema)))
 		.build();
 	const store = corpus.stores[id];
-	if (!store) throw new Error(`Store ${id} not found`);
-	return { store, id };
+	if (!store) return err({ kind: "store_not_found", store_id: id });
+	return ok({ store, id });
 }
 
-export function createTimelineStore(userId: string, env: Bindings): TimelineStore {
+export function createTimelineStore(userId: string, env: Bindings): Result<TimelineStore, CorpusError> {
 	const id = timelineStoreId(userId);
 	const corpus = create_corpus()
 		.with_backend(create_cloudflare_backend(toCorpusBackend(env)))
 		.with_store(define_store(id, json_codec(TimelineDataSchema)))
 		.build();
 	const store = corpus.stores[id];
-	if (!store) throw new Error(`Store ${id} not found`);
-	return { store, id };
+	if (!store) return err({ kind: "store_not_found", store_id: id });
+	return ok({ store, id });
 }

@@ -1,5 +1,5 @@
 export { combineTimelines } from "./combiner";
-export { decrypt, encrypt } from "./encryption";
+export { decrypt, type EncryptionError, encrypt } from "./encryption";
 export { groupByDate, groupCommits } from "./grouper";
 export {
 	normalizeBlueSky,
@@ -40,13 +40,18 @@ export type {
 	YouTubeRaw,
 	YouTubeVideo,
 } from "./types";
-export type { DeepPartial, Result } from "./utils";
+export type { DecodeError, DeepPartial, FetchErrorType, Result, ResultPipe, ResultPipeAsync } from "./utils";
 export {
+	collectResults,
 	daysAgo,
 	daysFromNow,
 	err,
 	extractDateKey,
+	fetchResult,
+	flatMapResult,
+	flatMapResultAsync,
 	fromBase64,
+	fromExternalResult,
 	fromHex,
 	hashApiKey,
 	hashSha256,
@@ -55,14 +60,25 @@ export {
 	isErr,
 	isOk,
 	mapErr,
+	mapErrAsync,
 	mapResult,
+	mapResultAsync,
+	matchResult,
 	mergeDeep,
 	minutesAgo,
 	minutesFromNow,
 	ok,
+	pipeResult,
+	pipeResultAsync,
 	randomSha,
+	tapErr,
+	tapErrAsync,
+	tapResult,
+	tapResultAsync,
 	toBase64,
 	toHex,
+	tryCatch,
+	tryCatchAsync,
 	unwrap,
 	unwrapErr,
 	unwrapOr,

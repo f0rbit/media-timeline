@@ -1,5 +1,5 @@
-import type { FetchResult, Provider } from "./types";
-import { err, ok } from "./types";
+import { tryCatchAsync } from "@media-timeline/core";
+import type { FetchResult, Provider, ProviderError } from "./types";
 
 export type GitHubEvent = {
 	id: string;
@@ -20,6 +20,41 @@ export type GitHubProviderConfig = {
 	username: string;
 };
 
+type Tagged<T> = T & { _tag: string };
+
+const parseRateLimitReset = (headers: Headers): number => {
+	const resetTimestamp = headers.get("X-RateLimit-Reset");
+	return resetTimestamp ? Math.max(0, parseInt(resetTimestamp, 10) - Math.floor(Date.now() / 1000)) : 60;
+};
+
+const handleGitHubResponse = async (response: Response): Promise<GitHubRaw> => {
+	if (response.status === 401 || response.status === 403) {
+		if (response.headers.get("X-RateLimit-Remaining") === "0") {
+			throw { _tag: "rate_limited", kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } as Tagged<ProviderError>;
+		}
+		throw { _tag: "auth_expired", kind: "auth_expired", message: "GitHub token expired or invalid" } as Tagged<ProviderError>;
+	}
+
+	if (response.status === 429) {
+		throw { _tag: "rate_limited", kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } as Tagged<ProviderError>;
+	}
+
+	if (!response.ok) {
+		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
+	}
+
+	const events = (await response.json()) as GitHubEvent[];
+	return { events, fetched_at: new Date().toISOString() };
+};
+
+const toProviderError = (e: unknown): ProviderError => {
+	if (typeof e === "object" && e !== null && "_tag" in e) {
+		const { _tag, ...rest } = e as Tagged<ProviderError>;
+		return rest as ProviderError;
+	}
+	return { kind: "network_error", cause: e instanceof Error ? e : new Error(String(e)) };
+};
+
 export class GitHubProvider implements Provider<GitHubRaw> {
 	readonly platform = "github";
 	private config: GitHubProviderConfig;
@@ -28,52 +63,20 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 		this.config = config;
 	}
 
-	async fetch(token: string): Promise<FetchResult<GitHubRaw>> {
+	fetch(token: string): Promise<FetchResult<GitHubRaw>> {
 		const url = `https://api.github.com/users/${this.config.username}/events`;
-
-		let response: Response;
-		try {
-			response = await fetch(url, {
-				headers: {
-					Authorization: `Bearer ${token}`,
-					Accept: "application/vnd.github+json",
-					"X-GitHub-Api-Version": "2022-11-28",
-				},
-			});
-		} catch (cause) {
-			return err({ kind: "network_error", cause: cause as Error });
-		}
-
-		if (response.status === 401 || response.status === 403) {
-			const rateLimitRemaining = response.headers.get("X-RateLimit-Remaining");
-			if (rateLimitRemaining === "0") {
-				const resetTimestamp = response.headers.get("X-RateLimit-Reset");
-				const retryAfter = resetTimestamp ? Math.max(0, parseInt(resetTimestamp, 10) - Math.floor(Date.now() / 1000)) : 60;
-				return err({ kind: "rate_limited", retry_after: retryAfter });
-			}
-			return err({ kind: "auth_expired", message: "GitHub token expired or invalid" });
-		}
-
-		if (response.status === 429) {
-			const resetTimestamp = response.headers.get("X-RateLimit-Reset");
-			const retryAfter = resetTimestamp ? Math.max(0, parseInt(resetTimestamp, 10) - Math.floor(Date.now() / 1000)) : 60;
-			return err({ kind: "rate_limited", retry_after: retryAfter });
-		}
-
-		if (!response.ok) {
-			return err({ kind: "api_error", status: response.status, message: await response.text() });
-		}
-
-		let events: GitHubEvent[];
-		try {
-			events = (await response.json()) as GitHubEvent[];
-		} catch {
-			return err({ kind: "api_error", status: response.status, message: "Invalid JSON response" });
-		}
-
-		return ok({
-			events,
-			fetched_at: new Date().toISOString(),
-		});
+		return tryCatchAsync(
+			async () =>
+				handleGitHubResponse(
+					await fetch(url, {
+						headers: {
+							Authorization: `Bearer ${token}`,
+							Accept: "application/vnd.github+json",
+							"X-GitHub-Api-Version": "2022-11-28",
+						},
+					})
+				),
+			toProviderError
+		);
 	}
 }

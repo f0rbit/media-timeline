@@ -181,7 +181,7 @@ const SCHEMA = `
 `;
 
 export const encryptToken = async (plaintext: string, key: string = ENCRYPTION_KEY): Promise<string> => {
-	return encrypt(plaintext, key);
+	return unwrap(await encrypt(plaintext, key));
 };
 
 const createD1FromSqlite = (db: Database): D1Database => {

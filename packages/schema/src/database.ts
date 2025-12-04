@@ -1,4 +1,5 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import type { Platform } from "./types";
 
 export const users = sqliteTable("users", {
 	id: text("id").primaryKey(),
@@ -12,7 +13,7 @@ export const accounts = sqliteTable(
 	"accounts",
 	{
 		id: text("id").primaryKey(),
-		platform: text("platform").notNull().$type<"github" | "bluesky" | "youtube" | "devpad">(),
+		platform: text("platform").notNull().$type<Platform>(),
 		platform_user_id: text("platform_user_id"),
 		platform_username: text("platform_username"),
 		access_token_encrypted: text("access_token_encrypted").notNull(),

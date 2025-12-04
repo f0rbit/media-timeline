@@ -1,3 +1,4 @@
+import { encrypt, matchResult, ok, pipeResultAsync } from "@media-timeline/core";
 import { Hono } from "hono";
 import type { Bindings } from "../bindings";
 import { authMiddleware } from "../middleware/auth";
@@ -5,18 +6,6 @@ import { authMiddleware } from "../middleware/auth";
 const app = new Hono<{ Bindings: Bindings }>();
 
 app.use("*", authMiddleware);
-
-async function encrypt(text: string, key: string): Promise<string> {
-	const encoder = new TextEncoder();
-	const keyData = encoder.encode(key.padEnd(32, "0").slice(0, 32));
-	const cryptoKey = await crypto.subtle.importKey("raw", keyData, "AES-GCM", false, ["encrypt"]);
-	const iv = crypto.getRandomValues(new Uint8Array(12));
-	const encrypted = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, cryptoKey, encoder.encode(text));
-	const combined = new Uint8Array(iv.length + new Uint8Array(encrypted).length);
-	combined.set(iv);
-	combined.set(new Uint8Array(encrypted), iv.length);
-	return btoa(String.fromCharCode(...combined));
-}
 
 type AccountRow = {
 	account_id: string;
@@ -79,21 +68,33 @@ app.post("/", async c => {
 	const accountId = crypto.randomUUID();
 	const memberId = crypto.randomUUID();
 
-	const encryptedAccessToken = await encrypt(body.access_token, c.env.ENCRYPTION_KEY);
-	const encryptedRefreshToken = body.refresh_token ? await encrypt(body.refresh_token, c.env.ENCRYPTION_KEY) : null;
-
-	await c.env.DB.batch([
-		c.env.DB.prepare(`
+	const result = await pipeResultAsync(encrypt(body.access_token, c.env.ENCRYPTION_KEY))
+		.flatMapAsync(encryptedAccessToken =>
+			body.refresh_token
+				? pipeResultAsync(encrypt(body.refresh_token, c.env.ENCRYPTION_KEY))
+						.map(encryptedRefreshToken => ({ encryptedAccessToken, encryptedRefreshToken: encryptedRefreshToken as string | null }))
+						.result()
+				: Promise.resolve(ok({ encryptedAccessToken, encryptedRefreshToken: null as string | null }))
+		)
+		.tapAsync(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
+			await c.env.DB.batch([
+				c.env.DB.prepare(`
         INSERT INTO accounts (id, platform, platform_user_id, platform_username, access_token_encrypted, refresh_token_encrypted, token_expires_at, is_active, created_at, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
       `).bind(accountId, body.platform, body.platform_user_id ?? null, body.platform_username ?? null, encryptedAccessToken, encryptedRefreshToken, body.token_expires_at ?? null, now, now),
-		c.env.DB.prepare(`
+				c.env.DB.prepare(`
         INSERT INTO account_members (id, user_id, account_id, role, created_at)
         VALUES (?, ?, ?, 'owner', ?)
       `).bind(memberId, auth.user_id, accountId, now),
-	]);
+			]);
+		})
+		.result();
 
-	return c.json({ account_id: accountId, role: "owner" }, 201);
+	return matchResult(
+		result,
+		() => c.json({ account_id: accountId, role: "owner" }, 201) as Response,
+		() => c.json({ error: "Internal error", message: "Failed to encrypt token" }, 500) as Response
+	);
 });
 
 app.delete("/:account_id", async c => {

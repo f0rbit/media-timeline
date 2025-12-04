@@ -18,6 +18,7 @@
       "name": "@media-timeline/core",
       "version": "0.1.0",
       "dependencies": {
+        "@media-timeline/schema": "workspace:*",
         "date-fns": "^4.1.0",
       },
       "peerDependencies": {

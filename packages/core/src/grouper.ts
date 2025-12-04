@@ -1,9 +1,7 @@
-import { format, parseISO } from "date-fns";
 import type { CommitGroup, CommitPayload, DateGroup, TimelineEntry, TimelineItem } from "./types";
+import { extractDateKey } from "./utils";
 
 const isCommitItem = (item: TimelineItem): item is TimelineItem & { payload: CommitPayload } => item.type === "commit" && item.payload.type === "commit";
-
-const extractDateKey = (timestamp: string): string => format(parseISO(timestamp), "yyyy-MM-dd");
 
 const makeGroupKey = (repo: string, date: string): string => `${repo}:${date}`;
 
@@ -12,7 +10,7 @@ const makeGroupId = (repo: string, date: string): string => `github:commit_group
 type CommitItem = TimelineItem & { payload: CommitPayload };
 
 const buildCommitGroup = (repo: string, date: string, commits: CommitItem[]): CommitGroup => {
-	const sorted = [...commits].sort((a, b) => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime());
+	const sorted = [...commits].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 	const latestTimestamp = sorted[0]?.timestamp ?? new Date().toISOString();
 
 	const totals = commits.reduce(
@@ -59,7 +57,7 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 	return [...commitGroups, ...nonCommits];
 };
 
-const compareTimestampDesc = (a: TimelineEntry, b: TimelineEntry): number => parseISO(b.timestamp).getTime() - parseISO(a.timestamp).getTime();
+const compareTimestampDesc = (a: TimelineEntry, b: TimelineEntry): number => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
 
 export const groupByDate = (entries: TimelineEntry[]): DateGroup[] => {
 	const sorted = [...entries].sort(compareTimestampDesc);

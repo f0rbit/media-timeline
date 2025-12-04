@@ -1,5 +1,5 @@
-import type { FetchResult, Provider } from "./types";
-import { err, ok } from "./types";
+import { tryCatchAsync } from "@media-timeline/core";
+import type { FetchResult, Provider, ProviderError } from "./types";
 
 export type YouTubePlaylistItem = {
 	kind: string;
@@ -32,6 +32,37 @@ export type YouTubeProviderConfig = {
 	playlist_id: string;
 };
 
+type Tagged<T> = T & { _tag: string };
+
+const handleYouTubeResponse = async (response: Response): Promise<YouTubeRaw> => {
+	if (response.status === 401 || response.status === 403) {
+		const body = await response.text();
+		if (body.includes("quotaExceeded") || body.includes("rateLimitExceeded")) {
+			throw { _tag: "rate_limited", kind: "rate_limited", retry_after: 3600 } as Tagged<ProviderError>;
+		}
+		throw { _tag: "auth_expired", kind: "auth_expired", message: "YouTube API key invalid or expired" } as Tagged<ProviderError>;
+	}
+
+	if (response.status === 429) {
+		throw { _tag: "rate_limited", kind: "rate_limited", retry_after: 3600 } as Tagged<ProviderError>;
+	}
+
+	if (!response.ok) {
+		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
+	}
+
+	const data = (await response.json()) as { items: YouTubePlaylistItem[]; nextPageToken?: string };
+	return { items: data.items ?? [], nextPageToken: data.nextPageToken, fetched_at: new Date().toISOString() };
+};
+
+const toProviderError = (e: unknown): ProviderError => {
+	if (typeof e === "object" && e !== null && "_tag" in e) {
+		const { _tag, ...rest } = e as Tagged<ProviderError>;
+		return rest as ProviderError;
+	}
+	return { kind: "network_error", cause: e instanceof Error ? e : new Error(String(e)) };
+};
+
 export class YouTubeProvider implements Provider<YouTubeRaw> {
 	readonly platform = "youtube";
 	private config: YouTubeProviderConfig;
@@ -40,7 +71,7 @@ export class YouTubeProvider implements Provider<YouTubeRaw> {
 		this.config = config;
 	}
 
-	async fetch(token: string): Promise<FetchResult<YouTubeRaw>> {
+	fetch(token: string): Promise<FetchResult<YouTubeRaw>> {
 		const params = new URLSearchParams({
 			part: "snippet,contentDetails",
 			playlistId: this.config.playlist_id,
@@ -49,44 +80,16 @@ export class YouTubeProvider implements Provider<YouTubeRaw> {
 		});
 		const url = `https://www.googleapis.com/youtube/v3/playlistItems?${params}`;
 
-		let response: Response;
-		try {
-			response = await fetch(url, {
-				headers: {
-					Accept: "application/json",
-				},
-			});
-		} catch (cause) {
-			return err({ kind: "network_error", cause: cause as Error });
-		}
-
-		if (response.status === 401 || response.status === 403) {
-			const body = await response.text();
-			if (body.includes("quotaExceeded") || body.includes("rateLimitExceeded")) {
-				return err({ kind: "rate_limited", retry_after: 3600 });
-			}
-			return err({ kind: "auth_expired", message: "YouTube API key invalid or expired" });
-		}
-
-		if (response.status === 429) {
-			return err({ kind: "rate_limited", retry_after: 3600 });
-		}
-
-		if (!response.ok) {
-			return err({ kind: "api_error", status: response.status, message: await response.text() });
-		}
-
-		let data: { items: YouTubePlaylistItem[]; nextPageToken?: string };
-		try {
-			data = (await response.json()) as { items: YouTubePlaylistItem[]; nextPageToken?: string };
-		} catch {
-			return err({ kind: "api_error", status: response.status, message: "Invalid JSON response" });
-		}
-
-		return ok({
-			items: data.items ?? [],
-			nextPageToken: data.nextPageToken,
-			fetched_at: new Date().toISOString(),
-		});
+		return tryCatchAsync(
+			async () =>
+				handleYouTubeResponse(
+					await fetch(url, {
+						headers: {
+							Accept: "application/json",
+						},
+					})
+				),
+			toProviderError
+		);
 	}
 }

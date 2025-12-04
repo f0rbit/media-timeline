@@ -1,11 +1,18 @@
+import { fromExternalResult, matchResult, pipeResultAsync, type Result } from "@media-timeline/core";
 import { Hono } from "hono";
 import type { Bindings } from "../bindings";
-import { createRawStore, createTimelineStore } from "../corpus";
+import { type CorpusError, createRawStore, createTimelineStore } from "../corpus";
 import { authMiddleware } from "../middleware/auth";
 
 type TimelineData = {
 	groups: Array<{ date: string; items: unknown[] }>;
 };
+
+type Snapshot = { meta: unknown; data: unknown };
+
+type TimelineRouteError = CorpusError | { kind: "not_found" };
+
+type RawRouteError = CorpusError | { kind: "not_found" };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -22,32 +29,27 @@ app.get("/:user_id", async c => {
 	const from = c.req.query("from");
 	const to = c.req.query("to");
 
-	const { store } = createTimelineStore(userId, c.env);
-	const result = await store.get_latest();
+	const result = await pipeResultAsync(Promise.resolve(createTimelineStore(userId, c.env)))
+		.mapErr((e): TimelineRouteError => e)
+		.map(({ store }) => store)
+		.flatMapAsync(async (store): Promise<Result<Snapshot, TimelineRouteError>> => fromExternalResult(await store.get_latest(), { kind: "not_found" }))
+		.map(snapshot => {
+			const timeline = snapshot.data as TimelineData;
+			const filteredGroups = timeline.groups.filter(group => {
+				if (from && group.date < from) return false;
+				if (to && group.date > to) return false;
+				return true;
+			});
+			return { meta: snapshot.meta, data: { ...timeline, groups: filteredGroups } };
+		})
+		.result();
 
-	if (!result.ok) {
-		return c.json({ error: "Not found", message: "No timeline data available" }, 404);
-	}
-
-	const timeline = result.value.data as TimelineData;
-
-	if (!from && !to) {
-		return c.json({
-			meta: result.value.meta,
-			data: timeline,
-		});
-	}
-
-	const filteredGroups = timeline.groups.filter(group => {
-		if (from && group.date < from) return false;
-		if (to && group.date > to) return false;
-		return true;
-	});
-
-	return c.json({
-		meta: result.value.meta,
-		data: { ...timeline, groups: filteredGroups },
-	});
+	return matchResult(
+		result,
+		data => c.json(data) as Response,
+		error =>
+			error.kind === "store_not_found" ? (c.json({ error: "Internal error", message: "Failed to create timeline store" }, 500) as Response) : (c.json({ error: "Not found", message: "No timeline data available" }, 404) as Response)
+	);
 });
 
 app.get("/:user_id/raw/:platform", async c => {
@@ -64,17 +66,21 @@ app.get("/:user_id/raw/:platform", async c => {
 		return c.json({ error: "Bad request", message: "account_id query parameter required" }, 400);
 	}
 
-	const { store } = createRawStore(platform, accountId, c.env);
-	const result = await store.get_latest();
+	const result = await pipeResultAsync(Promise.resolve(createRawStore(platform, accountId, c.env)))
+		.mapErr((e): RawRouteError => e)
+		.map(({ store }) => store)
+		.flatMapAsync(async (store): Promise<Result<Snapshot, RawRouteError>> => fromExternalResult(await store.get_latest(), { kind: "not_found" }))
+		.map(snapshot => ({ meta: snapshot.meta, data: snapshot.data }))
+		.result();
 
-	if (!result.ok) {
-		return c.json({ error: "Not found", message: "No raw data available for this account" }, 404);
-	}
-
-	return c.json({
-		meta: result.value.meta,
-		data: result.value.data,
-	});
+	return matchResult(
+		result,
+		data => c.json(data) as Response,
+		error =>
+			error.kind === "store_not_found"
+				? (c.json({ error: "Internal error", message: "Failed to create raw store" }, 500) as Response)
+				: (c.json({ error: "Not found", message: "No raw data available for this account" }, 404) as Response)
+	);
 });
 
 export { app as timelineRoutes };

@@ -1,4 +1,6 @@
-export type Platform = "github" | "bluesky" | "youtube" | "devpad";
+import type { Platform } from "@media-timeline/schema";
+
+export type { Platform };
 export type ItemType = "commit" | "post" | "video" | "task";
 
 export type CommitPayload = {
