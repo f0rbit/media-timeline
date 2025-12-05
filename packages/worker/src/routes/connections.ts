@@ -1,5 +1,6 @@
 import { encrypt, match, ok, pipe } from "@media-timeline/core";
 import { Hono } from "hono";
+import { z } from "zod";
 import type { Bindings } from "../bindings";
 import { authMiddleware } from "../middleware/auth";
 
@@ -21,18 +22,22 @@ type MembershipRow = {
 	role: string;
 };
 
-type CreateConnectionBody = {
-	platform: string;
-	platform_user_id?: string;
-	platform_username?: string;
-	access_token: string;
-	refresh_token?: string;
-	token_expires_at?: string;
-};
+const CreateConnectionBodySchema = z.object({
+	platform: z.enum(["github", "bluesky", "youtube", "devpad"]),
+	access_token: z.string().min(1),
+	refresh_token: z.string().optional(),
+	platform_user_id: z.string().optional(),
+	platform_username: z.string().optional(),
+	token_expires_at: z.string().optional(),
+});
 
-type AddMemberBody = {
-	user_id: string;
-};
+type CreateConnectionBody = z.infer<typeof CreateConnectionBodySchema>;
+
+const AddMemberBodySchema = z.object({
+	user_id: z.string().min(1),
+});
+
+type AddMemberBody = z.infer<typeof AddMemberBodySchema>;
 
 app.get("/", async c => {
 	const auth = c.get("auth");
@@ -58,11 +63,11 @@ app.get("/", async c => {
 
 app.post("/", async c => {
 	const auth = c.get("auth");
-	const body = await c.req.json<CreateConnectionBody>();
-
-	if (!body.platform || !body.access_token) {
-		return c.json({ error: "Bad request", message: "platform and access_token required" }, 400);
+	const parseResult = CreateConnectionBodySchema.safeParse(await c.req.json());
+	if (!parseResult.success) {
+		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
 	}
+	const body = parseResult.data;
 
 	const now = new Date().toISOString();
 	const accountId = crypto.randomUUID();
@@ -120,11 +125,11 @@ app.delete("/:account_id", async c => {
 app.post("/:account_id/members", async c => {
 	const auth = c.get("auth");
 	const accountId = c.req.param("account_id");
-	const body = await c.req.json<AddMemberBody>();
-
-	if (!body.user_id) {
-		return c.json({ error: "Bad request", message: "user_id required" }, 400);
+	const parseResult = AddMemberBodySchema.safeParse(await c.req.json());
+	if (!parseResult.success) {
+		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
 	}
+	const body = parseResult.data;
 
 	const membership = await c.env.DB.prepare("SELECT role FROM account_members WHERE user_id = ? AND account_id = ?").bind(auth.user_id, accountId).first<MembershipRow>();
 

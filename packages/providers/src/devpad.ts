@@ -1,19 +1,9 @@
 import { tryCatchAsync } from "@media-timeline/core";
+import { DevpadTaskSchema, type DevpadRaw } from "@media-timeline/schema";
+import { z } from "zod";
 import { toProviderError, type FetchResult, type Provider, type ProviderError, type Tagged } from "./types";
 
-export type DevpadTask = {
-	id: string;
-	title: string;
-	progress: string;
-	priority: number;
-	project_id: string;
-	updated_at: string;
-};
-
-export type DevpadRaw = {
-	tasks: DevpadTask[];
-	fetched_at: string;
-};
+const DevpadApiResponseSchema = z.array(DevpadTaskSchema);
 
 const handleDevpadResponse = async (response: Response): Promise<DevpadRaw> => {
 	if (response.status === 401) {
@@ -29,8 +19,19 @@ const handleDevpadResponse = async (response: Response): Promise<DevpadRaw> => {
 		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
 	}
 
-	const tasks = (await response.json()) as DevpadTask[];
-	return { tasks, fetched_at: new Date().toISOString() };
+	const json = await response.json();
+	const parsed = DevpadApiResponseSchema.safeParse(json);
+
+	if (!parsed.success) {
+		throw {
+			_tag: "api_error",
+			kind: "api_error",
+			status: 200,
+			message: `Invalid response format: ${parsed.error.message}`,
+		} as Tagged<ProviderError>;
+	}
+
+	return { tasks: parsed.data, fetched_at: new Date().toISOString() };
 };
 
 export class DevpadProvider implements Provider<DevpadRaw> {

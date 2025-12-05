@@ -1,10 +1,7 @@
 import {
-	type BlueskyRaw,
-	type DevpadRaw,
 	decrypt,
 	err,
 	fetchResult,
-	type GitHubRaw,
 	groupByDate,
 	groupCommits,
 	match,
@@ -18,10 +15,10 @@ import {
 	shouldFetch,
 	type TimelineEntry,
 	type TimelineItem,
-	type YouTubeRaw,
 } from "@media-timeline/core";
+import { BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, type Platform, YouTubeRawSchema } from "@media-timeline/schema";
 import type { Bindings } from "./bindings";
-import { createRawStore, createTimelineStore, rawStoreId } from "./corpus";
+import { createRawStore, createTimelineStore, rawStoreId, type RawData } from "./corpus";
 
 type Account = {
 	id: string;
@@ -234,7 +231,7 @@ const processAccount = (env: Bindings, account: AccountWithUser, providerFactory
 								.result()
 						)
 						.flatMap(({ rawData, store }) =>
-							pipe(store.put(rawData as Record<string, unknown>, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
+							pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
 								.mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
 								.map((result: { version: string }) => ({ rawData, version: result.version }))
 								.result()
@@ -337,15 +334,15 @@ const combineUserTimeline = async (env: Bindings, userId: string, snapshots: Raw
 };
 
 const normalizeSnapshot = (snapshot: RawSnapshot): TimelineItem[] => {
-	switch (snapshot.platform) {
+	switch (snapshot.platform as Platform) {
 		case "github":
-			return normalizeGitHub(snapshot.data as GitHubRaw);
+			return normalizeGitHub(GitHubRawSchema.parse(snapshot.data));
 		case "bluesky":
-			return normalizeBluesky(snapshot.data as BlueskyRaw);
+			return normalizeBluesky(BlueskyRawSchema.parse(snapshot.data));
 		case "youtube":
-			return normalizeYouTube(snapshot.data as YouTubeRaw);
+			return normalizeYouTube(YouTubeRawSchema.parse(snapshot.data));
 		case "devpad":
-			return normalizeDevpad(snapshot.data as DevpadRaw);
+			return normalizeDevpad(DevpadRawSchema.parse(snapshot.data));
 		default:
 			return [];
 	}

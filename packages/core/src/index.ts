@@ -29,17 +29,16 @@ export type {
 	GitHubEvent,
 	GitHubPushEvent,
 	GitHubRaw,
-	ItemType,
 	Payload,
 	Platform,
 	PostPayload,
 	TaskPayload,
-	TimelineEntry,
 	TimelineItem,
 	VideoPayload,
 	YouTubeRaw,
 	YouTubeVideo,
-} from "./types";
+} from "@media-timeline/schema";
+export type { ItemType, TimelineEntry } from "./types";
 export type { DecodeError, DeepPartial, FetchError, Pipe, Result } from "./utils";
 export {
 	daysAgo,

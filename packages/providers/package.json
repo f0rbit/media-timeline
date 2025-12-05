@@ -10,7 +10,8 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@media-timeline/core": "workspace:*"
+		"@media-timeline/core": "workspace:*",
+		"@media-timeline/schema": "workspace:*"
 	},
 	"peerDependencies": {
 		"zod": "^3"

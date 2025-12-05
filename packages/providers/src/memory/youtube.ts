@@ -1,9 +1,9 @@
+import type { YouTubeRaw, YouTubeVideo } from "@media-timeline/schema";
 import type { FetchResult, Provider } from "../types";
-import type { YouTubePlaylistItem, YouTubeRaw } from "../youtube";
 import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderControls, createMemoryProviderState, simulateErrors } from "./base";
 
 export type YouTubeMemoryConfig = {
-	items?: YouTubePlaylistItem[];
+	items?: YouTubeVideo[];
 	next_page_token?: string;
 };
 
@@ -36,7 +36,7 @@ export class YouTubeMemoryProvider implements Provider<YouTubeRaw>, MemoryProvid
 	setSimulateRateLimit = (value: boolean) => this.controls.setSimulateRateLimit(value);
 	setSimulateAuthExpired = (value: boolean) => this.controls.setSimulateAuthExpired(value);
 
-	setItems(items: YouTubePlaylistItem[]): void {
+	setItems(items: YouTubeVideo[]): void {
 		this.config.items = items;
 	}
 

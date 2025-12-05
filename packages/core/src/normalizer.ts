@@ -1,4 +1,4 @@
-import type { BlueskyRaw, CommitPayload, DevpadRaw, GitHubPushEvent, GitHubRaw, PostPayload, TaskPayload, TimelineItem, VideoPayload, YouTubeRaw } from "./types";
+import type { BlueskyRaw, CommitPayload, DevpadRaw, GitHubPushEvent, GitHubRaw, PostPayload, TaskPayload, TimelineItem, VideoPayload, YouTubeRaw } from "@media-timeline/schema";
 
 const isPushEvent = (event: { type: string }): event is GitHubPushEvent => event.type === "PushEvent";
 
@@ -52,13 +52,21 @@ const extractPostTitle = (text: string): string => {
 export const normalizeBluesky = (raw: BlueskyRaw): TimelineItem[] =>
 	raw.feed.map((item): TimelineItem => {
 		const { post } = item;
-		const images = post.embed?.images?.map(img => img.fullsize);
+		const hasMedia = (post.embed?.images?.length ?? 0) > 0;
+		const isReply = post.record.reply !== undefined;
+		const isRepost = item.reason?.$type === "app.bsky.feed.defs#reasonRepost";
 		const payload: PostPayload = {
 			type: "post",
-			text: post.record.text,
-			likes: post.likeCount,
-			reposts: post.repostCount,
-			images,
+			content: post.record.text,
+			author_handle: post.author.handle,
+			author_name: post.author.displayName,
+			author_avatar: post.author.avatar,
+			reply_count: post.replyCount,
+			repost_count: post.repostCount,
+			like_count: post.likeCount,
+			has_media: hasMedia,
+			is_reply: isReply,
+			is_repost: isRepost,
 		};
 		return {
 			id: makePostId(post.uri),
@@ -81,8 +89,10 @@ export const normalizeYouTube = (raw: YouTubeRaw): TimelineItem[] =>
 	raw.items.map((video): TimelineItem => {
 		const payload: VideoPayload = {
 			type: "video",
-			channel: video.snippet.channelTitle,
-			thumbnail: selectThumbnail(video.snippet.thumbnails),
+			channel_id: video.snippet.channelId,
+			channel_title: video.snippet.channelTitle,
+			description: video.snippet.description,
+			thumbnail_url: selectThumbnail(video.snippet.thumbnails),
 		};
 		return {
 			id: makeVideoId(video.id.videoId),
@@ -101,9 +111,12 @@ export const normalizeDevpad = (raw: DevpadRaw): TimelineItem[] =>
 	raw.tasks.map((task): TimelineItem => {
 		const payload: TaskPayload = {
 			type: "task",
-			project: task.project ?? "default",
 			status: task.status,
 			priority: task.priority,
+			project: task.project,
+			tags: task.tags,
+			due_date: task.due_date,
+			completed_at: task.completed_at,
 		};
 		return {
 			id: makeTaskId(task.id),

@@ -1,4 +1,4 @@
-import type { GitHubEvent, GitHubRaw } from "../github";
+import type { GitHubEvent, GitHubRaw } from "@media-timeline/schema";
 import type { FetchResult, Provider } from "../types";
 import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderControls, createMemoryProviderState, simulateErrors } from "./base";
 

@@ -205,7 +205,7 @@ describe("cron workflow", () => {
 			expect(timeline.ok).toBe(true);
 
 			if (timeline.ok) {
-				const data = timeline.value.data as { user_id: string; groups: Array<{ entries: TimelineEntry[] }> };
+				const data = timeline.value.data as { user_id: string; groups: Array<{ items: TimelineEntry[] }> };
 				expect(data.user_id).toBe(USERS.alice.id);
 				expect(data.groups.length).toBeGreaterThan(0);
 			}
@@ -232,11 +232,12 @@ describe("cron workflow", () => {
 			expect(timeline.ok).toBe(true);
 
 			if (timeline.ok) {
-				const data = timeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> };
-				const allEntries = data.groups.flatMap(g => g.entries);
-				const platforms = new Set(allEntries.map(e => e.platform));
-				expect(platforms.has("github")).toBe(true);
-				expect(platforms.has("bluesky")).toBe(true);
+				const data = timeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
+				const allEntries = data.groups.flatMap(g => g.items);
+				const hasGithub = allEntries.some(e => e.type === "commit_group" || (e.type === "commit" && e.platform === "github"));
+				const hasBluesky = allEntries.some(e => e.type === "post" && e.platform === "bluesky");
+				expect(hasGithub).toBe(true);
+				expect(hasBluesky).toBe(true);
 			}
 		});
 
@@ -315,10 +316,13 @@ describe("cron workflow", () => {
 			expect(timeline.ok).toBe(true);
 
 			if (timeline.ok) {
-				const data = timeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> };
-				const allEntries = data.groups.flatMap(g => g.entries);
-				const platforms = new Set(allEntries.map(e => e.platform));
-				expect(platforms.size).toBe(4);
+				const data = timeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
+				const allEntries = data.groups.flatMap(g => g.items);
+				const types = new Set(allEntries.map(e => e.type));
+				expect(types.has("commit_group") || types.has("commit")).toBe(true);
+				expect(types.has("post")).toBe(true);
+				expect(types.has("video")).toBe(true);
+				expect(types.has("task")).toBe(true);
 			}
 		});
 	});
@@ -362,15 +366,17 @@ describe("cron workflow", () => {
 			expect(bobTimeline.ok).toBe(true);
 
 			if (aliceTimeline.ok) {
-				const aliceData = aliceTimeline.value.data as { user_id: string; groups: Array<{ entries: TimelineEntry[] }> };
+				const aliceData = aliceTimeline.value.data as { user_id: string; groups: Array<{ items: TimelineEntry[] }> };
 				expect(aliceData.user_id).toBe(USERS.alice.id);
-				const aliceCommits = aliceData.groups.flatMap(g => g.entries);
-				const hasAliceCommit = aliceCommits.some(e => (e.type === "commit_group" ? e.commits?.some((c: { message: string }) => c.message.includes("alice")) : (e.payload as { message?: string })?.message?.includes("alice")));
+				const aliceCommits = aliceData.groups.flatMap(g => g.items);
+				const hasAliceCommit = aliceCommits.some(e =>
+					e.type === "commit_group" ? e.commits?.some(c => (c.payload as { message: string }).message.includes("alice")) : (e.payload as { message?: string })?.message?.includes("alice")
+				);
 				expect(hasAliceCommit).toBe(true);
 			}
 
 			if (bobTimeline.ok) {
-				const bobData = bobTimeline.value.data as { user_id: string; groups: Array<{ entries: TimelineEntry[] }> };
+				const bobData = bobTimeline.value.data as { user_id: string; groups: Array<{ items: TimelineEntry[] }> };
 				expect(bobData.user_id).toBe(USERS.bob.id);
 			}
 		});
@@ -402,8 +408,8 @@ describe("cron workflow", () => {
 			expect(bobTimeline.ok).toBe(true);
 
 			if (aliceTimeline.ok && bobTimeline.ok) {
-				const aliceEntries = (aliceTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups.flatMap(g => g.entries);
-				const bobEntries = (bobTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups.flatMap(g => g.entries);
+				const aliceEntries = (aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
+				const bobEntries = (bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
 
 				expect(aliceEntries.length).toBeGreaterThan(0);
 				expect(bobEntries.length).toBeGreaterThan(0);
@@ -685,15 +691,15 @@ describe("cron workflow", () => {
 			expect(bobTimeline.ok).toBe(true);
 
 			if (aliceTimeline.ok) {
-				const aliceData = aliceTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> };
-				const aliceEntries = aliceData.groups.flatMap(g => g.entries);
-				expect(aliceEntries.some(e => e.platform === "github")).toBe(true);
+				const aliceData = aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
+				const aliceEntries = aliceData.groups.flatMap(g => g.items);
+				expect(aliceEntries.some(e => e.type === "commit_group" || e.type === "commit")).toBe(true);
 			}
 
 			if (bobTimeline.ok) {
-				const bobData = bobTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> };
-				const bobEntries = bobData.groups.flatMap(g => g.entries);
-				expect(bobEntries.some(e => e.platform === "youtube")).toBe(true);
+				const bobData = bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
+				const bobEntries = bobData.groups.flatMap(g => g.items);
+				expect(bobEntries.some(e => e.type === "video")).toBe(true);
 			}
 		});
 	});

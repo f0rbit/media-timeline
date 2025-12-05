@@ -1,5 +1,6 @@
 import { create_cloudflare_backend, create_corpus, define_store, json_codec, type Store } from "@f0rbit/corpus/cloudflare";
 import { err, ok, type Result } from "@media-timeline/core";
+import { BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, TimelineSchema, YouTubeRawSchema } from "@media-timeline/schema";
 import { z } from "zod";
 import type { Bindings } from "./bindings";
 
@@ -13,8 +14,11 @@ export const rawStoreId = (platform: string, accountId: string): RawStoreId => `
 
 export const timelineStoreId = (userId: string): TimelineStoreId => `timeline/${userId}`;
 
-const RawDataSchema = z.record(z.unknown());
-const TimelineDataSchema = z.record(z.unknown());
+export const RawDataSchema = z.union([GitHubRawSchema, BlueskyRawSchema, YouTubeRawSchema, DevpadRawSchema]);
+export const TimelineDataSchema = TimelineSchema;
+
+export type RawData = z.infer<typeof RawDataSchema>;
+export type TimelineData = z.infer<typeof TimelineDataSchema>;
 
 type CorpusBackend = {
 	d1: { prepare: (sql: string) => unknown };
@@ -31,8 +35,8 @@ const toCorpusBackend = (env: Bindings): CorpusBackend => ({
 	r2: env.BUCKET as unknown as CorpusBackend["r2"],
 });
 
-export type RawStore = { store: Store<Record<string, unknown>>; id: RawStoreId };
-export type TimelineStore = { store: Store<Record<string, unknown>>; id: TimelineStoreId };
+export type RawStore = { store: Store<RawData>; id: RawStoreId };
+export type TimelineStore = { store: Store<TimelineData>; id: TimelineStoreId };
 
 export function createRawStore(platform: string, accountId: string, env: Bindings): Result<RawStore, CorpusError> {
 	const id = rawStoreId(platform, accountId);

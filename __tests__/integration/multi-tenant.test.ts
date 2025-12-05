@@ -148,11 +148,11 @@ describe("multi-tenant", () => {
 			expect(bobTimeline.ok).toBe(true);
 
 			if (aliceTimeline.ok && bobTimeline.ok) {
-				const aliceData = aliceTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> };
-				const bobData = bobTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> };
+				const aliceData = aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
+				const bobData = bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
 
-				const aliceEntries = aliceData.groups.flatMap(g => g.entries);
-				const bobEntries = bobData.groups.flatMap(g => g.entries);
+				const aliceEntries = aliceData.groups.flatMap(g => g.items);
+				const bobEntries = bobData.groups.flatMap(g => g.items);
 
 				expect(aliceEntries.length).toBeGreaterThan(0);
 				expect(bobEntries.length).toBeGreaterThan(0);
@@ -216,8 +216,8 @@ describe("multi-tenant", () => {
 			expect(bobTimeline.ok).toBe(true);
 
 			if (aliceTimeline.ok && bobTimeline.ok) {
-				const aliceEntries = (aliceTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups.flatMap(g => g.entries);
-				const bobEntries = (bobTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups.flatMap(g => g.entries);
+				const aliceEntries = (aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
+				const bobEntries = (bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
 
 				expect(aliceEntries.length).toBe(2);
 				expect(bobEntries.length).toBe(1);
@@ -260,11 +260,11 @@ describe("multi-tenant", () => {
 				expect((aliceTimeline.value.data as { user_id: string }).user_id).toBe(USERS.alice.id);
 				expect((bobTimeline.value.data as { user_id: string }).user_id).toBe(USERS.bob.id);
 
-				const aliceGroups = (aliceTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups;
-				const bobGroups = (bobTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups;
+				const aliceGroups = (aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups;
+				const bobGroups = (bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups;
 
-				const aliceHasBobData = aliceGroups.flatMap(g => g.entries).some(e => e.type === "commit_group" && e.repo.startsWith("bob/"));
-				const bobHasAliceData = bobGroups.flatMap(g => g.entries).some(e => e.type === "commit_group" && e.repo.startsWith("alice/"));
+				const aliceHasBobData = aliceGroups.flatMap(g => g.items).some(e => e.type === "commit_group" && e.repo.startsWith("bob/"));
+				const bobHasAliceData = bobGroups.flatMap(g => g.items).some(e => e.type === "commit_group" && e.repo.startsWith("alice/"));
 
 				expect(aliceHasBobData).toBe(false);
 				expect(bobHasAliceData).toBe(false);
@@ -285,7 +285,7 @@ describe("multi-tenant", () => {
 			expect(bobTimeline.ok).toBe(true);
 
 			if (bobTimeline.ok) {
-				const entries = (bobTimeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups.flatMap(g => g.entries);
+				const entries = (bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
 				const hasSharedData = entries.some(e => e.type === "commit_group" && e.repo === "org/shared");
 				expect(hasSharedData).toBe(true);
 			}

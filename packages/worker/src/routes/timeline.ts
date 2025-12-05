@@ -1,18 +1,37 @@
 import { err, match, ok, pipe, type Result } from "@media-timeline/core";
+import { DateGroupSchema } from "@media-timeline/schema";
 import { Hono } from "hono";
+import { z } from "zod";
 import type { Bindings } from "../bindings";
-import { type CorpusError, createRawStore, createTimelineStore } from "../corpus";
+import { type CorpusError, createRawStore, createTimelineStore, RawDataSchema } from "../corpus";
 import { authMiddleware } from "../middleware/auth";
 
-type TimelineData = {
-	groups: Array<{ date: string; items: unknown[] }>;
-};
+const TimelineDataSchema = z.object({
+	groups: z.array(DateGroupSchema),
+});
 
-type Snapshot = { meta: unknown; data: unknown };
+const SnapshotMetaSchema = z
+	.object({
+		version: z.number(),
+		created_at: z.string(),
+	})
+	.passthrough();
 
-type TimelineRouteError = CorpusError | { kind: "not_found" };
+const TimelineSnapshotSchema = z.object({
+	meta: SnapshotMetaSchema,
+	data: TimelineDataSchema,
+});
 
-type RawRouteError = CorpusError | { kind: "not_found" };
+const RawSnapshotSchema = z.object({
+	meta: SnapshotMetaSchema,
+	data: RawDataSchema,
+});
+
+type TimelineSnapshot = z.infer<typeof TimelineSnapshotSchema>;
+type RawSnapshot = z.infer<typeof RawSnapshotSchema>;
+
+type TimelineRouteError = CorpusError | { kind: "not_found" } | { kind: "validation_error"; message: string };
+type RawRouteError = CorpusError | { kind: "not_found" } | { kind: "validation_error"; message: string };
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -32,26 +51,36 @@ app.get("/:user_id", async c => {
 	const result = await pipe(createTimelineStore(userId, c.env))
 		.mapErr((e): TimelineRouteError => e)
 		.map(({ store }) => store)
-		.flatMap(async (store): Promise<Result<Snapshot, TimelineRouteError>> => {
-			const latest = (await store.get_latest()) as Result<Snapshot, unknown>;
+		.flatMap(async (store): Promise<Result<unknown, TimelineRouteError>> => {
+			const latest = (await store.get_latest()) as Result<unknown, unknown>;
 			return latest.ok ? ok(latest.value) : err({ kind: "not_found" });
 		})
+		.flatMap((raw): Result<TimelineSnapshot, TimelineRouteError> => {
+			const parsed = TimelineSnapshotSchema.safeParse(raw);
+			return parsed.success ? ok(parsed.data) : err({ kind: "validation_error", message: parsed.error.message });
+		})
 		.map(snapshot => {
-			const timeline = snapshot.data as TimelineData;
-			const filteredGroups = timeline.groups.filter(group => {
+			const filteredGroups = snapshot.data.groups.filter(group => {
 				if (from && group.date < from) return false;
 				if (to && group.date > to) return false;
 				return true;
 			});
-			return { meta: snapshot.meta, data: { ...timeline, groups: filteredGroups } };
+			return { meta: snapshot.meta, data: { ...snapshot.data, groups: filteredGroups } };
 		})
 		.result();
 
 	return match(
 		result,
 		data => c.json(data) as Response,
-		error =>
-			error.kind === "store_not_found" ? (c.json({ error: "Internal error", message: "Failed to create timeline store" }, 500) as Response) : (c.json({ error: "Not found", message: "No timeline data available" }, 404) as Response)
+		error => {
+			if (error.kind === "store_not_found") {
+				return c.json({ error: "Internal error", message: "Failed to create timeline store" }, 500) as Response;
+			}
+			if (error.kind === "validation_error") {
+				return c.json({ error: "Internal error", message: "Invalid timeline data format" }, 500) as Response;
+			}
+			return c.json({ error: "Not found", message: "No timeline data available" }, 404) as Response;
+		}
 	);
 });
 
@@ -72,9 +101,13 @@ app.get("/:user_id/raw/:platform", async c => {
 	const result = await pipe(createRawStore(platform, accountId, c.env))
 		.mapErr((e): RawRouteError => e)
 		.map(({ store }) => store)
-		.flatMap(async (store): Promise<Result<Snapshot, RawRouteError>> => {
-			const latest = (await store.get_latest()) as unknown as Result<Snapshot, unknown>;
+		.flatMap(async (store): Promise<Result<unknown, RawRouteError>> => {
+			const latest = (await store.get_latest()) as Result<unknown, unknown>;
 			return latest.ok ? ok(latest.value) : err({ kind: "not_found" });
+		})
+		.flatMap((raw): Result<RawSnapshot, RawRouteError> => {
+			const parsed = RawSnapshotSchema.safeParse(raw);
+			return parsed.success ? ok(parsed.data) : err({ kind: "validation_error", message: parsed.error.message });
 		})
 		.map(snapshot => ({ meta: snapshot.meta, data: snapshot.data }))
 		.result();
@@ -82,10 +115,15 @@ app.get("/:user_id/raw/:platform", async c => {
 	return match(
 		result,
 		data => c.json(data) as Response,
-		error =>
-			error.kind === "store_not_found"
-				? (c.json({ error: "Internal error", message: "Failed to create raw store" }, 500) as Response)
-				: (c.json({ error: "Not found", message: "No raw data available for this account" }, 404) as Response)
+		error => {
+			if (error.kind === "store_not_found") {
+				return c.json({ error: "Internal error", message: "Failed to create raw store" }, 500) as Response;
+			}
+			if (error.kind === "validation_error") {
+				return c.json({ error: "Internal error", message: "Invalid raw data format" }, 500) as Response;
+			}
+			return c.json({ error: "Not found", message: "No raw data available for this account" }, 404) as Response;
+		}
 	);
 });
 

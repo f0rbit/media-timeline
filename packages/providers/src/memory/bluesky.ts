@@ -1,4 +1,4 @@
-import type { BlueskyFeedItem, BlueskyRaw } from "../bluesky";
+import type { BlueskyFeedItem, BlueskyRaw } from "@media-timeline/schema";
 import type { FetchResult, Provider } from "../types";
 import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderControls, createMemoryProviderState, simulateErrors } from "./base";
 

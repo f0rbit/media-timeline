@@ -1,20 +1,7 @@
 import { tryCatchAsync } from "@media-timeline/core";
+import { GitHubEventSchema, type GitHubRaw } from "@media-timeline/schema";
+import { z } from "zod";
 import { toProviderError, type FetchResult, type Provider, type ProviderError, type Tagged } from "./types";
-
-export type GitHubEvent = {
-	id: string;
-	type: string;
-	actor: { id: number; login: string; avatar_url: string };
-	repo: { id: number; name: string; url: string };
-	payload: Record<string, unknown>;
-	public: boolean;
-	created_at: string;
-};
-
-export type GitHubRaw = {
-	events: GitHubEvent[];
-	fetched_at: string;
-};
 
 export type GitHubProviderConfig = {
 	username: string;
@@ -24,6 +11,11 @@ const parseRateLimitReset = (headers: Headers): number => {
 	const resetTimestamp = headers.get("X-RateLimit-Reset");
 	return resetTimestamp ? Math.max(0, parseInt(resetTimestamp, 10) - Math.floor(Date.now() / 1000)) : 60;
 };
+
+const GitHubRawSchema = z.object({
+	events: z.array(GitHubEventSchema),
+	fetched_at: z.string().datetime(),
+});
 
 const handleGitHubResponse = async (response: Response): Promise<GitHubRaw> => {
 	if (response.status === 401 || response.status === 403) {
@@ -41,8 +33,12 @@ const handleGitHubResponse = async (response: Response): Promise<GitHubRaw> => {
 		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
 	}
 
-	const events = (await response.json()) as GitHubEvent[];
-	return { events, fetched_at: new Date().toISOString() };
+	const json = await response.json();
+	const result = GitHubRawSchema.safeParse({ events: json, fetched_at: new Date().toISOString() });
+	if (!result.success) {
+		throw { _tag: "api_error", kind: "api_error", status: 500, message: `Invalid GitHub response: ${result.error.message}` } as Tagged<ProviderError>;
+	}
+	return result.data;
 };
 
 export class GitHubProvider implements Provider<GitHubRaw> {

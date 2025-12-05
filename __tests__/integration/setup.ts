@@ -5,6 +5,7 @@ import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, YouT
 import { z } from "zod";
 
 export { hashApiKey };
+export type { Platform };
 
 const RawDataSchema = z.record(z.unknown());
 const TimelineDataSchema = z.record(z.unknown());

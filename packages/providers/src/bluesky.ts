@@ -1,37 +1,6 @@
 import { tryCatchAsync } from "@media-timeline/core";
+import { BlueskyRawSchema, type BlueskyRaw } from "@media-timeline/schema";
 import { toProviderError, type FetchResult, type Provider, type ProviderError, type Tagged } from "./types";
-
-export type BlueskyPost = {
-	uri: string;
-	cid: string;
-	author: {
-		did: string;
-		handle: string;
-		displayName?: string;
-		avatar?: string;
-	};
-	record: {
-		text: string;
-		createdAt: string;
-		embed?: Record<string, unknown>;
-		reply?: { parent: { uri: string; cid: string }; root: { uri: string; cid: string } };
-	};
-	replyCount: number;
-	repostCount: number;
-	likeCount: number;
-	indexedAt: string;
-};
-
-export type BlueskyFeedItem = {
-	post: BlueskyPost;
-	reason?: { $type: string; by?: { did: string; handle: string }; indexedAt?: string };
-};
-
-export type BlueskyRaw = {
-	feed: BlueskyFeedItem[];
-	cursor?: string;
-	fetched_at: string;
-};
 
 export type BlueskyProviderConfig = {
 	actor: string;
@@ -51,8 +20,14 @@ const handleBlueskyResponse = async (response: Response): Promise<BlueskyRaw> =>
 		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
 	}
 
-	const data = (await response.json()) as { feed: BlueskyFeedItem[]; cursor?: string };
-	return { feed: data.feed, cursor: data.cursor, fetched_at: new Date().toISOString() };
+	const json = (await response.json()) as Record<string, unknown>;
+	const result = BlueskyRawSchema.safeParse({ ...json, fetched_at: new Date().toISOString() });
+
+	if (!result.success) {
+		throw { _tag: "parse_error", kind: "parse_error", message: result.error.message } as Tagged<ProviderError>;
+	}
+
+	return result.data;
 };
 
 export class BlueskyProvider implements Provider<BlueskyRaw> {

@@ -1,7 +1,10 @@
-export { type BlueskyFeedItem, type BlueskyPost, BlueskyProvider, type BlueskyProviderConfig, type BlueskyRaw } from "./bluesky";
-export { DevpadProvider, type DevpadRaw, type DevpadTask } from "./devpad";
+export { BlueskyProvider, type BlueskyProviderConfig } from "./bluesky";
+export type { BlueskyFeedItem, BlueskyPost, BlueskyRaw } from "@media-timeline/schema";
+export { DevpadProvider } from "./devpad";
+export type { DevpadRaw, DevpadTask } from "@media-timeline/schema";
 
-export { type GitHubEvent, GitHubProvider, type GitHubProviderConfig, type GitHubRaw } from "./github";
+export { GitHubProvider, type GitHubProviderConfig } from "./github";
+export type { GitHubEvent, GitHubRaw } from "@media-timeline/schema";
 export {
 	type BlueskyMemoryConfig,
 	BlueskyMemoryProvider,
@@ -14,4 +17,5 @@ export {
 } from "./memory";
 export type { FetchResult, Provider, ProviderError, Result } from "./types";
 export { err, ok } from "./types";
-export { type YouTubePlaylistItem, YouTubeProvider, type YouTubeProviderConfig, type YouTubeRaw } from "./youtube";
+export { YouTubeProvider, type YouTubeProviderConfig } from "./youtube";
+export type { YouTubeRaw, YouTubeVideo } from "@media-timeline/schema";
