@@ -1,0 +1,23 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.2.2/schema.json",
+	"formatter": {
+		"enabled": true,
+		"indentStyle": "tab",
+		"indentWidth": 4,
+		"lineWidth": 240
+	},
+	"javascript": {
+		"formatter": {
+			"bracketSameLine": false,
+			"semicolons": "always",
+			"quoteStyle": "double",
+			"trailingCommas": "es5",
+			"bracketSpacing": true,
+			"expand": "auto",
+			"arrowParentheses": "asNeeded"
+		}
+	},
+	"linter": {
+		"enabled": true
+	}
+}
