@@ -1,5 +1,5 @@
 import { tryCatchAsync } from "@media-timeline/core";
-import type { FetchResult, Provider, ProviderError } from "./types";
+import { toProviderError, type FetchResult, type Provider, type ProviderError, type Tagged } from "./types";
 
 export type DevpadTask = {
 	id: string;
@@ -14,8 +14,6 @@ export type DevpadRaw = {
 	tasks: DevpadTask[];
 	fetched_at: string;
 };
-
-type Tagged<T> = T & { _tag: string };
 
 const handleDevpadResponse = async (response: Response): Promise<DevpadRaw> => {
 	if (response.status === 401) {
@@ -33,14 +31,6 @@ const handleDevpadResponse = async (response: Response): Promise<DevpadRaw> => {
 
 	const tasks = (await response.json()) as DevpadTask[];
 	return { tasks, fetched_at: new Date().toISOString() };
-};
-
-const toProviderError = (e: unknown): ProviderError => {
-	if (typeof e === "object" && e !== null && "_tag" in e) {
-		const { _tag, ...rest } = e as Tagged<ProviderError>;
-		return rest as ProviderError;
-	}
-	return { kind: "network_error", cause: e instanceof Error ? e : new Error(String(e)) };
 };
 
 export class DevpadProvider implements Provider<DevpadRaw> {

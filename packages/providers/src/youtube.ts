@@ -1,5 +1,5 @@
 import { tryCatchAsync } from "@media-timeline/core";
-import type { FetchResult, Provider, ProviderError } from "./types";
+import { toProviderError, type FetchResult, type Provider, type ProviderError, type Tagged } from "./types";
 
 export type YouTubePlaylistItem = {
 	kind: string;
@@ -32,8 +32,6 @@ export type YouTubeProviderConfig = {
 	playlist_id: string;
 };
 
-type Tagged<T> = T & { _tag: string };
-
 const handleYouTubeResponse = async (response: Response): Promise<YouTubeRaw> => {
 	if (response.status === 401 || response.status === 403) {
 		const body = await response.text();
@@ -53,14 +51,6 @@ const handleYouTubeResponse = async (response: Response): Promise<YouTubeRaw> =>
 
 	const data = (await response.json()) as { items: YouTubePlaylistItem[]; nextPageToken?: string };
 	return { items: data.items ?? [], nextPageToken: data.nextPageToken, fetched_at: new Date().toISOString() };
-};
-
-const toProviderError = (e: unknown): ProviderError => {
-	if (typeof e === "object" && e !== null && "_tag" in e) {
-		const { _tag, ...rest } = e as Tagged<ProviderError>;
-		return rest as ProviderError;
-	}
-	return { kind: "network_error", cause: e instanceof Error ? e : new Error(String(e)) };
 };
 
 export class YouTubeProvider implements Provider<YouTubeRaw> {

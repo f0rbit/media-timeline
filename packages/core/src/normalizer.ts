@@ -1,4 +1,4 @@
-import type { BlueSkyRaw, CommitPayload, DevpadRaw, GitHubPushEvent, GitHubRaw, PostPayload, TaskPayload, TimelineItem, VideoPayload, YouTubeRaw } from "./types";
+import type { BlueskyRaw, CommitPayload, DevpadRaw, GitHubPushEvent, GitHubRaw, PostPayload, TaskPayload, TimelineItem, VideoPayload, YouTubeRaw } from "./types";
 
 const isPushEvent = (event: { type: string }): event is GitHubPushEvent => event.type === "PushEvent";
 
@@ -49,7 +49,7 @@ const extractPostTitle = (text: string): string => {
 	return firstLine.length > 100 ? `${firstLine.slice(0, 97)}...` : firstLine;
 };
 
-export const normalizeBlueSky = (raw: BlueSkyRaw): TimelineItem[] =>
+export const normalizeBluesky = (raw: BlueskyRaw): TimelineItem[] =>
 	raw.feed.map((item): TimelineItem => {
 		const { post } = item;
 		const images = post.embed?.images?.map(img => img.fullsize);
@@ -70,6 +70,9 @@ export const normalizeBlueSky = (raw: BlueSkyRaw): TimelineItem[] =>
 			payload,
 		};
 	});
+
+/** @deprecated Use normalizeBluesky instead */
+export const normalizeBlueSky = normalizeBluesky;
 
 const makeVideoId = (videoId: string): string => `youtube:video:${videoId}`;
 

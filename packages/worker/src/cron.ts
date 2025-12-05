@@ -12,14 +12,12 @@ import {
 	normalizeDevpad,
 	normalizeGitHub,
 	normalizeYouTube,
-	ok,
 	pipe,
 	type RateLimitState,
 	type Result,
 	shouldFetch,
 	type TimelineEntry,
 	type TimelineItem,
-	unwrapOr,
 	type YouTubeRaw,
 } from "@media-timeline/core";
 import type { Bindings } from "./bindings";
@@ -74,12 +72,6 @@ const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
 	last_failure_at: null,
 	circuit_open_until: parseDate(row?.circuit_open_until ?? null),
 });
-
-const calculateBackoff = (failures: number): number => {
-	const base = 60 * 1000;
-	const maxBackoff = 30 * 60 * 1000;
-	return Math.min(base * 2 ** failures, maxBackoff);
-};
 
 const defaultProviderFactory: ProviderFactory = {
 	async create(platform, token) {

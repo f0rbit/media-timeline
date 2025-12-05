@@ -1,5 +1,5 @@
 import { tryCatchAsync } from "@media-timeline/core";
-import type { FetchResult, Provider, ProviderError } from "./types";
+import { toProviderError, type FetchResult, type Provider, type ProviderError, type Tagged } from "./types";
 
 export type GitHubEvent = {
 	id: string;
@@ -19,8 +19,6 @@ export type GitHubRaw = {
 export type GitHubProviderConfig = {
 	username: string;
 };
-
-type Tagged<T> = T & { _tag: string };
 
 const parseRateLimitReset = (headers: Headers): number => {
 	const resetTimestamp = headers.get("X-RateLimit-Reset");
@@ -45,14 +43,6 @@ const handleGitHubResponse = async (response: Response): Promise<GitHubRaw> => {
 
 	const events = (await response.json()) as GitHubEvent[];
 	return { events, fetched_at: new Date().toISOString() };
-};
-
-const toProviderError = (e: unknown): ProviderError => {
-	if (typeof e === "object" && e !== null && "_tag" in e) {
-		const { _tag, ...rest } = e as Tagged<ProviderError>;
-		return rest as ProviderError;
-	}
-	return { kind: "network_error", cause: e instanceof Error ? e : new Error(String(e)) };
 };
 
 export class GitHubProvider implements Provider<GitHubRaw> {

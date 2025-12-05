@@ -1,20 +1,10 @@
-// ============================================================================
-// Result Type - Streamlined Functional Error Handling
-// ============================================================================
-
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 
 export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
 export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 
-// ============================================================================
-// Core Operations
-// ============================================================================
-
 export const match = <T, E, R>(result: Result<T, E>, onOk: (value: T) => R, onErr: (error: E) => R): R => {
-	if (result.ok) {
-		return onOk(result.value);
-	}
+	if (result.ok) return onOk(result.value);
 	return onErr(result.error);
 };
 
@@ -28,10 +18,6 @@ export const collect = <T, E>(results: Result<T, E>[]): Result<T[], E> => {
 	}
 	return ok(values);
 };
-
-// ============================================================================
-// Try/Catch Wrappers
-// ============================================================================
 
 export const tryCatch = <T, E>(fn: () => T, onError: (e: unknown) => E): Result<T, E> => {
 	try {
@@ -49,10 +35,6 @@ export const tryCatchAsync = async <T, E>(fn: () => Promise<T>, onError: (e: unk
 	}
 };
 
-// ============================================================================
-// Fetch Helper
-// ============================================================================
-
 export type FetchError = { type: "network"; cause: unknown } | { type: "http"; status: number; statusText: string };
 
 export const fetchResult = async <T, E>(input: string | URL | Request, init: RequestInit | undefined, onError: (e: FetchError) => E, parseBody: (response: Response) => Promise<T> = r => r.json() as Promise<T>): Promise<Result<T, E>> => {
@@ -67,16 +49,8 @@ export const fetchResult = async <T, E>(input: string | URL | Request, init: Req
 	}
 };
 
-// ============================================================================
-// Unified Pipe Builder
-// ============================================================================
-
 type MaybePromise<T> = T | Promise<T>;
 
-/**
- * A unified pipe that works with both Result<T,E> and Promise<Result<T,E>>.
- * All methods return a pipe over Promise<Result<T,E>> for consistency.
- */
 export type Pipe<T, E> = {
 	map: <U>(fn: (value: T) => U) => Pipe<U, E>;
 	mapAsync: <U>(fn: (value: T) => Promise<U>) => Pipe<U, E>;
@@ -96,7 +70,6 @@ const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
 				return err(r.error);
 			})
 		),
-
 	mapAsync: <U>(fn: (value: T) => Promise<U>): Pipe<U, E> =>
 		createPipe(
 			promised.then(async (r): Promise<Result<U, E>> => {
@@ -104,7 +77,6 @@ const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
 				return err(r.error);
 			})
 		),
-
 	flatMap: <U>(fn: (value: T) => MaybePromise<Result<U, E>>): Pipe<U, E> =>
 		createPipe(
 			promised.then((r): MaybePromise<Result<U, E>> => {
@@ -112,7 +84,6 @@ const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
 				return err(r.error);
 			})
 		),
-
 	mapErr: <F>(fn: (error: E) => F): Pipe<T, F> =>
 		createPipe(
 			promised.then((r): Result<T, F> => {
@@ -120,7 +91,6 @@ const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
 				return err(fn(r.error));
 			})
 		),
-
 	tap: (fn: (value: T) => MaybePromise<void>): Pipe<T, E> =>
 		createPipe(
 			promised.then(async (r): Promise<Result<T, E>> => {
@@ -128,7 +98,6 @@ const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
 				return r;
 			})
 		),
-
 	tapErr: (fn: (error: E) => MaybePromise<void>): Pipe<T, E> =>
 		createPipe(
 			promised.then(async (r): Promise<Result<T, E>> => {
@@ -136,54 +105,26 @@ const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
 				return r;
 			})
 		),
-
 	unwrapOr: (defaultValue: T): Promise<T> => promised.then(r => (r.ok ? r.value : defaultValue)),
-
 	result: (): Promise<Result<T, E>> => promised,
 });
 
-/**
- * Start a pipe from a Result or Promise<Result>.
- * Unifies sync and async Result handling into a single fluent API.
- */
 export const pipe = <T, E>(initial: MaybePromise<Result<T, E>>): Pipe<T, E> => createPipe(Promise.resolve(initial));
-
-/** Start a pipe from a value (wraps in ok) */
 pipe.ok = <T>(value: T): Pipe<T, never> => pipe(ok(value));
-
-/** Start a pipe from an error (wraps in err) */
 pipe.err = <E>(error: E): Pipe<never, E> => pipe(err(error));
-
-/** Start a pipe from a promise that might throw */
 pipe.try = <T, E>(fn: () => Promise<T>, onError: (e: unknown) => E): Pipe<T, E> => pipe(tryCatchAsync(fn, onError));
-
-/** Start a pipe from a fetch operation */
 pipe.fetch = <T, E>(input: string | URL | Request, init: RequestInit | undefined, onError: (e: FetchError) => E, parseBody?: (response: Response) => Promise<T>): Pipe<T, E> => pipe(fetchResult(input, init, onError, parseBody));
-
-// ============================================================================
-// Decode Error Type
-// ============================================================================
 
 export type DecodeError = { kind: "invalid_base64"; input: string } | { kind: "invalid_hex"; input: string };
 
-// ============================================================================
-// Base64 Encoding/Decoding
-// ============================================================================
-
 export const toBase64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
-
 export const fromBase64 = (str: string): Result<Uint8Array, DecodeError> =>
 	tryCatch(
 		() => Uint8Array.from(atob(str), c => c.charCodeAt(0)),
 		(): DecodeError => ({ kind: "invalid_base64", input: str.slice(0, 50) })
 	);
 
-// ============================================================================
-// Hex Encoding/Decoding
-// ============================================================================
-
 export const toHex = (bytes: Uint8Array): string => Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
-
 export const fromHex = (str: string): Result<Uint8Array, DecodeError> => {
 	if (str.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(str)) {
 		return err({ kind: "invalid_hex", input: str.slice(0, 50) });
@@ -193,24 +134,13 @@ export const fromHex = (str: string): Result<Uint8Array, DecodeError> => {
 	return ok(new Uint8Array(matches.map(byte => Number.parseInt(byte, 16))));
 };
 
-// ============================================================================
-// Hashing Utilities
-// ============================================================================
-
 export const hashSha256 = async (data: string): Promise<Uint8Array> => {
 	const encoded = new TextEncoder().encode(data);
 	const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
 	return new Uint8Array(hashBuffer);
 };
 
-export const hashApiKey = async (key: string): Promise<string> => {
-	const hash = await hashSha256(key);
-	return toHex(hash);
-};
-
-// ============================================================================
-// Type Utilities
-// ============================================================================
+export const hashApiKey = async (key: string): Promise<string> => toHex(await hashSha256(key));
 
 export type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
 
@@ -226,10 +156,6 @@ export const mergeDeep = <T extends Record<string, unknown>>(base: T, overrides:
 	}
 	return result;
 };
-
-// ============================================================================
-// Date/Time Utilities
-// ============================================================================
 
 export const daysAgo = (days: number): string => {
 	const date = new Date();
@@ -267,30 +193,16 @@ export const minutesFromNow = (minutes: number): string => {
 	return date.toISOString();
 };
 
-export const extractDateKey = (timestamp: string): string => {
-	const date = new Date(timestamp);
-	return date.toISOString().split("T")[0] ?? "";
-};
-
-// ============================================================================
-// ID Generation
-// ============================================================================
+export const extractDateKey = (timestamp: string): string => new Date(timestamp).toISOString().split("T")[0] ?? "";
 
 export const uuid = (): string => crypto.randomUUID();
-
 export const randomSha = (): string => Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
 
-// ============================================================================
-// Testing Utilities
-// ============================================================================
-
-/** Unwrap a Result, throwing if it's an error. Useful for tests. */
 export const unwrap = <T, E>(result: Result<T, E>): T => {
 	if (!result.ok) throw new Error(`Unwrap called on error result: ${JSON.stringify(result.error)}`);
 	return result.value;
 };
 
-/** Unwrap an error from a Result, throwing if it's ok. Useful for tests. */
 export const unwrapErr = <T, E>(result: Result<T, E>): E => {
 	if (result.ok) throw new Error(`unwrapErr called on ok result: ${JSON.stringify(result.value)}`);
 	return result.error;

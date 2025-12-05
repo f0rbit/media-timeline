@@ -1,5 +1,5 @@
 import { tryCatchAsync } from "@media-timeline/core";
-import type { FetchResult, Provider, ProviderError } from "./types";
+import { toProviderError, type FetchResult, type Provider, type ProviderError, type Tagged } from "./types";
 
 export type BlueskyPost = {
 	uri: string;
@@ -37,8 +37,6 @@ export type BlueskyProviderConfig = {
 	actor: string;
 };
 
-type Tagged<T> = T & { _tag: string };
-
 const handleBlueskyResponse = async (response: Response): Promise<BlueskyRaw> => {
 	if (response.status === 401) {
 		throw { _tag: "auth_expired", kind: "auth_expired", message: "Bluesky token expired or invalid" } as Tagged<ProviderError>;
@@ -55,14 +53,6 @@ const handleBlueskyResponse = async (response: Response): Promise<BlueskyRaw> =>
 
 	const data = (await response.json()) as { feed: BlueskyFeedItem[]; cursor?: string };
 	return { feed: data.feed, cursor: data.cursor, fetched_at: new Date().toISOString() };
-};
-
-const toProviderError = (e: unknown): ProviderError => {
-	if (typeof e === "object" && e !== null && "_tag" in e) {
-		const { _tag, ...rest } = e as Tagged<ProviderError>;
-		return rest as ProviderError;
-	}
-	return { kind: "network_error", cause: e instanceof Error ? e : new Error(String(e)) };
 };
 
 export class BlueskyProvider implements Provider<BlueskyRaw> {

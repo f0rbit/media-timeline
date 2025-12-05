@@ -2,6 +2,7 @@ export { combineTimelines } from "./combiner";
 export { decrypt, type EncryptionError, encrypt } from "./encryption";
 export { groupByDate, groupCommits } from "./grouper";
 export {
+	normalizeBluesky,
 	normalizeBlueSky,
 	normalizeDevpad,
 	normalizeGitHub,
@@ -16,9 +17,13 @@ export {
 	updateOnSuccess,
 } from "./rate-limit";
 export type {
+	BlueskyAuthor,
 	BlueSkyAuthor,
+	BlueskyFeedItem,
 	BlueSkyFeedItem,
+	BlueskyPost,
 	BlueSkyPost,
+	BlueskyRaw,
 	BlueSkyRaw,
 	CommitGroup,
 	CommitPayload,
