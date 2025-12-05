@@ -1,4 +1,4 @@
-import { fromBase64, pipeResultAsync, type Result, toBase64, tryCatchAsync } from "./utils";
+import { fromBase64, pipe, type Result, toBase64, tryCatchAsync } from "./utils";
 
 const SALT = new TextEncoder().encode("media-timeline-salt");
 const IV_LENGTH = 12;
@@ -38,9 +38,9 @@ export const encrypt = (plaintext: string, key: string): Promise<Result<string, 
 	);
 
 export const decrypt = (ciphertext: string, key: string): Promise<Result<string, EncryptionError>> =>
-	pipeResultAsync(Promise.resolve(fromBase64(ciphertext)))
+	pipe(fromBase64(ciphertext))
 		.mapErr((): EncryptionError => ({ kind: "decryption_failed", message: "Invalid base64 ciphertext" }))
-		.flatMapAsync(combined =>
+		.flatMap(combined =>
 			tryCatchAsync(
 				async () => {
 					const iv = combined.slice(0, IV_LENGTH);

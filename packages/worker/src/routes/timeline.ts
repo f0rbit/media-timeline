@@ -1,4 +1,4 @@
-import { fromExternalResult, matchResult, pipeResultAsync, type Result } from "@media-timeline/core";
+import { err, match, ok, pipe, type Result } from "@media-timeline/core";
 import { Hono } from "hono";
 import type { Bindings } from "../bindings";
 import { type CorpusError, createRawStore, createTimelineStore } from "../corpus";
@@ -29,10 +29,13 @@ app.get("/:user_id", async c => {
 	const from = c.req.query("from");
 	const to = c.req.query("to");
 
-	const result = await pipeResultAsync(Promise.resolve(createTimelineStore(userId, c.env)))
+	const result = await pipe(createTimelineStore(userId, c.env))
 		.mapErr((e): TimelineRouteError => e)
 		.map(({ store }) => store)
-		.flatMapAsync(async (store): Promise<Result<Snapshot, TimelineRouteError>> => fromExternalResult(await store.get_latest(), { kind: "not_found" }))
+		.flatMap(async (store): Promise<Result<Snapshot, TimelineRouteError>> => {
+			const latest = (await store.get_latest()) as Result<Snapshot, unknown>;
+			return latest.ok ? ok(latest.value) : err({ kind: "not_found" });
+		})
 		.map(snapshot => {
 			const timeline = snapshot.data as TimelineData;
 			const filteredGroups = timeline.groups.filter(group => {
@@ -44,7 +47,7 @@ app.get("/:user_id", async c => {
 		})
 		.result();
 
-	return matchResult(
+	return match(
 		result,
 		data => c.json(data) as Response,
 		error =>
@@ -66,14 +69,17 @@ app.get("/:user_id/raw/:platform", async c => {
 		return c.json({ error: "Bad request", message: "account_id query parameter required" }, 400);
 	}
 
-	const result = await pipeResultAsync(Promise.resolve(createRawStore(platform, accountId, c.env)))
+	const result = await pipe(createRawStore(platform, accountId, c.env))
 		.mapErr((e): RawRouteError => e)
 		.map(({ store }) => store)
-		.flatMapAsync(async (store): Promise<Result<Snapshot, RawRouteError>> => fromExternalResult(await store.get_latest(), { kind: "not_found" }))
+		.flatMap(async (store): Promise<Result<Snapshot, RawRouteError>> => {
+			const latest = (await store.get_latest()) as unknown as Result<Snapshot, unknown>;
+			return latest.ok ? ok(latest.value) : err({ kind: "not_found" });
+		})
 		.map(snapshot => ({ meta: snapshot.meta, data: snapshot.data }))
 		.result();
 
-	return matchResult(
+	return match(
 		result,
 		data => c.json(data) as Response,
 		error =>

@@ -1,5 +1,5 @@
 // ============================================================================
-// Result Type - Functional error handling
+// Result Type - Streamlined Functional Error Handling
 // ============================================================================
 
 export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
@@ -7,120 +7,31 @@ export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
 export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
 export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
 
-export const isOk = <T, E>(result: Result<T, E>): result is { ok: true; value: T } => result.ok;
-export const isErr = <T, E>(result: Result<T, E>): result is { ok: false; error: E } => !result.ok;
+// ============================================================================
+// Core Operations
+// ============================================================================
 
-export const unwrap = <T, E>(result: Result<T, E>): T => {
-	if (!result.ok) throw new Error(`Unwrap called on error result: ${JSON.stringify(result.error)}`);
-	return result.value;
+export const match = <T, E, R>(result: Result<T, E>, onOk: (value: T) => R, onErr: (error: E) => R): R => {
+	if (result.ok) {
+		return onOk(result.value);
+	}
+	return onErr(result.error);
 };
 
 export const unwrapOr = <T, E>(result: Result<T, E>, defaultValue: T): T => (result.ok ? result.value : defaultValue);
 
-export const unwrapErr = <T, E>(result: Result<T, E>): E => {
-	if (result.ok) throw new Error(`unwrapErr called on ok result: ${JSON.stringify(result.value)}`);
-	return result.error;
-};
-
-export type DecodeError = { kind: "invalid_base64"; input: string } | { kind: "invalid_hex"; input: string };
-
-export const mapResult = <T, E, U>(result: Result<T, E>, fn: (value: T) => U): Result<U, E> => (result.ok ? ok(fn(result.value)) : result);
-
-export const mapErr = <T, E, F>(result: Result<T, E>, fn: (error: E) => F): Result<T, F> => (result.ok ? result : err(fn(result.error)));
-
-export const flatMapResult = <T, E, U>(result: Result<T, E>, fn: (value: T) => Result<U, E>): Result<U, E> => (result.ok ? fn(result.value) : result);
-
-export const mapResultAsync = async <T, E, U>(result: Result<T, E>, fn: (value: T) => Promise<U>): Promise<Result<U, E>> => (result.ok ? ok(await fn(result.value)) : result);
-
-export const flatMapResultAsync = async <T, E, U>(result: Result<T, E>, fn: (value: T) => Promise<Result<U, E>>): Promise<Result<U, E>> => (result.ok ? fn(result.value) : result);
-
-export const mapErrAsync = async <T, E, F>(result: Result<T, E>, fn: (error: E) => Promise<F>): Promise<Result<T, F>> => (result.ok ? result : err(await fn(result.error)));
-
-export const tapResult = <T, E>(result: Result<T, E>, fn: (value: T) => void): Result<T, E> => {
-	if (result.ok) fn(result.value);
-	return result;
-};
-
-export const tapResultAsync = async <T, E>(result: Result<T, E>, fn: (value: T) => Promise<void>): Promise<Result<T, E>> => {
-	if (result.ok) await fn(result.value);
-	return result;
-};
-
-export const tapErr = <T, E>(result: Result<T, E>, fn: (error: E) => void): Result<T, E> => {
-	if (!result.ok) fn(result.error);
-	return result;
-};
-
-export const tapErrAsync = async <T, E>(result: Result<T, E>, fn: (error: E) => Promise<void>): Promise<Result<T, E>> => {
-	if (!result.ok) await fn(result.error);
-	return result;
-};
-
-export type ResultPipe<T, E> = {
-	map: <U>(fn: (value: T) => U) => ResultPipe<U, E>;
-	flatMap: <U>(fn: (value: T) => Result<U, E>) => ResultPipe<U, E>;
-	mapErr: <F>(fn: (error: E) => F) => ResultPipe<T, F>;
-	tap: (fn: (value: T) => void) => ResultPipe<T, E>;
-	tapErr: (fn: (error: E) => void) => ResultPipe<T, E>;
-	unwrap: () => T;
-	unwrapOr: (defaultValue: T) => T;
-	result: () => Result<T, E>;
-};
-
-export const pipeResult = <T, E>(initial: Result<T, E>): ResultPipe<T, E> => ({
-	map: <U>(fn: (value: T) => U) => pipeResult(mapResult(initial, fn)) as ResultPipe<U, E>,
-	flatMap: <U>(fn: (value: T) => Result<U, E>) => pipeResult(flatMapResult(initial, fn)) as ResultPipe<U, E>,
-	mapErr: <F>(fn: (error: E) => F) => pipeResult(mapErr(initial, fn)) as ResultPipe<T, F>,
-	tap: (fn: (value: T) => void) => pipeResult(tapResult(initial, fn)),
-	tapErr: (fn: (error: E) => void) => pipeResult(tapErr(initial, fn)),
-	unwrap: () => unwrap(initial),
-	unwrapOr: (defaultValue: T) => unwrapOr(initial, defaultValue),
-	result: () => initial,
-});
-
-export type ResultPipeAsync<T, E> = {
-	map: <U>(fn: (value: T) => U) => ResultPipeAsync<U, E>;
-	mapAsync: <U>(fn: (value: T) => Promise<U>) => ResultPipeAsync<U, E>;
-	flatMap: <U>(fn: (value: T) => Result<U, E>) => ResultPipeAsync<U, E>;
-	flatMapAsync: <U>(fn: (value: T) => Promise<Result<U, E>>) => ResultPipeAsync<U, E>;
-	mapErr: <F>(fn: (error: E) => F) => ResultPipeAsync<T, F>;
-	tap: (fn: (value: T) => void) => ResultPipeAsync<T, E>;
-	tapAsync: (fn: (value: T) => Promise<void>) => ResultPipeAsync<T, E>;
-	tapErr: (fn: (error: E) => void) => ResultPipeAsync<T, E>;
-	tapErrAsync: (fn: (error: E) => Promise<void>) => ResultPipeAsync<T, E>;
-	unwrap: () => Promise<T>;
-	unwrapOr: (defaultValue: T) => Promise<T>;
-	result: () => Promise<Result<T, E>>;
-};
-
-export const pipeResultAsync = <T, E>(initial: Promise<Result<T, E>>): ResultPipeAsync<T, E> => ({
-	map: <U>(fn: (value: T) => U) => pipeResultAsync(initial.then(r => mapResult(r, fn))) as ResultPipeAsync<U, E>,
-	mapAsync: <U>(fn: (value: T) => Promise<U>) => pipeResultAsync(initial.then(r => mapResultAsync(r, fn))) as ResultPipeAsync<U, E>,
-	flatMap: <U>(fn: (value: T) => Result<U, E>) => pipeResultAsync(initial.then(r => flatMapResult(r, fn))) as ResultPipeAsync<U, E>,
-	flatMapAsync: <U>(fn: (value: T) => Promise<Result<U, E>>) => pipeResultAsync(initial.then(r => flatMapResultAsync(r, fn))) as ResultPipeAsync<U, E>,
-	mapErr: <F>(fn: (error: E) => F) => pipeResultAsync(initial.then(r => mapErr(r, fn))) as ResultPipeAsync<T, F>,
-	tap: (fn: (value: T) => void) => pipeResultAsync(initial.then(r => tapResult(r, fn))),
-	tapAsync: (fn: (value: T) => Promise<void>) => pipeResultAsync(initial.then(r => tapResultAsync(r, fn))),
-	tapErr: (fn: (error: E) => void) => pipeResultAsync(initial.then(r => tapErr(r, fn))),
-	tapErrAsync: (fn: (error: E) => Promise<void>) => pipeResultAsync(initial.then(r => tapErrAsync(r, fn))),
-	unwrap: () => initial.then(r => unwrap(r)),
-	unwrapOr: (defaultValue: T) => initial.then(r => unwrapOr(r, defaultValue)),
-	result: () => initial,
-});
-
-export const collectResults = <T, E>(results: Result<T, E>[]): Result<T[], E> => {
+export const collect = <T, E>(results: Result<T, E>[]): Result<T[], E> => {
 	const values: T[] = [];
-	for (const result of results) {
-		if (!result.ok) return result;
-		values.push(result.value);
+	for (const r of results) {
+		if (!r.ok) return err(r.error);
+		values.push(r.value);
 	}
 	return ok(values);
 };
 
-export const matchResult = <T, E, R>(result: Result<T, E>, onOk: (value: T) => R, onErr: (error: E) => R): R => (result.ok ? onOk(result.value) : onErr(result.error));
-
-// Convert external/unknown Result-like types to our Result type
-export const fromExternalResult = <T, E>(result: { ok: boolean; value?: T; error?: unknown }, onErr: E): Result<T, E> => (result.ok ? ok(result.value as T) : err(onErr));
+// ============================================================================
+// Try/Catch Wrappers
+// ============================================================================
 
 export const tryCatch = <T, E>(fn: () => T, onError: (e: unknown) => E): Result<T, E> => {
 	try {
@@ -138,25 +49,122 @@ export const tryCatchAsync = async <T, E>(fn: () => Promise<T>, onError: (e: unk
 	}
 };
 
-export type FetchErrorType = { type: "network"; cause: unknown } | { type: "http"; status: number; statusText: string };
+// ============================================================================
+// Fetch Helper
+// ============================================================================
 
-export const fetchResult = async <T, E>(
-	input: string | URL | Request,
-	init: RequestInit | undefined,
-	onError: (e: FetchErrorType) => E,
-	parseBody: (response: Response) => Promise<T> = r => r.json() as Promise<T>
-): Promise<Result<T, E>> => {
+export type FetchError = { type: "network"; cause: unknown } | { type: "http"; status: number; statusText: string };
+
+export const fetchResult = async <T, E>(input: string | URL | Request, init: RequestInit | undefined, onError: (e: FetchError) => E, parseBody: (response: Response) => Promise<T> = r => r.json() as Promise<T>): Promise<Result<T, E>> => {
 	try {
 		const response = await fetch(input, init);
 		if (!response.ok) {
 			return err(onError({ type: "http", status: response.status, statusText: response.statusText }));
 		}
-		const body = await parseBody(response);
-		return ok(body);
+		return ok(await parseBody(response));
 	} catch (e) {
 		return err(onError({ type: "network", cause: e }));
 	}
 };
+
+// ============================================================================
+// Unified Pipe Builder
+// ============================================================================
+
+type MaybePromise<T> = T | Promise<T>;
+
+/**
+ * A unified pipe that works with both Result<T,E> and Promise<Result<T,E>>.
+ * All methods return a pipe over Promise<Result<T,E>> for consistency.
+ */
+export type Pipe<T, E> = {
+	map: <U>(fn: (value: T) => U) => Pipe<U, E>;
+	mapAsync: <U>(fn: (value: T) => Promise<U>) => Pipe<U, E>;
+	flatMap: <U>(fn: (value: T) => MaybePromise<Result<U, E>>) => Pipe<U, E>;
+	mapErr: <F>(fn: (error: E) => F) => Pipe<T, F>;
+	tap: (fn: (value: T) => MaybePromise<void>) => Pipe<T, E>;
+	tapErr: (fn: (error: E) => MaybePromise<void>) => Pipe<T, E>;
+	unwrapOr: (defaultValue: T) => Promise<T>;
+	result: () => Promise<Result<T, E>>;
+};
+
+const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
+	map: <U>(fn: (value: T) => U): Pipe<U, E> =>
+		createPipe(
+			promised.then((r): Result<U, E> => {
+				if (r.ok) return ok(fn(r.value));
+				return err(r.error);
+			})
+		),
+
+	mapAsync: <U>(fn: (value: T) => Promise<U>): Pipe<U, E> =>
+		createPipe(
+			promised.then(async (r): Promise<Result<U, E>> => {
+				if (r.ok) return ok(await fn(r.value));
+				return err(r.error);
+			})
+		),
+
+	flatMap: <U>(fn: (value: T) => MaybePromise<Result<U, E>>): Pipe<U, E> =>
+		createPipe(
+			promised.then((r): MaybePromise<Result<U, E>> => {
+				if (r.ok) return fn(r.value);
+				return err(r.error);
+			})
+		),
+
+	mapErr: <F>(fn: (error: E) => F): Pipe<T, F> =>
+		createPipe(
+			promised.then((r): Result<T, F> => {
+				if (r.ok) return ok(r.value);
+				return err(fn(r.error));
+			})
+		),
+
+	tap: (fn: (value: T) => MaybePromise<void>): Pipe<T, E> =>
+		createPipe(
+			promised.then(async (r): Promise<Result<T, E>> => {
+				if (r.ok) await fn(r.value);
+				return r;
+			})
+		),
+
+	tapErr: (fn: (error: E) => MaybePromise<void>): Pipe<T, E> =>
+		createPipe(
+			promised.then(async (r): Promise<Result<T, E>> => {
+				if (!r.ok) await fn(r.error);
+				return r;
+			})
+		),
+
+	unwrapOr: (defaultValue: T): Promise<T> => promised.then(r => (r.ok ? r.value : defaultValue)),
+
+	result: (): Promise<Result<T, E>> => promised,
+});
+
+/**
+ * Start a pipe from a Result or Promise<Result>.
+ * Unifies sync and async Result handling into a single fluent API.
+ */
+export const pipe = <T, E>(initial: MaybePromise<Result<T, E>>): Pipe<T, E> => createPipe(Promise.resolve(initial));
+
+/** Start a pipe from a value (wraps in ok) */
+pipe.ok = <T>(value: T): Pipe<T, never> => pipe(ok(value));
+
+/** Start a pipe from an error (wraps in err) */
+pipe.err = <E>(error: E): Pipe<never, E> => pipe(err(error));
+
+/** Start a pipe from a promise that might throw */
+pipe.try = <T, E>(fn: () => Promise<T>, onError: (e: unknown) => E): Pipe<T, E> => pipe(tryCatchAsync(fn, onError));
+
+/** Start a pipe from a fetch operation */
+pipe.fetch = <T, E>(input: string | URL | Request, init: RequestInit | undefined, onError: (e: FetchError) => E, parseBody?: (response: Response) => Promise<T>): Pipe<T, E> => pipe(fetchResult(input, init, onError, parseBody));
+
+// ============================================================================
+// Decode Error Type
+// ============================================================================
+
+export type DecodeError = { kind: "invalid_base64"; input: string } | { kind: "invalid_hex"; input: string };
 
 // ============================================================================
 // Base64 Encoding/Decoding
@@ -271,3 +279,19 @@ export const extractDateKey = (timestamp: string): string => {
 export const uuid = (): string => crypto.randomUUID();
 
 export const randomSha = (): string => Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+
+// ============================================================================
+// Testing Utilities
+// ============================================================================
+
+/** Unwrap a Result, throwing if it's an error. Useful for tests. */
+export const unwrap = <T, E>(result: Result<T, E>): T => {
+	if (!result.ok) throw new Error(`Unwrap called on error result: ${JSON.stringify(result.error)}`);
+	return result.value;
+};
+
+/** Unwrap an error from a Result, throwing if it's ok. Useful for tests. */
+export const unwrapErr = <T, E>(result: Result<T, E>): E => {
+	if (result.ok) throw new Error(`unwrapErr called on ok result: ${JSON.stringify(result.value)}`);
+	return result.error;
+};

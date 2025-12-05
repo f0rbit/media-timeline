@@ -1,4 +1,4 @@
-import { encrypt, matchResult, ok, pipeResultAsync } from "@media-timeline/core";
+import { encrypt, match, ok, pipe } from "@media-timeline/core";
 import { Hono } from "hono";
 import type { Bindings } from "../bindings";
 import { authMiddleware } from "../middleware/auth";
@@ -68,15 +68,15 @@ app.post("/", async c => {
 	const accountId = crypto.randomUUID();
 	const memberId = crypto.randomUUID();
 
-	const result = await pipeResultAsync(encrypt(body.access_token, c.env.ENCRYPTION_KEY))
-		.flatMapAsync(encryptedAccessToken =>
+	const result = await pipe(encrypt(body.access_token, c.env.ENCRYPTION_KEY))
+		.flatMap(encryptedAccessToken =>
 			body.refresh_token
-				? pipeResultAsync(encrypt(body.refresh_token, c.env.ENCRYPTION_KEY))
+				? pipe(encrypt(body.refresh_token, c.env.ENCRYPTION_KEY))
 						.map(encryptedRefreshToken => ({ encryptedAccessToken, encryptedRefreshToken: encryptedRefreshToken as string | null }))
 						.result()
 				: Promise.resolve(ok({ encryptedAccessToken, encryptedRefreshToken: null as string | null }))
 		)
-		.tapAsync(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
+		.tap(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
 			await c.env.DB.batch([
 				c.env.DB.prepare(`
         INSERT INTO accounts (id, platform, platform_user_id, platform_username, access_token_encrypted, refresh_token_encrypted, token_expires_at, is_active, created_at, updated_at)
@@ -90,7 +90,7 @@ app.post("/", async c => {
 		})
 		.result();
 
-	return matchResult(
+	return match(
 		result,
 		() => c.json({ account_id: accountId, role: "owner" }, 201) as Response,
 		() => c.json({ error: "Internal error", message: "Failed to encrypt token" }, 500) as Response

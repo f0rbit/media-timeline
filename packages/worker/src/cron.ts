@@ -7,14 +7,13 @@ import {
 	type GitHubRaw,
 	groupByDate,
 	groupCommits,
-	matchResult,
+	match,
 	normalizeBlueSky,
 	normalizeDevpad,
 	normalizeGitHub,
 	normalizeYouTube,
 	ok,
-	pipeResult,
-	pipeResultAsync,
+	pipe,
 	type RateLimitState,
 	type Result,
 	shouldFetch,
@@ -228,28 +227,28 @@ const processAccount = (env: Bindings, account: AccountWithUser, providerFactory
 		.first<RateLimitRow>()
 		.then(rateLimitRow =>
 			shouldFetch(toRateLimitState(rateLimitRow))
-				? pipeResultAsync(decrypt(account.access_token_encrypted, env.ENCRYPTION_KEY))
+				? pipe(decrypt(account.access_token_encrypted, env.ENCRYPTION_KEY))
 						.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
-						.flatMapAsync(token =>
-							pipeResultAsync(providerFactory.create(account.platform, token))
+						.flatMap(token =>
+							pipe(providerFactory.create(account.platform, token))
 								.mapErr(toProcessError)
-								.tapErrAsync(() => recordFailure(env, account.id))
+								.tapErr(() => recordFailure(env, account.id))
 								.result()
 						)
 						.flatMap(rawData =>
-							pipeResult(createRawStore(account.platform, account.id, env))
+							pipe(createRawStore(account.platform, account.id, env))
 								.mapErr((e): ProcessError => ({ kind: "store_failed", store_id: e.store_id }))
 								.map(({ store }) => ({ rawData, store }))
 								.result()
 						)
-						.flatMapAsync(({ rawData, store }) =>
-							pipeResultAsync(store.put(rawData as Record<string, unknown>, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
+						.flatMap(({ rawData, store }) =>
+							pipe(store.put(rawData as Record<string, unknown>, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
 								.mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
 								.map((result: { version: string }) => ({ rawData, version: result.version }))
 								.result()
 						)
 						.tapErr(logProcessError(account.id))
-						.tapAsync(() => recordSuccess(env, account.id))
+						.tap(() => recordSuccess(env, account.id))
 						.map(
 							(result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => ({
 								account_id: account.id,
@@ -267,7 +266,7 @@ const toFetchError = (e: { type: "network"; cause: unknown } | { type: "http"; s
 	e.type === "http" ? { kind: "api_error", status: e.status, message: `${apiName} API error` } : { kind: "network_error", message: String(e.cause) };
 
 const fetchGitHub = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipeResultAsync(
+	pipe(
 		fetchResult<unknown[], FetchError>(
 			"https://api.github.com/users/me/events?per_page=100",
 			{
@@ -284,27 +283,27 @@ const fetchGitHub = (token: string): Promise<Result<Record<string, unknown>, Fet
 		.result();
 
 const fetchBluesky = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipeResultAsync(fetchResult<Record<string, unknown>, FetchError>("https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?limit=100", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "Bluesky")))
+	pipe(fetchResult<Record<string, unknown>, FetchError>("https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?limit=100", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "Bluesky")))
 		.map(data => ({ ...data, fetched_at: new Date().toISOString() }))
 		.result();
 
 const fetchYouTube = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipeResultAsync(
+	pipe(
 		fetchResult<Record<string, unknown>, FetchError>("https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "YouTube"))
 	)
 		.map(data => ({ ...data, fetched_at: new Date().toISOString() }))
 		.result();
 
 const fetchDevpad = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipeResultAsync(fetchResult<{ tasks: unknown }, FetchError>("https://api.devpad.io/tasks", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "Devpad")))
+	pipe(fetchResult<{ tasks: unknown }, FetchError>("https://api.devpad.io/tasks", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "Devpad")))
 		.map(({ tasks }) => ({ tasks, fetched_at: new Date().toISOString() }))
 		.result();
 
 const getLatestSnapshot = (env: Bindings, account: AccountWithUser): Promise<RawSnapshot | null> =>
-	matchResult(
+	match(
 		createRawStore(account.platform, account.id, env),
 		async ({ store }) =>
-			matchResult(
+			match(
 				(await store.get_latest()) as Result<{ meta: { version: string }; data: unknown }, unknown>,
 				({ meta, data }): RawSnapshot => ({
 					account_id: account.id,
@@ -339,9 +338,9 @@ const combineUserTimeline = async (env: Bindings, userId: string, snapshots: Raw
 		role: "source" as const,
 	}));
 
-	await pipeResultAsync(Promise.resolve(createTimelineStore(userId, env)))
+	await pipe(createTimelineStore(userId, env))
 		.tapErr(() => console.error(`Failed to create timeline store for user ${userId}`))
-		.tapAsync(({ store }) => store.put(timeline, { parents }).then(() => {}))
+		.tap(({ store }) => store.put(timeline, { parents }).then(() => {}))
 		.result();
 };
 
