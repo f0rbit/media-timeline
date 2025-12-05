@@ -13,7 +13,7 @@
 		"dev": "bun run --filter=@media-timeline/worker dev"
 	},
 	"dependencies": {
-		"@f0rbit/corpus": "link:@f0rbit/corpus",
+		"@f0rbit/corpus": "^0.1.2",
 		"zod": "^3.24.0"
 	},
 	"devDependencies": {

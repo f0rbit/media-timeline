@@ -9,7 +9,7 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
-		"@f0rbit/corpus": "link:@f0rbit/corpus",
+		"@f0rbit/corpus": "^0.1.2",
 		"drizzle-orm": "^0.44.7",
 		"hono": "^4.6.0",
 		"zod": "^3.22.0"

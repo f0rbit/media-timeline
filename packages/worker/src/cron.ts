@@ -245,17 +245,17 @@ const processAccount = (env: Bindings, account: AccountWithUser, providerFactory
 						.flatMapAsync(({ rawData, store }) =>
 							pipeResultAsync(store.put(rawData as Record<string, unknown>, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
 								.mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
-								.map(({ version }) => ({ rawData, version }))
+								.map((result: { version: string }) => ({ rawData, version: result.version }))
 								.result()
 						)
 						.tapErr(logProcessError(account.id))
 						.tapAsync(() => recordSuccess(env, account.id))
 						.map(
-							({ rawData, version }): RawSnapshot => ({
+							(result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => ({
 								account_id: account.id,
 								platform: account.platform,
-								version,
-								data: rawData,
+								version: result.version,
+								data: result.rawData,
 							})
 						)
 						.unwrapOr(null as unknown as RawSnapshot)
