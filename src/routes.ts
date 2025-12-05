@@ -1,7 +1,9 @@
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import type { Bindings } from "./bindings";
-import { DateGroupSchema } from "./schema";
+import { createDb } from "./db";
+import { accountMembers, accounts, DateGroupSchema } from "./schema";
 import { createRawStore, createTimelineStore, RawDataSchema, type CorpusError } from "./storage";
 import { encrypt, err, match, ok, pipe, type Result } from "./utils";
 
@@ -42,20 +44,6 @@ type RawSnapshot = z.infer<typeof RawSnapshotSchema>;
 
 type TimelineRouteError = CorpusError | { kind: "not_found" } | { kind: "validation_error"; message: string };
 type RawRouteError = CorpusError | { kind: "not_found" } | { kind: "validation_error"; message: string };
-
-type AccountRow = {
-	account_id: string;
-	platform: string;
-	platform_username: string | null;
-	is_active: number;
-	last_fetched_at: string | null;
-	role: string;
-	created_at: string;
-};
-
-type MembershipRow = {
-	role: string;
-};
 
 const CreateConnectionBodySchema = z.object({
 	platform: z.enum(["github", "bluesky", "youtube", "devpad"]),
@@ -166,22 +154,21 @@ export const connectionRoutes = new Hono<{ Bindings: Bindings }>();
 
 connectionRoutes.get("/", async c => {
 	const auth = c.get("auth");
+	const db = createDb(c.env.DB);
 
-	const { results } = await c.env.DB.prepare(`
-      SELECT 
-        a.id as account_id,
-        a.platform,
-        a.platform_username,
-        a.is_active,
-        a.last_fetched_at,
-        am.role,
-        am.created_at
-      FROM account_members am
-      INNER JOIN accounts a ON am.account_id = a.id
-      WHERE am.user_id = ?
-    `)
-		.bind(auth.user_id)
-		.all<AccountRow>();
+	const results = await db
+		.select({
+			account_id: accounts.id,
+			platform: accounts.platform,
+			platform_username: accounts.platform_username,
+			is_active: accounts.is_active,
+			last_fetched_at: accounts.last_fetched_at,
+			role: accountMembers.role,
+			created_at: accountMembers.created_at,
+		})
+		.from(accountMembers)
+		.innerJoin(accounts, eq(accountMembers.account_id, accounts.id))
+		.where(eq(accountMembers.user_id, auth.user_id));
 
 	return c.json({ accounts: results });
 });
@@ -198,6 +185,8 @@ connectionRoutes.post("/", async c => {
 	const accountId = crypto.randomUUID();
 	const memberId = crypto.randomUUID();
 
+	const db = createDb(c.env.DB);
+
 	const result = await pipe(encrypt(body.access_token, c.env.ENCRYPTION_KEY))
 		.flatMap(encryptedAccessToken =>
 			body.refresh_token
@@ -207,15 +196,26 @@ connectionRoutes.post("/", async c => {
 				: Promise.resolve(ok({ encryptedAccessToken, encryptedRefreshToken: null as string | null }))
 		)
 		.tap(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
-			await c.env.DB.batch([
-				c.env.DB.prepare(`
-        INSERT INTO accounts (id, platform, platform_user_id, platform_username, access_token_encrypted, refresh_token_encrypted, token_expires_at, is_active, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-      `).bind(accountId, body.platform, body.platform_user_id ?? null, body.platform_username ?? null, encryptedAccessToken, encryptedRefreshToken, body.token_expires_at ?? null, now, now),
-				c.env.DB.prepare(`
-        INSERT INTO account_members (id, user_id, account_id, role, created_at)
-        VALUES (?, ?, ?, 'owner', ?)
-      `).bind(memberId, auth.user_id, accountId, now),
+			await db.batch([
+				db.insert(accounts).values({
+					id: accountId,
+					platform: body.platform,
+					platform_user_id: body.platform_user_id ?? null,
+					platform_username: body.platform_username ?? null,
+					access_token_encrypted: encryptedAccessToken,
+					refresh_token_encrypted: encryptedRefreshToken,
+					token_expires_at: body.token_expires_at ?? null,
+					is_active: true,
+					created_at: now,
+					updated_at: now,
+				}),
+				db.insert(accountMembers).values({
+					id: memberId,
+					user_id: auth.user_id,
+					account_id: accountId,
+					role: "owner",
+					created_at: now,
+				}),
 			]);
 		})
 		.result();
@@ -230,8 +230,13 @@ connectionRoutes.post("/", async c => {
 connectionRoutes.delete("/:account_id", async c => {
 	const auth = c.get("auth");
 	const accountId = c.req.param("account_id");
+	const db = createDb(c.env.DB);
 
-	const membership = await c.env.DB.prepare("SELECT role FROM account_members WHERE user_id = ? AND account_id = ?").bind(auth.user_id, accountId).first<MembershipRow>();
+	const membership = await db
+		.select({ role: accountMembers.role })
+		.from(accountMembers)
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
+		.get();
 
 	if (!membership) {
 		return c.json({ error: "Not found", message: "Account not found" }, 404);
@@ -242,7 +247,7 @@ connectionRoutes.delete("/:account_id", async c => {
 	}
 
 	const now = new Date().toISOString();
-	await c.env.DB.prepare("UPDATE accounts SET is_active = 0, updated_at = ? WHERE id = ?").bind(now, accountId).run();
+	await db.update(accounts).set({ is_active: false, updated_at: now }).where(eq(accounts.id, accountId));
 
 	return c.json({ deleted: true });
 });
@@ -255,8 +260,13 @@ connectionRoutes.post("/:account_id/members", async c => {
 		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
 	}
 	const body = parseResult.data;
+	const db = createDb(c.env.DB);
 
-	const membership = await c.env.DB.prepare("SELECT role FROM account_members WHERE user_id = ? AND account_id = ?").bind(auth.user_id, accountId).first<MembershipRow>();
+	const membership = await db
+		.select({ role: accountMembers.role })
+		.from(accountMembers)
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
+		.get();
 
 	if (!membership) {
 		return c.json({ error: "Not found", message: "Account not found" }, 404);
@@ -266,7 +276,11 @@ connectionRoutes.post("/:account_id/members", async c => {
 		return c.json({ error: "Forbidden", message: "Only owners can add members" }, 403);
 	}
 
-	const existingMember = await c.env.DB.prepare("SELECT id FROM account_members WHERE user_id = ? AND account_id = ?").bind(body.user_id, accountId).first<{ id: string }>();
+	const existingMember = await db
+		.select({ id: accountMembers.id })
+		.from(accountMembers)
+		.where(and(eq(accountMembers.user_id, body.user_id), eq(accountMembers.account_id, accountId)))
+		.get();
 
 	if (existingMember) {
 		return c.json({ error: "Conflict", message: "User is already a member" }, 409);
@@ -275,7 +289,13 @@ connectionRoutes.post("/:account_id/members", async c => {
 	const memberId = crypto.randomUUID();
 	const now = new Date().toISOString();
 
-	await c.env.DB.prepare("INSERT INTO account_members (id, user_id, account_id, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(memberId, body.user_id, accountId, "member", now).run();
+	await db.insert(accountMembers).values({
+		id: memberId,
+		user_id: body.user_id,
+		account_id: accountId,
+		role: "member",
+		created_at: now,
+	});
 
 	return c.json({ member_id: memberId, role: "member" }, 201);
 });

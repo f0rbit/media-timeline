@@ -1,19 +1,11 @@
-import { GitHubRawSchema, BlueskyRawSchema, YouTubeRawSchema, DevpadRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
+import { eq, sql } from "drizzle-orm";
 import type { Bindings } from "./bindings";
-import { decrypt, err, fetchResult, match, pipe, type Result } from "./utils";
-import { normalizeGitHub, normalizeBluesky, normalizeYouTube, normalizeDevpad } from "./platforms";
+import { createDb } from "./db";
+import { normalizeBluesky, normalizeDevpad, normalizeGitHub, normalizeYouTube } from "./platforms";
+import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
+import { createRawStore, createTimelineStore, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
-import { createRawStore, createTimelineStore, rawStoreId, type RawData, shouldFetch, type RateLimitState } from "./storage";
-
-type Account = {
-	id: string;
-	platform: string;
-	platform_user_id: string | null;
-	access_token_encrypted: string;
-	refresh_token_encrypted: string | null;
-};
-
-type AccountWithUser = Account & { user_id: string };
+import { decrypt, err, fetchResult, match, pipe, type Result } from "./utils";
 
 type RawSnapshot = {
 	account_id: string;
@@ -22,10 +14,19 @@ type RawSnapshot = {
 	data: unknown;
 };
 
+type AccountWithUser = {
+	id: string;
+	platform: string;
+	platform_user_id: string | null;
+	access_token_encrypted: string;
+	refresh_token_encrypted: string | null;
+	user_id: string;
+};
+
 type RateLimitRow = {
 	remaining: number | null;
 	reset_at: string | null;
-	consecutive_failures: number;
+	consecutive_failures: number | null;
 	circuit_open_until: string | null;
 };
 
@@ -82,18 +83,20 @@ export async function handleCron(env: Bindings, providerFactory: ProviderFactory
 		timelines_generated: 0,
 	};
 
-	const { results: accountsWithUsers } = await env.DB.prepare(`
-      SELECT 
-        a.id,
-        a.platform,
-        a.platform_user_id,
-        a.access_token_encrypted,
-        a.refresh_token_encrypted,
-        am.user_id
-      FROM accounts a
-      INNER JOIN account_members am ON a.id = am.account_id
-      WHERE a.is_active = 1
-    `).all<AccountWithUser>();
+	const db = createDb(env.DB);
+
+	const accountsWithUsers = await db
+		.select({
+			id: accounts.id,
+			platform: accounts.platform,
+			platform_user_id: accounts.platform_user_id,
+			access_token_encrypted: accounts.access_token_encrypted,
+			refresh_token_encrypted: accounts.refresh_token_encrypted,
+			user_id: accountMembers.user_id,
+		})
+		.from(accounts)
+		.innerJoin(accountMembers, eq(accounts.id, accountMembers.account_id))
+		.where(eq(accounts.is_active, true));
 
 	const userAccounts = new Map<string, AccountWithUser[]>();
 	for (const account of accountsWithUsers) {
@@ -148,28 +151,45 @@ const formatFetchError = (e: FetchError): string => {
 
 const recordFailure = async (env: Bindings, accountId: string): Promise<void> => {
 	const now = new Date().toISOString();
-	await env.DB.prepare(`
-		INSERT INTO rate_limits (id, account_id, consecutive_failures, last_failure_at, updated_at)
-		VALUES (?, ?, 1, ?, ?)
-		ON CONFLICT(account_id) DO UPDATE SET
-			consecutive_failures = consecutive_failures + 1,
-			last_failure_at = ?,
-			updated_at = ?
-	`)
-		.bind(crypto.randomUUID(), accountId, now, now, now, now)
-		.run();
+	const db = createDb(env.DB);
+	await db
+		.insert(rateLimits)
+		.values({
+			id: crypto.randomUUID(),
+			account_id: accountId,
+			consecutive_failures: 1,
+			last_failure_at: now,
+			updated_at: now,
+		})
+		.onConflictDoUpdate({
+			target: rateLimits.account_id,
+			set: {
+				consecutive_failures: sql`${rateLimits.consecutive_failures} + 1`,
+				last_failure_at: now,
+				updated_at: now,
+			},
+		});
 };
 
 const recordSuccess = async (env: Bindings, accountId: string): Promise<void> => {
 	const now = new Date().toISOString();
-	await env.DB.prepare(`
-		INSERT INTO rate_limits (id, account_id, consecutive_failures, updated_at)
-		VALUES (?, ?, 0, ?)
-		ON CONFLICT (account_id) DO UPDATE SET consecutive_failures = 0, updated_at = ?
-	`)
-		.bind(crypto.randomUUID(), accountId, now, now)
-		.run();
-	await env.DB.prepare("UPDATE accounts SET last_fetched_at = ?, updated_at = ? WHERE id = ?").bind(now, now, accountId).run();
+	const db = createDb(env.DB);
+	await db
+		.insert(rateLimits)
+		.values({
+			id: crypto.randomUUID(),
+			account_id: accountId,
+			consecutive_failures: 0,
+			updated_at: now,
+		})
+		.onConflictDoUpdate({
+			target: rateLimits.account_id,
+			set: {
+				consecutive_failures: 0,
+				updated_at: now,
+			},
+		});
+	await db.update(accounts).set({ last_fetched_at: now, updated_at: now }).where(eq(accounts.id, accountId));
 };
 
 const logProcessError =
@@ -197,46 +217,56 @@ const toProcessError = (e: FetchError): ProcessError => ({
 	status: e.kind === "api_error" ? e.status : undefined,
 });
 
-const processAccount = (env: Bindings, account: AccountWithUser, providerFactory: ProviderFactory): Promise<RawSnapshot | null> =>
-	env.DB.prepare("SELECT remaining, reset_at, consecutive_failures, circuit_open_until FROM rate_limits WHERE account_id = ?")
-		.bind(account.id)
-		.first<RateLimitRow>()
-		.then((rateLimitRow: RateLimitRow | null) =>
-			shouldFetch(toRateLimitState(rateLimitRow))
-				? pipe(decrypt(account.access_token_encrypted, env.ENCRYPTION_KEY))
-						.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
-						.flatMap(token =>
-							pipe(providerFactory.create(account.platform, token))
-								.mapErr(toProcessError)
-								.tapErr(() => recordFailure(env, account.id))
-								.result()
-						)
-						.flatMap(rawData =>
-							pipe(createRawStore(account.platform, account.id, env))
-								.mapErr((e): ProcessError => ({ kind: "store_failed", store_id: e.store_id }))
-								.map(({ store }) => ({ rawData, store }))
-								.result()
-						)
-						.flatMap(({ rawData, store }) =>
-							pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
-								.mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
-								.map((result: { version: string }) => ({ rawData, version: result.version }))
-								.result()
-						)
-						.tapErr(logProcessError(account.id))
-						.tap(() => recordSuccess(env, account.id))
-						.map(
-							(result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => ({
-								account_id: account.id,
-								platform: account.platform,
-								version: result.version,
-								data: result.rawData,
-							})
-						)
-						.unwrapOr(null as unknown as RawSnapshot)
-						.then(r => r as RawSnapshot | null)
-				: Promise.resolve(null)
-		);
+const processAccount = async (env: Bindings, account: AccountWithUser, providerFactory: ProviderFactory): Promise<RawSnapshot | null> => {
+	const db = createDb(env.DB);
+	const rateLimitRow = await db
+		.select({
+			remaining: rateLimits.remaining,
+			reset_at: rateLimits.reset_at,
+			consecutive_failures: rateLimits.consecutive_failures,
+			circuit_open_until: rateLimits.circuit_open_until,
+		})
+		.from(rateLimits)
+		.where(eq(rateLimits.account_id, account.id))
+		.get();
+
+	if (!shouldFetch(toRateLimitState(rateLimitRow ?? null))) {
+		return null;
+	}
+
+	return pipe(decrypt(account.access_token_encrypted, env.ENCRYPTION_KEY))
+		.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
+		.flatMap(token =>
+			pipe(providerFactory.create(account.platform, token))
+				.mapErr(toProcessError)
+				.tapErr(() => recordFailure(env, account.id))
+				.result()
+		)
+		.flatMap(rawData =>
+			pipe(createRawStore(account.platform, account.id, env))
+				.mapErr((e): ProcessError => ({ kind: "store_failed", store_id: e.store_id }))
+				.map(({ store }) => ({ rawData, store }))
+				.result()
+		)
+		.flatMap(({ rawData, store }) =>
+			pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
+				.mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
+				.map((result: { version: string }) => ({ rawData, version: result.version }))
+				.result()
+		)
+		.tapErr(logProcessError(account.id))
+		.tap(() => recordSuccess(env, account.id))
+		.map(
+			(result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => ({
+				account_id: account.id,
+				platform: account.platform,
+				version: result.version,
+				data: result.rawData,
+			})
+		)
+		.unwrapOr(null as unknown as RawSnapshot)
+		.then(r => r as RawSnapshot | null);
+};
 
 type InternalFetchError = { type: "network"; cause: unknown } | { type: "http"; status: number; statusText: string };
 

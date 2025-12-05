@@ -1,6 +1,9 @@
-import { hashApiKey } from "./utils";
+import { eq } from "drizzle-orm";
 import { createMiddleware } from "hono/factory";
 import type { Bindings } from "./bindings";
+import { createDb } from "./db";
+import { apiKeys } from "./schema";
+import { hashApiKey } from "./utils";
 
 type AuthContext = {
 	user_id: string;
@@ -12,11 +15,6 @@ declare module "hono" {
 		auth: AuthContext;
 	}
 }
-
-type ApiKeyRow = {
-	id: string;
-	user_id: string;
-};
 
 export const authMiddleware = createMiddleware<{ Bindings: Bindings }>(async (c, next) => {
 	const authHeader = c.req.header("Authorization");
@@ -30,14 +28,15 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings }>(async (c,
 	}
 
 	const keyHash = await hashApiKey(apiKey);
+	const db = createDb(c.env.DB);
 
-	const result = await c.env.DB.prepare("SELECT id, user_id FROM api_keys WHERE key_hash = ?").bind(keyHash).first<ApiKeyRow>();
+	const result = await db.select({ id: apiKeys.id, user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
 
 	if (!result) {
 		return c.json({ error: "Unauthorized", message: "Invalid API key" }, 401);
 	}
 
-	await c.env.DB.prepare("UPDATE api_keys SET last_used_at = ? WHERE id = ?").bind(new Date().toISOString(), result.id).run();
+	await db.update(apiKeys).set({ last_used_at: new Date().toISOString() }).where(eq(apiKeys.id, result.id));
 
 	c.set("auth", {
 		user_id: result.user_id,
