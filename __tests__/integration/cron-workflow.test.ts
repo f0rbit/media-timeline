@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import {
-	type BlueSkyRaw,
+	type BlueskyRaw,
 	combineTimelines,
 	type DevpadRaw,
 	type GitHubRaw,
 	groupByDate,
 	groupCommits,
-	normalizeBlueSky,
+	normalizeBluesky,
 	normalizeDevpad,
 	normalizeGitHub,
 	normalizeYouTube,
@@ -43,7 +43,7 @@ const normalizeSnapshot = (platform: Platform, data: unknown): TimelineItem[] =>
 		case "github":
 			return normalizeGitHub(data as GitHubRaw);
 		case "bluesky":
-			return normalizeBlueSky(data as BlueSkyRaw);
+			return normalizeBluesky(data as BlueskyRaw);
 		case "youtube":
 			return normalizeYouTube(data as YouTubeRaw);
 		case "devpad":
@@ -59,7 +59,7 @@ const canFetch = (state: { remaining: number | null; reset_at: string | null; ci
 	return true;
 };
 
-type ProviderDataMap = Record<string, GitHubRaw | BlueSkyRaw | YouTubeRaw | DevpadRaw>;
+type ProviderDataMap = Record<string, GitHubRaw | BlueskyRaw | YouTubeRaw | DevpadRaw>;
 
 const runTestCron = async (ctx: TestContext, providerData: ProviderDataMap): Promise<CronResult> => {
 	const { results: accountsWithUsers } = await ctx.d1

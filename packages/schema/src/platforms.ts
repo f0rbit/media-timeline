@@ -65,17 +65,17 @@ export const GitHubRawSchema = FetchedAtSchema.extend({
 	events: z.array(GitHubEventSchema),
 });
 
-export const BlueSkyAuthorSchema = z.object({
+export const BlueskyAuthorSchema = z.object({
 	did: z.string(),
 	handle: z.string(),
 	displayName: z.string().optional(),
 	avatar: z.string().url().optional(),
 });
 
-export const BlueSkyPostSchema = z.object({
+export const BlueskyPostSchema = z.object({
 	uri: z.string(),
 	cid: z.string(),
-	author: BlueSkyAuthorSchema,
+	author: BlueskyAuthorSchema,
 	record: z.object({
 		text: z.string(),
 		createdAt: z.string(),
@@ -103,18 +103,18 @@ export const BlueSkyPostSchema = z.object({
 		.optional(),
 });
 
-export const BlueSkyFeedItemSchema = z.object({
-	post: BlueSkyPostSchema,
+export const BlueskyFeedItemSchema = z.object({
+	post: BlueskyPostSchema,
 	reason: z
 		.object({
 			$type: z.string(),
-			by: BlueSkyAuthorSchema.optional(),
+			by: BlueskyAuthorSchema.optional(),
 		})
 		.optional(),
 });
 
-export const BlueSkyRawSchema = FetchedAtSchema.extend({
-	feed: z.array(BlueSkyFeedItemSchema),
+export const BlueskyRawSchema = FetchedAtSchema.extend({
+	feed: z.array(BlueskyFeedItemSchema),
 	cursor: z.string().optional(),
 });
 

@@ -120,15 +120,6 @@ export type BlueskyRaw = {
 	fetched_at: string;
 };
 
-/** @deprecated Use BlueskyAuthor instead */
-export type BlueSkyAuthor = BlueskyAuthor;
-/** @deprecated Use BlueskyPost instead */
-export type BlueSkyPost = BlueskyPost;
-/** @deprecated Use BlueskyFeedItem instead */
-export type BlueSkyFeedItem = BlueskyFeedItem;
-/** @deprecated Use BlueskyRaw instead */
-export type BlueSkyRaw = BlueskyRaw;
-
 export type YouTubeVideo = {
 	id: { videoId: string };
 	snippet: {

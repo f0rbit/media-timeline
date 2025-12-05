@@ -10,15 +10,6 @@ export const match = <T, E, R>(result: Result<T, E>, onOk: (value: T) => R, onEr
 
 export const unwrapOr = <T, E>(result: Result<T, E>, defaultValue: T): T => (result.ok ? result.value : defaultValue);
 
-export const collect = <T, E>(results: Result<T, E>[]): Result<T[], E> => {
-	const values: T[] = [];
-	for (const r of results) {
-		if (!r.ok) return err(r.error);
-		values.push(r.value);
-	}
-	return ok(values);
-};
-
 export const tryCatch = <T, E>(fn: () => T, onError: (e: unknown) => E): Result<T, E> => {
 	try {
 		return ok(fn());
@@ -172,24 +163,6 @@ export const hoursAgo = (hours: number): string => {
 export const minutesAgo = (minutes: number): string => {
 	const date = new Date();
 	date.setMinutes(date.getMinutes() - minutes);
-	return date.toISOString();
-};
-
-export const daysFromNow = (days: number): string => {
-	const date = new Date();
-	date.setDate(date.getDate() + days);
-	return date.toISOString();
-};
-
-export const hoursFromNow = (hours: number): string => {
-	const date = new Date();
-	date.setHours(date.getHours() + hours);
-	return date.toISOString();
-};
-
-export const minutesFromNow = (minutes: number): string => {
-	const date = new Date();
-	date.setMinutes(date.getMinutes() + minutes);
 	return date.toISOString();
 };
 

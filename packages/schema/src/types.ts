@@ -3,10 +3,10 @@ import type { z } from "zod";
 import type { accountMembers, accounts, apiKeys, rateLimits, users } from "./database";
 
 import type {
-	BlueSkyAuthorSchema,
-	BlueSkyFeedItemSchema,
-	BlueSkyPostSchema,
-	BlueSkyRawSchema,
+	BlueskyAuthorSchema,
+	BlueskyFeedItemSchema,
+	BlueskyPostSchema,
+	BlueskyRawSchema,
 	DevpadRawSchema,
 	DevpadTaskSchema,
 	GitHubCommitSchema,
@@ -38,10 +38,10 @@ export type GitHubPushEvent = z.infer<typeof GitHubPushEventSchema>;
 export type GitHubEvent = z.infer<typeof GitHubEventSchema>;
 export type GitHubRaw = z.infer<typeof GitHubRawSchema>;
 
-export type BlueSkyAuthor = z.infer<typeof BlueSkyAuthorSchema>;
-export type BlueSkyPost = z.infer<typeof BlueSkyPostSchema>;
-export type BlueSkyFeedItem = z.infer<typeof BlueSkyFeedItemSchema>;
-export type BlueSkyRaw = z.infer<typeof BlueSkyRawSchema>;
+export type BlueskyAuthor = z.infer<typeof BlueskyAuthorSchema>;
+export type BlueskyPost = z.infer<typeof BlueskyPostSchema>;
+export type BlueskyFeedItem = z.infer<typeof BlueskyFeedItemSchema>;
+export type BlueskyRaw = z.infer<typeof BlueskyRawSchema>;
 
 export type YouTubeThumbnail = z.infer<typeof YouTubeThumbnailSchema>;
 export type YouTubeVideo = z.infer<typeof YouTubeVideoSchema>;

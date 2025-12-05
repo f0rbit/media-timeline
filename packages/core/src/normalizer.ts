@@ -71,9 +71,6 @@ export const normalizeBluesky = (raw: BlueskyRaw): TimelineItem[] =>
 		};
 	});
 
-/** @deprecated Use normalizeBluesky instead */
-export const normalizeBlueSky = normalizeBluesky;
-
 const makeVideoId = (videoId: string): string => `youtube:video:${videoId}`;
 
 const makeVideoUrl = (videoId: string): string => `https://youtube.com/watch?v=${videoId}`;

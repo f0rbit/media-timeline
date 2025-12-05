@@ -1,47 +1,40 @@
 import type { FetchResult, Provider } from "../types";
-import { err, ok } from "../types";
 import type { YouTubePlaylistItem, YouTubeRaw } from "../youtube";
+import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderControls, createMemoryProviderState, simulateErrors } from "./base";
 
 export type YouTubeMemoryConfig = {
 	items?: YouTubePlaylistItem[];
 	next_page_token?: string;
-	simulate_rate_limit?: boolean;
-	simulate_auth_expired?: boolean;
 };
 
-export class YouTubeMemoryProvider implements Provider<YouTubeRaw> {
+export class YouTubeMemoryProvider implements Provider<YouTubeRaw>, MemoryProviderControls {
 	readonly platform = "youtube";
 	private config: YouTubeMemoryConfig;
-	private call_count = 0;
+	private state: MemoryProviderState;
+	private controls: MemoryProviderControls;
 
 	constructor(config: YouTubeMemoryConfig = {}) {
 		this.config = config;
+		this.state = createMemoryProviderState();
+		this.controls = createMemoryProviderControls(this.state);
 	}
 
 	async fetch(_token: string): Promise<FetchResult<YouTubeRaw>> {
-		this.call_count++;
-
-		if (this.config.simulate_rate_limit) {
-			return err({ kind: "rate_limited", retry_after: 3600 });
-		}
-		if (this.config.simulate_auth_expired) {
-			return err({ kind: "auth_expired", message: "Simulated auth expiry" });
-		}
-
-		return ok({
-			items: this.config.items ?? [],
-			nextPageToken: this.config.next_page_token,
-			fetched_at: new Date().toISOString(),
-		});
+		return simulateErrors(
+			this.state,
+			() => ({
+				items: this.config.items ?? [],
+				nextPageToken: this.config.next_page_token,
+				fetched_at: new Date().toISOString(),
+			}),
+			{ rate_limit_retry_after: 3600 }
+		);
 	}
 
-	getCallCount(): number {
-		return this.call_count;
-	}
-
-	reset(): void {
-		this.call_count = 0;
-	}
+	getCallCount = () => this.controls.getCallCount();
+	reset = () => this.controls.reset();
+	setSimulateRateLimit = (value: boolean) => this.controls.setSimulateRateLimit(value);
+	setSimulateAuthExpired = (value: boolean) => this.controls.setSimulateAuthExpired(value);
 
 	setItems(items: YouTubePlaylistItem[]): void {
 		this.config.items = items;
@@ -49,13 +42,5 @@ export class YouTubeMemoryProvider implements Provider<YouTubeRaw> {
 
 	setNextPageToken(token: string | undefined): void {
 		this.config.next_page_token = token;
-	}
-
-	setSimulateRateLimit(value: boolean): void {
-		this.config.simulate_rate_limit = value;
-	}
-
-	setSimulateAuthExpired(value: boolean): void {
-		this.config.simulate_auth_expired = value;
 	}
 }

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type CommitGroup, combineTimelines, groupByDate, groupCommits, normalizeBlueSky, normalizeGitHub, type TimelineEntry, type TimelineItem } from "@media-timeline/core";
-import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeBlueSkyFeedItem, makeBlueSkyPost, makeBlueSkyRaw, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
+import { type CommitGroup, combineTimelines, groupByDate, groupCommits, normalizeBluesky, normalizeGitHub, type TimelineEntry, type TimelineItem } from "@media-timeline/core";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
 import { createTestContext, seedAccount, seedUser, type TestContext } from "./setup";
 
 const isCommitGroup = (entry: TimelineEntry): entry is CommitGroup => entry.type === "commit_group";
@@ -127,7 +127,7 @@ describe("timeline consistency", () => {
 			const blueskyRaw = BLUESKY_FIXTURES.singlePost();
 
 			const commitItems = normalizeGitHub(githubRaw);
-			const postItems = normalizeBlueSky(blueskyRaw);
+			const postItems = normalizeBluesky(blueskyRaw);
 			const allItems = [...commitItems, ...postItems];
 
 			const grouped = groupCommits(allItems);
@@ -146,7 +146,7 @@ describe("timeline consistency", () => {
 
 		it("handles only non-commit items", () => {
 			const blueskyRaw = BLUESKY_FIXTURES.multiplePosts(3);
-			const items = normalizeBlueSky(blueskyRaw);
+			const items = normalizeBluesky(blueskyRaw);
 
 			const grouped = groupCommits(items);
 			expect(grouped).toHaveLength(3);
@@ -276,16 +276,16 @@ describe("timeline consistency", () => {
 				}),
 			]);
 
-			const blueskyRaw = makeBlueSkyRaw([
-				makeBlueSkyFeedItem({
-					post: makeBlueSkyPost({ record: { text: "newest", createdAt: timestamp1 } }),
+			const blueskyRaw = makeBlueskyRaw([
+				makeBlueskyFeedItem({
+					post: makeBlueskyPost({ record: { text: "newest", createdAt: timestamp1 } }),
 				}),
-				makeBlueSkyFeedItem({
-					post: makeBlueSkyPost({ record: { text: "oldest", createdAt: timestamp3 } }),
+				makeBlueskyFeedItem({
+					post: makeBlueskyPost({ record: { text: "oldest", createdAt: timestamp3 } }),
 				}),
 			]);
 
-			const items = [...normalizeGitHub(githubRaw), ...normalizeBlueSky(blueskyRaw)];
+			const items = [...normalizeGitHub(githubRaw), ...normalizeBluesky(blueskyRaw)];
 
 			const sorted = combineTimelines(items);
 
@@ -447,15 +447,15 @@ describe("timeline consistency", () => {
 
 		it("handles posts with special characters", () => {
 			const specialText = 'Hello <world> & "friends" 🎉';
-			const raw = makeBlueSkyRaw([
-				makeBlueSkyFeedItem({
-					post: makeBlueSkyPost({
+			const raw = makeBlueskyRaw([
+				makeBlueskyFeedItem({
+					post: makeBlueskyPost({
 						record: { text: specialText, createdAt: new Date().toISOString() },
 					}),
 				}),
 			]);
 
-			const items = normalizeBlueSky(raw);
+			const items = normalizeBluesky(raw);
 			expect(items[0].title).toBe(specialText);
 		});
 
@@ -467,7 +467,7 @@ describe("timeline consistency", () => {
 
 		it("handles empty feed array", () => {
 			const raw = BLUESKY_FIXTURES.empty();
-			const items = normalizeBlueSky(raw);
+			const items = normalizeBluesky(raw);
 			expect(items).toHaveLength(0);
 		});
 

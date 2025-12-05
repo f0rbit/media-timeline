@@ -1,8 +1,8 @@
 import {
-	type BlueSkyAuthor,
-	type BlueSkyFeedItem,
-	type BlueSkyPost,
-	type BlueSkyRaw,
+	type BlueskyAuthor,
+	type BlueskyFeedItem,
+	type BlueskyPost,
+	type BlueskyRaw,
 	type DeepPartial,
 	type DevpadRaw,
 	type DevpadTask,
@@ -57,7 +57,7 @@ export const makeGitHubRaw = (events: GitHubEvent[] = [], fetchedAt?: string): G
 	fetched_at: fetchedAt ?? new Date().toISOString(),
 });
 
-export const makeBlueSkyAuthor = (overrides: DeepPartial<BlueSkyAuthor> = {}): BlueSkyAuthor =>
+export const makeBlueskyAuthor = (overrides: DeepPartial<BlueskyAuthor> = {}): BlueskyAuthor =>
 	mergeDeep(
 		{
 			did: `did:plc:${uuid().slice(0, 24)}`,
@@ -68,12 +68,12 @@ export const makeBlueSkyAuthor = (overrides: DeepPartial<BlueSkyAuthor> = {}): B
 		overrides
 	);
 
-export const makeBlueSkyPost = (overrides: DeepPartial<BlueSkyPost> = {}): BlueSkyPost =>
+export const makeBlueskyPost = (overrides: DeepPartial<BlueskyPost> = {}): BlueskyPost =>
 	mergeDeep(
 		{
 			uri: `at://did:plc:abc123/app.bsky.feed.post/${uuid()}`,
 			cid: `bafyrei${uuid().replace(/-/g, "").slice(0, 48)}`,
-			author: makeBlueSkyAuthor(),
+			author: makeBlueskyAuthor(),
 			record: {
 				text: "Hello from Bluesky!",
 				createdAt: new Date().toISOString(),
@@ -85,9 +85,9 @@ export const makeBlueSkyPost = (overrides: DeepPartial<BlueSkyPost> = {}): BlueS
 		overrides
 	);
 
-export const makeBlueSkyFeedItem = (overrides: DeepPartial<BlueSkyFeedItem> = {}): BlueSkyFeedItem => mergeDeep({ post: makeBlueSkyPost() }, overrides);
+export const makeBlueskyFeedItem = (overrides: DeepPartial<BlueskyFeedItem> = {}): BlueskyFeedItem => mergeDeep({ post: makeBlueskyPost() }, overrides);
 
-export const makeBlueSkyRaw = (feed: BlueSkyFeedItem[] = [], cursor?: string, fetchedAt?: string): BlueSkyRaw => ({
+export const makeBlueskyRaw = (feed: BlueskyFeedItem[] = [], cursor?: string, fetchedAt?: string): BlueskyRaw => ({
 	feed,
 	cursor,
 	fetched_at: fetchedAt ?? new Date().toISOString(),
@@ -236,9 +236,9 @@ export const GITHUB_FIXTURES = {
 
 export const BLUESKY_FIXTURES = {
 	singlePost: (timestamp = hoursAgo(1)) =>
-		makeBlueSkyRaw([
-			makeBlueSkyFeedItem({
-				post: makeBlueSkyPost({
+		makeBlueskyRaw([
+			makeBlueskyFeedItem({
+				post: makeBlueskyPost({
 					record: { text: "Hello world!", createdAt: timestamp },
 				}),
 			}),
@@ -246,20 +246,20 @@ export const BLUESKY_FIXTURES = {
 
 	multiplePosts: (count = 3, _baseTimestamp = hoursAgo(1)) => {
 		const feed = Array.from({ length: count }, (_, i) =>
-			makeBlueSkyFeedItem({
-				post: makeBlueSkyPost({
+			makeBlueskyFeedItem({
+				post: makeBlueskyPost({
 					record: { text: `Post number ${i + 1}`, createdAt: minutesAgo(i * 30) },
 					likeCount: i * 10,
 				}),
 			})
 		);
-		return makeBlueSkyRaw(feed);
+		return makeBlueskyRaw(feed);
 	},
 
 	withImages: () =>
-		makeBlueSkyRaw([
-			makeBlueSkyFeedItem({
-				post: makeBlueSkyPost({
+		makeBlueskyRaw([
+			makeBlueskyFeedItem({
+				post: makeBlueskyPost({
 					record: { text: "Check out this image!", createdAt: hoursAgo(1) },
 					embed: {
 						images: [{ thumb: "https://cdn.bsky.social/thumb.jpg", fullsize: "https://cdn.bsky.social/full.jpg" }],
@@ -269,9 +269,9 @@ export const BLUESKY_FIXTURES = {
 		]),
 
 	withReplies: () =>
-		makeBlueSkyRaw([
-			makeBlueSkyFeedItem({
-				post: makeBlueSkyPost({
+		makeBlueskyRaw([
+			makeBlueskyFeedItem({
+				post: makeBlueskyPost({
 					record: {
 						text: "This is a reply",
 						createdAt: hoursAgo(1),
@@ -284,7 +284,7 @@ export const BLUESKY_FIXTURES = {
 			}),
 		]),
 
-	empty: () => makeBlueSkyRaw([]),
+	empty: () => makeBlueskyRaw([]),
 };
 
 export const YOUTUBE_FIXTURES = {

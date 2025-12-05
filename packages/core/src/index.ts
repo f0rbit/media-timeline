@@ -3,7 +3,6 @@ export { decrypt, type EncryptionError, encrypt } from "./encryption";
 export { groupByDate, groupCommits } from "./grouper";
 export {
 	normalizeBluesky,
-	normalizeBlueSky,
 	normalizeDevpad,
 	normalizeGitHub,
 	normalizeYouTube,
@@ -18,13 +17,9 @@ export {
 } from "./rate-limit";
 export type {
 	BlueskyAuthor,
-	BlueSkyAuthor,
 	BlueskyFeedItem,
-	BlueSkyFeedItem,
 	BlueskyPost,
-	BlueSkyPost,
 	BlueskyRaw,
-	BlueSkyRaw,
 	CommitGroup,
 	CommitPayload,
 	DateGroup,
@@ -47,9 +42,7 @@ export type {
 } from "./types";
 export type { DecodeError, DeepPartial, FetchError, Pipe, Result } from "./utils";
 export {
-	collect,
 	daysAgo,
-	daysFromNow,
 	err,
 	extractDateKey,
 	fetchResult,
@@ -58,11 +51,9 @@ export {
 	hashApiKey,
 	hashSha256,
 	hoursAgo,
-	hoursFromNow,
 	match,
 	mergeDeep,
 	minutesAgo,
-	minutesFromNow,
 	ok,
 	pipe,
 	randomSha,

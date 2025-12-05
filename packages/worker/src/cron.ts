@@ -1,5 +1,5 @@
 import {
-	type BlueSkyRaw,
+	type BlueskyRaw,
 	type DevpadRaw,
 	decrypt,
 	err,
@@ -8,7 +8,7 @@ import {
 	groupByDate,
 	groupCommits,
 	match,
-	normalizeBlueSky,
+	normalizeBluesky,
 	normalizeDevpad,
 	normalizeGitHub,
 	normalizeYouTube,
@@ -341,7 +341,7 @@ const normalizeSnapshot = (snapshot: RawSnapshot): TimelineItem[] => {
 		case "github":
 			return normalizeGitHub(snapshot.data as GitHubRaw);
 		case "bluesky":
-			return normalizeBlueSky(snapshot.data as BlueSkyRaw);
+			return normalizeBluesky(snapshot.data as BlueskyRaw);
 		case "youtube":
 			return normalizeYouTube(snapshot.data as YouTubeRaw);
 		case "devpad":
