@@ -1,21 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import {
-	type BlueskyRaw,
-	combineTimelines,
-	type DevpadRaw,
-	type GitHubRaw,
-	groupByDate,
-	groupCommits,
-	normalizeBluesky,
-	normalizeDevpad,
-	normalizeGitHub,
-	normalizeYouTube,
-	type TimelineEntry,
-	type TimelineItem,
-	type YouTubeRaw,
-} from "@media-timeline/core";
+import { normalizeBluesky, normalizeDevpad, normalizeGitHub, normalizeYouTube } from "../../src/platforms";
+import type { BlueskyRaw, DevpadRaw, GitHubRaw, Platform, TimelineItem, YouTubeRaw } from "../../src/schema";
+import { combineTimelines, groupByDate, groupCommits, type TimelineEntry } from "../../src/timeline";
 import { ACCOUNTS, BLUESKY_FIXTURES, DEVPAD_FIXTURES, GITHUB_FIXTURES, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS, YOUTUBE_FIXTURES } from "./fixtures";
-import { addAccountMember, createTestContext, type Platform, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
+import { addAccountMember, createTestContext, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
 
 type AccountWithUser = {
 	id: string;

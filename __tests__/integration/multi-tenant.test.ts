@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { combineTimelines, type GitHubRaw, groupByDate, groupCommits, normalizeGitHub, type TimelineEntry } from "@media-timeline/core";
+import { normalizeGitHub } from "../../src/platforms";
+import type { GitHubRaw, Platform } from "../../src/schema";
+import { combineTimelines, groupByDate, groupCommits, type TimelineEntry } from "../../src/timeline";
 import { ACCOUNTS, GITHUB_FIXTURES, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
-import { addAccountMember, createTestContext, getAccountMembers, getUserAccounts, type Platform, seedAccount, seedUser, type TestContext } from "./setup";
+import { addAccountMember, createTestContext, getAccountMembers, getUserAccounts, seedAccount, seedUser, type TestContext } from "./setup";
 
 type AccountWithUser = {
 	id: string;

@@ -17,12 +17,8 @@
 		"esModuleInterop": true,
 		"declaration": true,
 		"declarationMap": true,
-		"paths": {
-			"@media-timeline/core": ["./packages/core/src/index.ts"],
-			"@media-timeline/providers": ["./packages/providers/src/index.ts"],
-			"@media-timeline/schema": ["./packages/schema/src/index.ts"],
-			"@media-timeline/schema/database": ["./packages/schema/src/database.ts"]
-		}
+		"types": ["@cloudflare/workers-types", "bun"]
 	},
-	"exclude": ["node_modules", "dist"]
+	"include": ["src/**/*", "__tests__/**/*"],
+	"exclude": ["node_modules", "packages"]
 }

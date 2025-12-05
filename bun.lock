@@ -6,55 +6,14 @@
       "name": "media-timeline",
       "dependencies": {
         "@f0rbit/corpus": "^0.1.2",
-        "zod": "^3.24.0",
-      },
-      "devDependencies": {
-        "@types/bun": "latest",
-        "hono": "^4.6.0",
-        "typescript": "^5.7.2",
-      },
-    },
-    "packages/core": {
-      "name": "@media-timeline/core",
-      "version": "0.1.0",
-      "dependencies": {
-        "@media-timeline/schema": "workspace:*",
-        "date-fns": "^4.1.0",
-      },
-      "peerDependencies": {
-        "zod": "^3",
-      },
-    },
-    "packages/providers": {
-      "name": "@media-timeline/providers",
-      "version": "0.1.0",
-      "dependencies": {
-        "@media-timeline/core": "workspace:*",
-        "@media-timeline/schema": "workspace:*",
-      },
-      "peerDependencies": {
-        "zod": "^3",
-      },
-    },
-    "packages/schema": {
-      "name": "@media-timeline/schema",
-      "version": "0.1.0",
-      "dependencies": {
-        "drizzle-orm": "^0.44.7",
-        "zod": "^3.24.0",
-      },
-    },
-    "packages/worker": {
-      "name": "@media-timeline/worker",
-      "version": "0.1.0",
-      "dependencies": {
-        "@f0rbit/corpus": "^0.1.2",
         "drizzle-orm": "^0.44.7",
         "hono": "^4.6.0",
-        "zod": "^3.22.0",
+        "zod": "^3.24.0",
       },
       "devDependencies": {
         "@cloudflare/workers-types": "^4.20241127.0",
+        "@types/bun": "latest",
+        "typescript": "^5.7.2",
         "wrangler": "^3.90.0",
       },
     },
@@ -176,14 +135,6 @@
 
     "@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.9", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.0.3", "@jridgewell/sourcemap-codec": "^1.4.10" } }, "sha512-3Belt6tdc8bPgAtbcmdtNJlirVoTmEb5e2gC94PnkwEW9jI6CAHUeoG85tjWP5WquqfavoMtMwiG4P926ZKKuQ=="],
 
-    "@media-timeline/core": ["@media-timeline/core@workspace:packages/core"],
-
-    "@media-timeline/providers": ["@media-timeline/providers@workspace:packages/providers"],
-
-    "@media-timeline/schema": ["@media-timeline/schema@workspace:packages/schema"],
-
-    "@media-timeline/worker": ["@media-timeline/worker@workspace:packages/worker"],
-
     "@types/bun": ["@types/bun@1.3.3", "", { "dependencies": { "bun-types": "1.3.3" } }, "sha512-ogrKbJ2X5N0kWLLFKeytG0eHDleBYtngtlbu9cyBKFtNL3cnpDZkNdQj8flVf6WTZUX5ulI9AY1oa7ljhSrp+g=="],
 
     "@types/node": ["@types/node@24.10.1", "", { "dependencies": { "undici-types": "~7.16.0" } }, "sha512-GNWcUTRBgIRJD5zj+Tq0fKOJ5XZajIiBroOF0yvj2bSU1WvNdYS/dn9UxwsujGW4JX06dnHyjV2y9rRaybH0iQ=="],
@@ -209,8 +160,6 @@
     "cookie": ["cookie@0.7.2", "", {}, "sha512-yki5XnKuf750l50uGTllt6kKILY4nQ1eNIQatoXEByZ5dWgnKqbnqmTrBE5B4N7lrMJKQ2ytWMiTO2o0v6Ew/w=="],
 
     "data-uri-to-buffer": ["data-uri-to-buffer@2.0.2", "", {}, "sha512-ND9qDTLc6diwj+Xe5cdAgVTbLVdXbtxTJRXRhli8Mowuaan+0EJOtdqJ0QCHNSSPyoXGx9HX2/VMnKeC34AChA=="],
-
-    "date-fns": ["date-fns@4.1.0", "", {}, "sha512-Ukq0owbQXxa/U3EGtsdVBkR1w7KOQ5gIBqdH2hkvknzZPYvBxb/aa6E8L7tmjFtkwZBu3UXBbjIgPo/Ez4xaNg=="],
 
     "defu": ["defu@6.1.4", "", {}, "sha512-mEQCMmwJu317oSz8CwdIOdwf3xMif1ttiM8LTufzc3g6kR+9Pe236twL8j3IYT1F7GfRgGcW6MWxzZjLIkuHIg=="],
 

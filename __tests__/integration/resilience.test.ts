@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { initialState, isCircuitOpen, type RateLimitState, shouldFetch, updateOnFailure, updateOnSuccess } from "@media-timeline/core";
+import { initialState, isCircuitOpen, type RateLimitState, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
 import { ACCOUNTS, GITHUB_FIXTURES, USERS } from "./fixtures";
 import { createTestContext, getAccount, getRateLimit, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
 

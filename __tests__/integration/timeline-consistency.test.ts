@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type CommitGroup, combineTimelines, groupByDate, groupCommits, normalizeBluesky, normalizeGitHub, type TimelineEntry, type TimelineItem } from "@media-timeline/core";
+import { normalizeBluesky, normalizeGitHub } from "../../src/platforms";
+import type { CommitGroup, TimelineItem } from "../../src/schema";
+import { combineTimelines, groupByDate, groupCommits, type TimelineEntry } from "../../src/timeline";
 import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
 import { createTestContext, seedAccount, seedUser, type TestContext } from "./setup";
 

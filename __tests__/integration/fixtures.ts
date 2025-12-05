@@ -1,24 +1,5 @@
-import {
-	type BlueskyAuthor,
-	type BlueskyFeedItem,
-	type BlueskyPost,
-	type BlueskyRaw,
-	type DeepPartial,
-	type DevpadRaw,
-	type DevpadTask,
-	daysAgo,
-	type GitHubCommit,
-	type GitHubEvent,
-	type GitHubPushEvent,
-	type GitHubRaw,
-	hoursAgo,
-	mergeDeep,
-	minutesAgo,
-	randomSha,
-	uuid,
-	type YouTubeRaw,
-	type YouTubeVideo,
-} from "@media-timeline/core";
+import type { BlueskyAuthor, BlueskyFeedItem, BlueskyPost, BlueskyRaw, DevpadRaw, DevpadTask, GitHubCommit, GitHubEvent, GitHubPushEvent, GitHubRaw, YouTubeRaw, YouTubeVideo } from "../../src/schema";
+import { daysAgo, type DeepPartial, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
 
 export const makeGitHubCommit = (overrides: DeepPartial<GitHubCommit> = {}): GitHubCommit =>
 	mergeDeep(
