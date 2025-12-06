@@ -166,8 +166,8 @@ const createConnectionRoutesWithEnv = (env: Bindings) => {
 		const accountId = crypto.randomUUID();
 		const memberId = crypto.randomUUID();
 
-		const encryptedAccessToken = await encryptForTest(body.access_token, env.ENCRYPTION_KEY);
-		const encryptedRefreshToken = body.refresh_token ? await encryptForTest(body.refresh_token, env.ENCRYPTION_KEY) : null;
+		const encryptedAccessToken = await encryptForTest(body.access_token, env.EncryptionKey);
+		const encryptedRefreshToken = body.refresh_token ? await encryptForTest(body.refresh_token, env.EncryptionKey) : null;
 
 		await env.DB.batch([
 			env.DB.prepare(`

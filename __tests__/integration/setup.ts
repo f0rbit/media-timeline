@@ -1,10 +1,12 @@
-import { Database } from "bun:sqlite";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { create_corpus, create_memory_backend, define_store, json_codec, type Store } from "@f0rbit/corpus";
-import { encrypt, hashApiKey, type Platform, unwrap, unwrapErr, uuid } from "@media-timeline/core";
-import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, YouTubeMemoryProvider } from "@media-timeline/providers";
+import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
+import type { Platform } from "../../src/schema";
+import { encrypt, hashApiKey, unwrap, unwrapErr, uuid } from "../../src/utils";
 import { z } from "zod";
 
 export { hashApiKey };
+export type { Platform };
 
 const RawDataSchema = z.record(z.unknown());
 const TimelineDataSchema = z.record(z.unknown());
@@ -72,7 +74,7 @@ export type R2Bucket = {
 export type TestEnv = {
 	DB: D1Database;
 	BUCKET: R2Bucket;
-	ENCRYPTION_KEY: string;
+	EncryptionKey: string;
 	ENVIRONMENT: string;
 };
 
@@ -186,11 +188,11 @@ export const encryptToken = async (plaintext: string, key: string = ENCRYPTION_K
 
 const createD1FromSqlite = (db: Database): D1Database => {
 	const createPreparedStatement = (query: string): D1PreparedStatement => {
-		let boundParams: unknown[] = [];
+		let boundParams: SQLQueryBindings[] = [];
 
 		const statement: D1PreparedStatement = {
 			bind(...params: unknown[]): D1PreparedStatement {
-				boundParams = params;
+				boundParams = params as SQLQueryBindings[];
 				return statement;
 			},
 			async first<T>(column?: string): Promise<T | null> {
@@ -207,8 +209,8 @@ const createD1FromSqlite = (db: Database): D1Database => {
 			},
 			async run(): Promise<{ success: boolean; changes: number }> {
 				const stmt = db.prepare(query);
-				stmt.run(...boundParams);
-				return { success: true, changes: db.changes };
+				const result = stmt.run(...boundParams);
+				return { success: true, changes: result.changes };
 			},
 		};
 		return statement;
@@ -255,7 +257,7 @@ const createMemoryR2 = (): R2Bucket => {
 			if (value instanceof ArrayBuffer) {
 				storage.set(key, value);
 			} else if (value instanceof Uint8Array) {
-				storage.set(key, value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength));
+				storage.set(key, value.buffer.slice(value.byteOffset, value.byteOffset + value.byteLength) as ArrayBuffer);
 			} else if (typeof value === "string") {
 				storage.set(key, new TextEncoder().encode(value).buffer as ArrayBuffer);
 			} else {
@@ -351,7 +353,7 @@ export const createTestContext = (): TestContext => {
 	const env: TestEnv = {
 		DB: d1,
 		BUCKET: r2,
-		ENCRYPTION_KEY,
+		EncryptionKey: ENCRYPTION_KEY,
 		ENVIRONMENT: "test",
 	};
 
@@ -378,8 +380,8 @@ export const seedUser = async (ctx: TestContext, user: UserSeed): Promise<void> 
 
 export const seedAccount = async (ctx: TestContext, userId: string, account: AccountSeed, role: MemberRole = "owner"): Promise<void> => {
 	const timestamp = now();
-	const encryptedAccessToken = await encryptToken(account.access_token, ctx.env.ENCRYPTION_KEY);
-	const encryptedRefreshToken = account.refresh_token ? await encryptToken(account.refresh_token, ctx.env.ENCRYPTION_KEY) : null;
+	const encryptedAccessToken = await encryptToken(account.access_token, ctx.env.EncryptionKey);
+	const encryptedRefreshToken = account.refresh_token ? await encryptToken(account.refresh_token, ctx.env.EncryptionKey) : null;
 
 	await ctx.d1
 		.prepare(`

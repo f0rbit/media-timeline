@@ -1,0 +1,80 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  release:
+    types: [published]
+
+# Prevent concurrent deployments to the same stage
+concurrency:
+  group: deploy-${{ github.event_name == 'release' && 'production' || 'staging' }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run tests
+        run: bun test
+
+      - name: Determine stage
+        id: stage
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "stage=production" >> $GITHUB_OUTPUT
+            echo "Deploying to production (release: ${{ github.event.release.tag_name }})"
+          else
+            echo "stage=staging" >> $GITHUB_OUTPUT
+            echo "Deploying to staging (commit: ${{ github.sha }})"
+          fi
+
+      - name: Deploy to ${{ steps.stage.outputs.stage }}
+        run: bunx sst deploy --stage ${{ steps.stage.outputs.stage }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_DEFAULT_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Run D1 migrations
+        if: success()
+        run: |
+          # Get database name from SST output
+          DB_NAME="media-timeline-${{ steps.stage.outputs.stage }}-dbdatabase"
+          
+          # Find the actual database name (SST adds a random suffix)
+          FULL_DB_NAME=$(bunx wrangler d1 list --json | jq -r ".[] | select(.name | startswith(\"$DB_NAME\")) | .name" | head -1)
+          
+          if [ -n "$FULL_DB_NAME" ]; then
+            echo "Running migrations on $FULL_DB_NAME"
+            bunx wrangler d1 migrations apply "$FULL_DB_NAME" --remote
+          else
+            echo "Warning: Could not find D1 database starting with $DB_NAME"
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Post deployment summary
+        if: success()
+        run: |
+          echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Stage:** ${{ steps.stage.outputs.stage }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "- **Release:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "- **Commit:** ${{ github.sha }}" >> $GITHUB_STEP_SUMMARY
+          fi

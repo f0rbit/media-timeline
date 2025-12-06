@@ -481,8 +481,8 @@ cd packages/worker
 # Seed test data
 bun run scripts/seed-local.ts
 
-# Start worker locally
-bunx wrangler dev
+# Start worker locally with SST
+bun run dev
 ```
 
 ### Testing
@@ -503,20 +503,66 @@ bun run test --coverage
 
 ## Deployment
 
-### Environment Variables
+This project uses [SST](https://sst.dev) for infrastructure management and deployment.
+
+### Prerequisites
+
+1. Set your Cloudflare API token:
+```bash
+export CLOUDFLARE_API_TOKEN=your-api-token
+export CLOUDFLARE_DEFAULT_ACCOUNT_ID=your-account-id
+```
+
+2. Set the encryption key secret:
+```bash
+npx sst secret set EncryptionKey your-32-byte-key-here
+```
+
+For production:
+```bash
+npx sst secret set EncryptionKey your-32-byte-key-here --stage production
+```
+
+### Development
 
 ```bash
-# In Cloudflare dashboard or wrangler.toml
-ENCRYPTION_KEY=your-32-byte-key-here
-ENVIRONMENT=production
+# Start local development server
+bun run dev
 ```
+
+This runs `sst dev` which:
+- Creates development D1 database and R2 bucket
+- Deploys the worker with live reload
+- Enables local testing at the provided URL
 
 ### Deploy
 
 ```bash
-cd packages/worker
-bunx wrangler deploy
+# Deploy to dev stage
+bun run deploy
+
+# Deploy to production
+bun run deploy:prod
 ```
+
+### D1 Migrations
+
+D1 migrations are still managed with wrangler CLI:
+
+```bash
+# Apply migrations (uses database ID from SST output)
+bunx wrangler d1 migrations apply <database-name> --remote
+
+# For local development
+bunx wrangler d1 migrations apply <database-name> --local
+```
+
+### SST Outputs
+
+After deployment, SST outputs:
+- `api`: Worker URL
+- `databaseId`: D1 database ID  
+- `bucketName`: R2 bucket name
 
 ## Extensions & TODOs
 

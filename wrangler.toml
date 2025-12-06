@@ -1,0 +1,19 @@
+name = "media-timeline"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "media-timeline-tom-dbdatabase-mwauhwet"
+database_id = "f5d4e12d-0442-4ecf-8d3f-dc6c7ab7b469"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "media-timeline"
+
+[vars]
+ENVIRONMENT = "development"

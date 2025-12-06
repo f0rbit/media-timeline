@@ -1,24 +1,26 @@
 {
 	"name": "media-timeline",
 	"private": true,
-	"workspaces": [
-		"packages/*"
-	],
+	"type": "module",
 	"scripts": {
-		"build": "bun run --filter='./packages/*' build",
+		"dev": "sst dev",
+		"deploy": "sst deploy --stage dev",
+		"deploy:prod": "sst deploy --stage production",
 		"test": "bun test",
 		"test:coverage": "bun test --coverage",
-		"test:all": "bun run test && bun run --filter='./packages/*' test",
-		"typecheck": "bun run --filter='./packages/*' typecheck",
-		"dev": "bun run --filter=@media-timeline/worker dev"
+		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {
 		"@f0rbit/corpus": "^0.1.2",
-		"zod": "^3.24.0"
+		"drizzle-orm": "^0.44.7",
+		"hono": "^4.10.7",
+		"sst": "^3.17.25",
+		"zod": "^3.25.76"
 	},
 	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20251205.0",
 		"@types/bun": "latest",
-		"hono": "^4.6.0",
-		"typescript": "^5.7.2"
+		"typescript": "^5.9.3",
+		"wrangler": "^3.114.15"
 	}
 }

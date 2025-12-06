@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type CommitGroup, combineTimelines, groupByDate, groupCommits, normalizeBlueSky, normalizeGitHub, type TimelineEntry, type TimelineItem } from "@media-timeline/core";
-import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeBlueSkyFeedItem, makeBlueSkyPost, makeBlueSkyRaw, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
+import { normalizeBluesky, normalizeGitHub } from "../../src/platforms";
+import type { CommitGroup, TimelineItem } from "../../src/schema";
+import { combineTimelines, groupByDate, groupCommits, type TimelineEntry } from "../../src/timeline";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
 import { createTestContext, seedAccount, seedUser, type TestContext } from "./setup";
 
 const isCommitGroup = (entry: TimelineEntry): entry is CommitGroup => entry.type === "commit_group";
@@ -49,7 +51,7 @@ describe("timeline consistency", () => {
 			const grouped = groupCommits(items);
 			expect(grouped).toHaveLength(1);
 
-			const group = grouped[0];
+			const group = grouped[0]!;
 			expect(isCommitGroup(group)).toBe(true);
 			if (isCommitGroup(group)) {
 				expect(group.repo).toBe("user/repo");
@@ -127,7 +129,7 @@ describe("timeline consistency", () => {
 			const blueskyRaw = BLUESKY_FIXTURES.singlePost();
 
 			const commitItems = normalizeGitHub(githubRaw);
-			const postItems = normalizeBlueSky(blueskyRaw);
+			const postItems = normalizeBluesky(blueskyRaw);
 			const allItems = [...commitItems, ...postItems];
 
 			const grouped = groupCommits(allItems);
@@ -146,7 +148,7 @@ describe("timeline consistency", () => {
 
 		it("handles only non-commit items", () => {
 			const blueskyRaw = BLUESKY_FIXTURES.multiplePosts(3);
-			const items = normalizeBlueSky(blueskyRaw);
+			const items = normalizeBluesky(blueskyRaw);
 
 			const grouped = groupCommits(items);
 			expect(grouped).toHaveLength(3);
@@ -184,9 +186,9 @@ describe("timeline consistency", () => {
 			];
 
 			const sorted = combineTimelines(items);
-			expect(sorted[0].id).toBe("new");
-			expect(sorted[1].id).toBe("mid");
-			expect(sorted[2].id).toBe("old");
+			expect(sorted[0]?.id).toBe("new");
+			expect(sorted[1]?.id).toBe("mid");
+			expect(sorted[2]?.id).toBe("old");
 		});
 
 		it("groups items by date correctly", () => {
@@ -213,42 +215,36 @@ describe("timeline consistency", () => {
 			const dateGroups = groupByDate(grouped);
 
 			expect(dateGroups).toHaveLength(2);
-			expect(dateGroups[0].entries.length).toBe(2);
-			expect(dateGroups[1].entries.length).toBe(1);
+			expect(dateGroups[0]?.items.length).toBe(2);
+			expect(dateGroups[1]?.items.length).toBe(1);
 
 			const today = new Date();
 			today.setDate(today.getDate());
 			const expectedDate = today.toISOString().split("T")[0];
-			expect(dateGroups[0].date).toBe(expectedDate);
+			expect(dateGroups[0]?.date).toBe(expectedDate);
 		});
 
 		it("sorts date groups in descending order", () => {
 			const entries: TimelineEntry[] = [
 				{
-					id: "github:commit_group:repo:2024-01-01",
-					platform: "github",
 					type: "commit_group",
-					timestamp: "2024-01-01T12:00:00Z",
+					date: "2024-01-01",
 					repo: "test/repo",
 					commits: [],
 					total_additions: 0,
 					total_deletions: 0,
 				},
 				{
-					id: "github:commit_group:repo:2024-01-03",
-					platform: "github",
 					type: "commit_group",
-					timestamp: "2024-01-03T12:00:00Z",
+					date: "2024-01-03",
 					repo: "test/repo",
 					commits: [],
 					total_additions: 0,
 					total_deletions: 0,
 				},
 				{
-					id: "github:commit_group:repo:2024-01-02",
-					platform: "github",
 					type: "commit_group",
-					timestamp: "2024-01-02T12:00:00Z",
+					date: "2024-01-02",
 					repo: "test/repo",
 					commits: [],
 					total_additions: 0,
@@ -258,9 +254,9 @@ describe("timeline consistency", () => {
 
 			const dateGroups = groupByDate(entries);
 
-			expect(dateGroups[0].date).toBe("2024-01-03");
-			expect(dateGroups[1].date).toBe("2024-01-02");
-			expect(dateGroups[2].date).toBe("2024-01-01");
+			expect(dateGroups[0]?.date).toBe("2024-01-03");
+			expect(dateGroups[1]?.date).toBe("2024-01-02");
+			expect(dateGroups[2]?.date).toBe("2024-01-01");
 		});
 
 		it("combines items from multiple platforms sorted by time", () => {
@@ -276,24 +272,24 @@ describe("timeline consistency", () => {
 				}),
 			]);
 
-			const blueskyRaw = makeBlueSkyRaw([
-				makeBlueSkyFeedItem({
-					post: makeBlueSkyPost({ record: { text: "newest", createdAt: timestamp1 } }),
+			const blueskyRaw = makeBlueskyRaw([
+				makeBlueskyFeedItem({
+					post: makeBlueskyPost({ record: { text: "newest", createdAt: timestamp1 } }),
 				}),
-				makeBlueSkyFeedItem({
-					post: makeBlueSkyPost({ record: { text: "oldest", createdAt: timestamp3 } }),
+				makeBlueskyFeedItem({
+					post: makeBlueskyPost({ record: { text: "oldest", createdAt: timestamp3 } }),
 				}),
 			]);
 
-			const items = [...normalizeGitHub(githubRaw), ...normalizeBlueSky(blueskyRaw)];
+			const items = [...normalizeGitHub(githubRaw), ...normalizeBluesky(blueskyRaw)];
 
 			const sorted = combineTimelines(items);
 
-			expect(sorted[0].platform).toBe("bluesky");
-			expect(sorted[0].title).toContain("newest");
-			expect(sorted[1].platform).toBe("github");
-			expect(sorted[2].platform).toBe("bluesky");
-			expect(sorted[2].title).toContain("oldest");
+			expect(sorted[0]?.platform).toBe("bluesky");
+			expect(sorted[0]?.title).toContain("newest");
+			expect(sorted[1]?.platform).toBe("github");
+			expect(sorted[2]?.platform).toBe("bluesky");
+			expect(sorted[2]?.title).toContain("oldest");
 		});
 	});
 
@@ -372,8 +368,8 @@ describe("timeline consistency", () => {
 			if (timelineResult.ok) {
 				const parents = timelineResult.value.parents ?? [];
 				expect(parents).toHaveLength(1);
-				expect(parents[0].store_id).toBe(`raw/github/${ACCOUNTS.alice_github.id}`);
-				expect(parents[0].version).toBe(rawResult.value.version);
+				expect(parents[0]?.store_id).toBe(`raw/github/${ACCOUNTS.alice_github.id}`);
+				expect(parents[0]?.version).toBe(rawResult.value.version);
 			}
 		});
 
@@ -427,7 +423,7 @@ describe("timeline consistency", () => {
 
 			const items = normalizeGitHub(raw);
 			expect(items).toHaveLength(1);
-			expect(items[0].title.length).toBeLessThanOrEqual(72);
+			expect(items[0]?.title.length).toBeLessThanOrEqual(72);
 		});
 
 		it("handles commits with multi-line messages", () => {
@@ -442,21 +438,21 @@ describe("timeline consistency", () => {
 			]);
 
 			const items = normalizeGitHub(raw);
-			expect(items[0].title).toBe("First line");
+			expect(items[0]?.title).toBe("First line");
 		});
 
 		it("handles posts with special characters", () => {
 			const specialText = 'Hello <world> & "friends" 🎉';
-			const raw = makeBlueSkyRaw([
-				makeBlueSkyFeedItem({
-					post: makeBlueSkyPost({
+			const raw = makeBlueskyRaw([
+				makeBlueskyFeedItem({
+					post: makeBlueskyPost({
 						record: { text: specialText, createdAt: new Date().toISOString() },
 					}),
 				}),
 			]);
 
-			const items = normalizeBlueSky(raw);
-			expect(items[0].title).toBe(specialText);
+			const items = normalizeBluesky(raw);
+			expect(items[0]?.title).toBe(specialText);
 		});
 
 		it("handles empty events array", () => {
@@ -467,7 +463,7 @@ describe("timeline consistency", () => {
 
 		it("handles empty feed array", () => {
 			const raw = BLUESKY_FIXTURES.empty();
-			const items = normalizeBlueSky(raw);
+			const items = normalizeBluesky(raw);
 			expect(items).toHaveLength(0);
 		});
 
@@ -475,7 +471,7 @@ describe("timeline consistency", () => {
 			const raw = GITHUB_FIXTURES.withNonPushEvents();
 			const items = normalizeGitHub(raw);
 			expect(items).toHaveLength(1);
-			expect(items[0].type).toBe("commit");
+			expect(items[0]?.type).toBe("commit");
 		});
 	});
 });

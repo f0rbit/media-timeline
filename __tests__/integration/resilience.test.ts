@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { initialState, isCircuitOpen, type RateLimitState, shouldFetch, updateOnFailure, updateOnSuccess } from "@media-timeline/core";
+import { initialState, isCircuitOpen, type RateLimitState, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
 import { ACCOUNTS, GITHUB_FIXTURES, USERS } from "./fixtures";
 import { createTestContext, getAccount, getRateLimit, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
 
@@ -251,7 +251,9 @@ describe("resilience", () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.error.kind).toBe("rate_limited");
-				expect(result.error.retry_after).toBe(60);
+				if (result.error.kind === "rate_limited") {
+					expect(result.error.retry_after).toBe(60);
+				}
 			}
 		});
 
@@ -376,7 +378,9 @@ describe("resilience", () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.error.kind).toBe("rate_limited");
-				expect(result.error.retry_after).toBe(60);
+				if (result.error.kind === "rate_limited") {
+					expect(result.error.retry_after).toBe(60);
+				}
 			}
 		});
 
@@ -388,7 +392,9 @@ describe("resilience", () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.error.kind).toBe("rate_limited");
-				expect(result.error.retry_after).toBe(3600);
+				if (result.error.kind === "rate_limited") {
+					expect(result.error.retry_after).toBe(3600);
+				}
 			}
 		});
 
