@@ -251,7 +251,9 @@ describe("resilience", () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.error.kind).toBe("rate_limited");
-				expect(result.error.retry_after).toBe(60);
+				if (result.error.kind === "rate_limited") {
+					expect(result.error.retry_after).toBe(60);
+				}
 			}
 		});
 
@@ -376,7 +378,9 @@ describe("resilience", () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.error.kind).toBe("rate_limited");
-				expect(result.error.retry_after).toBe(60);
+				if (result.error.kind === "rate_limited") {
+					expect(result.error.retry_after).toBe(60);
+				}
 			}
 		});
 
@@ -388,7 +392,9 @@ describe("resilience", () => {
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
 				expect(result.error.kind).toBe("rate_limited");
-				expect(result.error.retry_after).toBe(3600);
+				if (result.error.kind === "rate_limited") {
+					expect(result.error.retry_after).toBe(3600);
+				}
 			}
 		});
 

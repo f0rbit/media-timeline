@@ -24,14 +24,16 @@ export const makeGitHubPushEvent = (overrides: DeepPartial<GitHubPushEvent> = {}
 		overrides
 	);
 
-export const makeGitHubWatchEvent = (overrides: Partial<GitHubEvent> = {}): GitHubEvent => ({
-	id: uuid(),
-	type: "WatchEvent",
-	created_at: new Date().toISOString(),
-	repo: { id: 12345, name: "test-user/test-repo", url: "https://api.github.com/repos/test-user/test-repo" },
-	payload: { action: "started" },
-	...overrides,
-});
+export const makeGitHubWatchEvent = (overrides: Partial<GitHubEvent> = {}): GitHubEvent => {
+	const base = {
+		id: uuid(),
+		type: "WatchEvent" as const,
+		created_at: new Date().toISOString(),
+		repo: { id: 12345, name: "test-user/test-repo", url: "https://api.github.com/repos/test-user/test-repo" },
+		payload: { action: "started" },
+	};
+	return { ...base, ...overrides } as GitHubEvent;
+};
 
 export const makeGitHubRaw = (events: GitHubEvent[] = [], fetchedAt?: string): GitHubRaw => ({
 	events,
@@ -77,7 +79,9 @@ export const makeBlueskyRaw = (feed: BlueskyFeedItem[] = [], cursor?: string, fe
 export const makeYouTubeVideo = (overrides: DeepPartial<YouTubeVideo> = {}): YouTubeVideo =>
 	mergeDeep(
 		{
-			id: { videoId: uuid().slice(0, 11) },
+			kind: "youtube#searchResult",
+			etag: "some-etag",
+			id: { kind: "youtube#video", videoId: uuid().slice(0, 11) },
 			snippet: {
 				publishedAt: new Date().toISOString(),
 				channelId: `UC${uuid().slice(0, 22)}`,
@@ -100,20 +104,17 @@ export const makeYouTubeRaw = (items: YouTubeVideo[] = [], nextPageToken?: strin
 	fetched_at: fetchedAt ?? new Date().toISOString(),
 });
 
-export const makeDevpadTask = (overrides: DeepPartial<DevpadTask> = {}): DevpadTask =>
-	mergeDeep(
-		{
-			id: uuid(),
-			title: "Test Task",
-			status: "todo" as const,
-			priority: "medium" as const,
-			project: "default",
-			tags: ["test"],
-			created_at: new Date().toISOString(),
-			updated_at: new Date().toISOString(),
-		},
-		overrides
-	);
+export const makeDevpadTask = (overrides: Partial<DevpadTask> = {}): DevpadTask => ({
+	id: uuid(),
+	title: "Test Task",
+	status: "todo",
+	priority: "medium",
+	project: "default",
+	tags: ["test"],
+	created_at: new Date().toISOString(),
+	updated_at: new Date().toISOString(),
+	...overrides,
+});
 
 export const makeDevpadRaw = (tasks: DevpadTask[] = [], fetchedAt?: string): DevpadRaw => ({
 	tasks,

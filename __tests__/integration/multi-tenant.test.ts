@@ -328,8 +328,9 @@ describe("multi-tenant", () => {
 			const members = await getAccountMembers(ctx, ACCOUNTS.shared_org_github.id);
 			expect(members.results).toHaveLength(2);
 
-			const ownerMember = members.results.find((m: { role: string }) => m.role === "owner");
-			const regularMember = members.results.find((m: { role: string }) => m.role === "member");
+			const typedMembers = members.results as Array<{ role: string; user_id: string }>;
+			const ownerMember = typedMembers.find(m => m.role === "owner");
+			const regularMember = typedMembers.find(m => m.role === "member");
 
 			expect(ownerMember).toBeDefined();
 			expect(regularMember).toBeDefined();
@@ -348,7 +349,8 @@ describe("multi-tenant", () => {
 			const aliceAccounts = await getUserAccounts(ctx, USERS.alice.id);
 			expect(aliceAccounts.results).toHaveLength(2);
 
-			const accountIds = aliceAccounts.results.map((a: { id: string }) => a.id).sort();
+			const typedAliceAccounts = aliceAccounts.results as Array<{ id: string }>;
+			const accountIds = typedAliceAccounts.map(a => a.id).sort();
 			expect(accountIds).toEqual([ACCOUNTS.alice_github.id, ACCOUNTS.shared_org_github.id].sort());
 		});
 
