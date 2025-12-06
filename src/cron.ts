@@ -234,7 +234,7 @@ const processAccount = async (env: Bindings, account: AccountWithUser, providerF
 		return null;
 	}
 
-	return pipe(decrypt(account.access_token_encrypted, env.ENCRYPTION_KEY))
+	return pipe(decrypt(account.access_token_encrypted, env.EncryptionKey))
 		.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
 		.flatMap(token =>
 			pipe(providerFactory.create(account.platform, token))

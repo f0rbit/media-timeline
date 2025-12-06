@@ -2,6 +2,7 @@
 
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { authMiddleware } from "./auth";
 import type { Bindings } from "./bindings";
 import { handleCron } from "./cron";
 import { connectionRoutes, timelineRoutes } from "./routes";
@@ -12,6 +13,7 @@ app.use("*", cors());
 
 app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
+app.use("/api/*", authMiddleware);
 app.route("/api/v1/timeline", timelineRoutes);
 app.route("/api/v1/connections", connectionRoutes);
 

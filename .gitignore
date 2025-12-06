@@ -4,12 +4,14 @@ node_modules/
 # Build outputs
 dist/
 .wrangler/
+.sst/
 
 # Coverage
 coverage/
 
 # Environment variables
 .dev.vars
+.env
 
 # IDE
 .idea/

@@ -1,22 +1,12 @@
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
+import { getAuth } from "./auth";
 import type { Bindings } from "./bindings";
 import { createDb } from "./db";
 import { accountMembers, accounts, DateGroupSchema } from "./schema";
 import { createRawStore, createTimelineStore, RawDataSchema, type CorpusError } from "./storage";
 import { encrypt, err, match, ok, pipe, type Result } from "./utils";
-
-type AuthContext = {
-	user_id: string;
-	key_id: string;
-};
-
-declare module "hono" {
-	interface ContextVariableMap {
-		auth: AuthContext;
-	}
-}
 
 const TimelineDataSchema = z.object({
 	groups: z.array(DateGroupSchema),
@@ -62,7 +52,7 @@ export const timelineRoutes = new Hono<{ Bindings: Bindings }>();
 
 timelineRoutes.get("/:user_id", async c => {
 	const userId = c.req.param("user_id");
-	const auth = c.get("auth");
+	const auth = getAuth(c);
 
 	if (auth.user_id !== userId) {
 		return c.json({ error: "Forbidden", message: "Cannot access other user timelines" }, 403);
@@ -110,7 +100,7 @@ timelineRoutes.get("/:user_id", async c => {
 timelineRoutes.get("/:user_id/raw/:platform", async c => {
 	const userId = c.req.param("user_id");
 	const platform = c.req.param("platform");
-	const auth = c.get("auth");
+	const auth = getAuth(c);
 
 	if (auth.user_id !== userId) {
 		return c.json({ error: "Forbidden", message: "Cannot access other user data" }, 403);
@@ -153,7 +143,7 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 export const connectionRoutes = new Hono<{ Bindings: Bindings }>();
 
 connectionRoutes.get("/", async c => {
-	const auth = c.get("auth");
+	const auth = getAuth(c);
 	const db = createDb(c.env.DB);
 
 	const results = await db
@@ -174,7 +164,7 @@ connectionRoutes.get("/", async c => {
 });
 
 connectionRoutes.post("/", async c => {
-	const auth = c.get("auth");
+	const auth = getAuth(c);
 	const parseResult = CreateConnectionBodySchema.safeParse(await c.req.json());
 	if (!parseResult.success) {
 		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
@@ -187,10 +177,10 @@ connectionRoutes.post("/", async c => {
 
 	const db = createDb(c.env.DB);
 
-	const result = await pipe(encrypt(body.access_token, c.env.ENCRYPTION_KEY))
+	const result = await pipe(encrypt(body.access_token, c.env.EncryptionKey))
 		.flatMap(encryptedAccessToken =>
 			body.refresh_token
-				? pipe(encrypt(body.refresh_token, c.env.ENCRYPTION_KEY))
+				? pipe(encrypt(body.refresh_token, c.env.EncryptionKey))
 						.map(encryptedRefreshToken => ({ encryptedAccessToken, encryptedRefreshToken: encryptedRefreshToken as string | null }))
 						.result()
 				: Promise.resolve(ok({ encryptedAccessToken, encryptedRefreshToken: null as string | null }))
@@ -228,7 +218,7 @@ connectionRoutes.post("/", async c => {
 });
 
 connectionRoutes.delete("/:account_id", async c => {
-	const auth = c.get("auth");
+	const auth = getAuth(c);
 	const accountId = c.req.param("account_id");
 	const db = createDb(c.env.DB);
 
@@ -253,7 +243,7 @@ connectionRoutes.delete("/:account_id", async c => {
 });
 
 connectionRoutes.post("/:account_id/members", async c => {
-	const auth = c.get("auth");
+	const auth = getAuth(c);
 	const accountId = c.req.param("account_id");
 	const parseResult = AddMemberBodySchema.safeParse(await c.req.json());
 	if (!parseResult.success) {

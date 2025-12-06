@@ -3,8 +3,9 @@
 	"private": true,
 	"type": "module",
 	"scripts": {
-		"dev": "wrangler dev",
-		"deploy": "wrangler deploy",
+		"dev": "sst dev",
+		"deploy": "sst deploy --stage dev",
+		"deploy:prod": "sst deploy --stage production",
 		"test": "bun test",
 		"test:coverage": "bun test --coverage",
 		"typecheck": "tsc --noEmit"
@@ -12,13 +13,14 @@
 	"dependencies": {
 		"@f0rbit/corpus": "^0.1.2",
 		"drizzle-orm": "^0.44.7",
-		"hono": "^4.6.0",
-		"zod": "^3.24.0"
+		"hono": "^4.10.7",
+		"sst": "^3.17.25",
+		"zod": "^3.25.76"
 	},
 	"devDependencies": {
-		"@cloudflare/workers-types": "^4.20241127.0",
+		"@cloudflare/workers-types": "^4.20251205.0",
 		"@types/bun": "latest",
-		"typescript": "^5.7.2",
-		"wrangler": "^3.90.0"
+		"typescript": "^5.9.3",
+		"wrangler": "^3.114.15"
 	}
 }

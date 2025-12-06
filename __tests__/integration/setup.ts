@@ -74,7 +74,7 @@ export type R2Bucket = {
 export type TestEnv = {
 	DB: D1Database;
 	BUCKET: R2Bucket;
-	ENCRYPTION_KEY: string;
+	EncryptionKey: string;
 	ENVIRONMENT: string;
 };
 
@@ -353,7 +353,7 @@ export const createTestContext = (): TestContext => {
 	const env: TestEnv = {
 		DB: d1,
 		BUCKET: r2,
-		ENCRYPTION_KEY,
+		EncryptionKey: ENCRYPTION_KEY,
 		ENVIRONMENT: "test",
 	};
 
@@ -380,8 +380,8 @@ export const seedUser = async (ctx: TestContext, user: UserSeed): Promise<void> 
 
 export const seedAccount = async (ctx: TestContext, userId: string, account: AccountSeed, role: MemberRole = "owner"): Promise<void> => {
 	const timestamp = now();
-	const encryptedAccessToken = await encryptToken(account.access_token, ctx.env.ENCRYPTION_KEY);
-	const encryptedRefreshToken = account.refresh_token ? await encryptToken(account.refresh_token, ctx.env.ENCRYPTION_KEY) : null;
+	const encryptedAccessToken = await encryptToken(account.access_token, ctx.env.EncryptionKey);
+	const encryptedRefreshToken = account.refresh_token ? await encryptToken(account.refresh_token, ctx.env.EncryptionKey) : null;
 
 	await ctx.d1
 		.prepare(`

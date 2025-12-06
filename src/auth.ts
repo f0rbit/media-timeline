@@ -1,11 +1,12 @@
 import { eq } from "drizzle-orm";
+import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import type { Bindings } from "./bindings";
 import { createDb } from "./db";
 import { apiKeys } from "./schema";
 import { hashApiKey } from "./utils";
 
-type AuthContext = {
+export type AuthContext = {
 	user_id: string;
 	key_id: string;
 };
@@ -15,6 +16,18 @@ declare module "hono" {
 		auth: AuthContext;
 	}
 }
+
+/**
+ * Get auth context from request, throwing a clear error if middleware wasn't applied.
+ * Use this instead of `c.get("auth")` to fail fast with actionable error messages.
+ */
+export const getAuth = (c: Context): AuthContext => {
+	const auth = c.get("auth");
+	if (!auth) {
+		throw new Error("Auth context not found. Ensure authMiddleware is applied to this route. " + "Add `app.use('/api/*', authMiddleware)` in index.ts");
+	}
+	return auth;
+};
 
 export const authMiddleware = createMiddleware<{ Bindings: Bindings }>(async (c, next) => {
 	const authHeader = c.req.header("Authorization");
