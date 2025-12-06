@@ -1,7 +1,6 @@
 import { type BlueskyFeedItem, type BlueskyRaw, BlueskyRawSchema, type PostPayload, type TimelineItem } from "../schema";
 import { err, ok, tryCatchAsync } from "../utils";
-import type { FetchResult, Provider, ProviderError, Tagged } from "./types";
-import { toProviderError } from "./types";
+import { toProviderError, type FetchResult, type Provider, type ProviderError } from "./types";
 
 // === PROVIDER (real API) ===
 
@@ -11,23 +10,23 @@ export type BlueskyProviderConfig = {
 
 const handleBlueskyResponse = async (response: Response): Promise<BlueskyRaw> => {
 	if (response.status === 401) {
-		throw { _tag: "auth_expired", kind: "auth_expired", message: "Bluesky token expired or invalid" } as Tagged<ProviderError>;
+		throw { kind: "auth_expired", message: "Bluesky token expired or invalid" } satisfies ProviderError;
 	}
 
 	if (response.status === 429) {
 		const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "60", 10);
-		throw { _tag: "rate_limited", kind: "rate_limited", retry_after: retryAfter } as Tagged<ProviderError>;
+		throw { kind: "rate_limited", retry_after: retryAfter } satisfies ProviderError;
 	}
 
 	if (!response.ok) {
-		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
+		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
 	}
 
 	const json = (await response.json()) as Record<string, unknown>;
 	const result = BlueskyRawSchema.safeParse({ ...json, fetched_at: new Date().toISOString() });
 
 	if (!result.success) {
-		throw { _tag: "parse_error", kind: "parse_error", message: result.error.message } as Tagged<ProviderError>;
+		throw { kind: "parse_error", message: result.error.message } satisfies ProviderError;
 	}
 
 	return result.data;

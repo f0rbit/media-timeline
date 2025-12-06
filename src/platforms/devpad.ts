@@ -1,7 +1,6 @@
 import { DevpadTaskSchema, type DevpadRaw, type DevpadTask, type TaskPayload, type TimelineItem } from "../schema";
 import { ok, err, tryCatchAsync } from "../utils";
-import type { Provider, ProviderError, FetchResult } from "./types";
-import { toProviderError, type Tagged } from "./types";
+import { toProviderError, type Provider, type ProviderError, type FetchResult } from "./types";
 import { z } from "zod";
 
 // === PROVIDER (real API) ===
@@ -10,16 +9,16 @@ const DevpadApiResponseSchema = z.array(DevpadTaskSchema);
 
 const handleDevpadResponse = async (response: Response): Promise<DevpadRaw> => {
 	if (response.status === 401) {
-		throw { _tag: "auth_expired", kind: "auth_expired", message: "Devpad API key expired or invalid" } as Tagged<ProviderError>;
+		throw { kind: "auth_expired", message: "Devpad API key expired or invalid" } satisfies ProviderError;
 	}
 
 	if (response.status === 429) {
 		const retryAfter = parseInt(response.headers.get("Retry-After") ?? "60", 10);
-		throw { _tag: "rate_limited", kind: "rate_limited", retry_after: retryAfter } as Tagged<ProviderError>;
+		throw { kind: "rate_limited", retry_after: retryAfter } satisfies ProviderError;
 	}
 
 	if (!response.ok) {
-		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
+		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
 	}
 
 	const json = await response.json();
@@ -27,11 +26,10 @@ const handleDevpadResponse = async (response: Response): Promise<DevpadRaw> => {
 
 	if (!parsed.success) {
 		throw {
-			_tag: "api_error",
 			kind: "api_error",
 			status: 200,
 			message: `Invalid response format: ${parsed.error.message}`,
-		} as Tagged<ProviderError>;
+		} satisfies ProviderError;
 	}
 
 	return { tasks: parsed.data, fetched_at: new Date().toISOString() };

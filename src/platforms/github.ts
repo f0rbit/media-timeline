@@ -1,7 +1,6 @@
 import { GitHubRawSchema, type GitHubRaw, type GitHubEvent, type GitHubPushEvent, type TimelineItem, type CommitPayload } from "../schema";
 import { ok, err, type Result } from "../utils";
-import type { Provider, ProviderError, FetchResult } from "./types";
-import { toProviderError, type Tagged } from "./types";
+import { toProviderError, type Provider, type ProviderError, type FetchResult } from "./types";
 
 // === TYPES ===
 
@@ -29,23 +28,23 @@ const parseRateLimitReset = (headers: Headers): number => {
 const handleGitHubResponse = async (response: Response): Promise<GitHubRaw> => {
 	if (response.status === 401 || response.status === 403) {
 		if (response.headers.get("X-RateLimit-Remaining") === "0") {
-			throw { _tag: "rate_limited", kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } as Tagged<ProviderError>;
+			throw { kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } satisfies ProviderError;
 		}
-		throw { _tag: "auth_expired", kind: "auth_expired", message: "GitHub token expired or invalid" } as Tagged<ProviderError>;
+		throw { kind: "auth_expired", message: "GitHub token expired or invalid" } satisfies ProviderError;
 	}
 
 	if (response.status === 429) {
-		throw { _tag: "rate_limited", kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } as Tagged<ProviderError>;
+		throw { kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } satisfies ProviderError;
 	}
 
 	if (!response.ok) {
-		throw { _tag: "api_error", kind: "api_error", status: response.status, message: await response.text() } as Tagged<ProviderError>;
+		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
 	}
 
 	const json = await response.json();
 	const result = GitHubRawSchema.safeParse({ events: json, fetched_at: new Date().toISOString() });
 	if (!result.success) {
-		throw { _tag: "api_error", kind: "api_error", status: 500, message: `Invalid GitHub response: ${result.error.message}` } as Tagged<ProviderError>;
+		throw { kind: "api_error", status: 500, message: `Invalid GitHub response: ${result.error.message}` } satisfies ProviderError;
 	}
 	return result.data;
 };
