@@ -361,13 +361,32 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 	}
 
 	console.log("[refresh] Before calling processAccount");
-	const { processAccount } = await import("./cron");
+	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	const snapshot = await processAccount(ctx, accountWithUser);
 
 	console.log("[refresh] processAccount result:", snapshot ? "snapshot created" : "null");
 
 	if (snapshot) {
+		console.log("[refresh] Generating timeline for user:", auth.user_id);
+		const allUserAccounts = await ctx.db
+			.select({
+				id: accounts.id,
+				platform: accounts.platform,
+				platform_user_id: accounts.platform_user_id,
+				access_token_encrypted: accounts.access_token_encrypted,
+				refresh_token_encrypted: accounts.refresh_token_encrypted,
+				user_id: accountMembers.user_id,
+			})
+			.from(accounts)
+			.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+			.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
+
+		const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
+		console.log("[refresh] Gathered snapshots:", snapshots.length);
+		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
+		console.log("[refresh] Timeline generated");
+
 		return c.json({ status: "refreshed", account_id: accountId });
 	}
 
@@ -407,7 +426,7 @@ connectionRoutes.post("/refresh-all", async c => {
 		return c.json({ status: "completed", succeeded: 0, failed: 0, total: 0 });
 	}
 
-	const { processAccount } = await import("./cron");
+	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	let succeeded = 0;
 	let failed = 0;
@@ -424,6 +443,14 @@ connectionRoutes.post("/refresh-all", async c => {
 			console.error(`[refresh-all] Failed to refresh account ${account.id}:`, e);
 			failed++;
 		}
+	}
+
+	if (succeeded > 0) {
+		console.log("[refresh-all] Generating timeline for user:", auth.user_id);
+		const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+		console.log("[refresh-all] Gathered snapshots:", snapshots.length);
+		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
+		console.log("[refresh-all] Timeline generated");
 	}
 
 	console.log("[refresh-all] Final result:", { succeeded, failed, total: userAccounts.length });
