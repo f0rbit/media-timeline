@@ -353,7 +353,7 @@ export const createTestCorpus = (): TestCorpus => {
 };
 
 const defaultTestProviderFactory: ProviderFactory = {
-	async create(platform, _token) {
+	async create(platform, _platformUserId, _token) {
 		return err({ kind: "unknown_platform", platform });
 	},
 };
@@ -434,7 +434,7 @@ type ProviderDataMap = Record<string, Record<string, unknown>>;
 export const createAppContextWithProviders = (ctx: TestContext, providerData: ProviderDataMap): AppContext => ({
 	...ctx.appContext,
 	providerFactory: {
-		async create(platform, _token) {
+		async create(platform, _platformUserId, _token) {
 			const data = Object.entries(providerData).find(([_accountId, _]) => true)?.[1];
 			if (data) return ok(data);
 			return err({ kind: "unknown_platform" as const, platform });
@@ -443,7 +443,7 @@ export const createAppContextWithProviders = (ctx: TestContext, providerData: Pr
 });
 
 export const createProviderFactoryFromData = (providerData: ProviderDataMap): ProviderFactory => ({
-	async create(_platform, _token) {
+	async create(_platform, _platformUserId, _token) {
 		const data = Object.values(providerData)[0];
 		if (data) return ok(data);
 		return err({ kind: "unknown_platform" as const, platform: _platform });
@@ -453,7 +453,7 @@ export const createProviderFactoryFromData = (providerData: ProviderDataMap): Pr
 export const createProviderFactoryByAccountId =
 	(providerData: ProviderDataMap): ((accountId: string) => ProviderFactory) =>
 	(accountId: string) => ({
-		async create(platform, _token) {
+		async create(platform, _platformUserId, _token) {
 			const data = providerData[accountId];
 			if (data) return ok(data);
 			return err({ kind: "unknown_platform" as const, platform });
@@ -463,7 +463,7 @@ export const createProviderFactoryByAccountId =
 export type ProviderDataByToken = Record<string, Record<string, unknown>>;
 
 export const createProviderFactoryByToken = (dataByToken: ProviderDataByToken): ProviderFactory => ({
-	async create(_platform, token) {
+	async create(_platform, _platformUserId, token) {
 		const data = dataByToken[token];
 		if (data) return ok(data);
 		return err({ kind: "api_error" as const, status: 404, message: `No mock data for token: ${token.slice(0, 10)}...` });

@@ -4,8 +4,9 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware } from "./auth";
 import { createContextFromBindings, type Bindings } from "./bindings";
-import { defaultProviderFactory, handleCron } from "./cron";
+import { handleCron } from "./cron";
 import type { AppContext } from "./infrastructure";
+import { defaultProviderFactory } from "./platforms";
 import { connectionRoutes, timelineRoutes } from "./routes";
 
 type Variables = {

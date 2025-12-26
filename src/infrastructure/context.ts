@@ -1,5 +1,5 @@
 import type { Backend } from "@f0rbit/corpus/cloudflare";
-import type { ProviderFactory } from "../cron";
+import type { ProviderFactory } from "../platforms/types";
 import type { Database } from "../db";
 
 export type DrizzleDB = Database;

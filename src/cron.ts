@@ -2,11 +2,13 @@ import type { Backend } from "@f0rbit/corpus";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
-import { normalizeBluesky, normalizeDevpad, normalizeGitHub, normalizeYouTube } from "./platforms";
+import { normalizeBluesky, normalizeDevpad, normalizeGitHub, normalizeYouTube, type ProviderError, type ProviderFactory } from "./platforms";
 import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
 import { createRawStore, createTimelineStore, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
-import { decrypt, err, fetchResult, match, ok, pipe, to_nullable, tryCatch, type Result } from "./utils";
+import { decrypt, pipe, to_nullable, tryCatch, type Result } from "./utils";
+
+export type { ProviderFactory };
 
 type RawSnapshot = {
 	account_id: string;
@@ -40,13 +42,7 @@ export type CronResult = {
 
 type NormalizeError = { kind: "parse_error"; platform: string; message: string };
 
-type FetchError = { kind: "network_error"; message: string } | { kind: "api_error"; status: number; message: string } | { kind: "unknown_platform"; platform: string };
-
 type ProcessError = { kind: "decryption_failed"; message: string } | { kind: "fetch_failed"; message: string; status?: number } | { kind: "store_failed"; store_id: string } | { kind: "put_failed"; message: string };
-
-export type ProviderFactory = {
-	create(platform: string, token: string): Promise<Result<Record<string, unknown>, FetchError>>;
-};
 
 type TimelineEntry = TimelineItem | CommitGroup;
 
@@ -60,23 +56,6 @@ const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
 	last_failure_at: null,
 	circuit_open_until: parseDate(row?.circuit_open_until ?? null),
 });
-
-export const defaultProviderFactory: ProviderFactory = {
-	async create(platform, token) {
-		switch (platform) {
-			case "github":
-				return fetchGitHub(token);
-			case "bluesky":
-				return fetchBluesky(token);
-			case "youtube":
-				return fetchYouTube(token);
-			case "devpad":
-				return fetchDevpad(token);
-			default:
-				return err({ kind: "unknown_platform", platform });
-		}
-	},
-};
 
 export async function handleCron(ctx: AppContext): Promise<CronResult> {
 	const result: CronResult = {
@@ -139,14 +118,20 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 	return result;
 }
 
-const formatFetchError = (e: FetchError): string => {
+const formatProviderError = (e: ProviderError): string => {
 	switch (e.kind) {
 		case "api_error":
-			return `API error ${e.status}`;
+			return `API error ${e.status}: ${e.message}`;
 		case "unknown_platform":
 			return `Unknown platform: ${e.platform}`;
 		case "network_error":
-			return e.message;
+			return e.cause.message;
+		case "rate_limited":
+			return `Rate limited, retry after ${e.retry_after}s`;
+		case "auth_expired":
+			return `Auth expired: ${e.message}`;
+		case "parse_error":
+			return `Parse error: ${e.message}`;
 	}
 };
 
@@ -210,9 +195,9 @@ const logProcessError =
 		}
 	};
 
-const toProcessError = (e: FetchError): ProcessError => ({
+const toProcessError = (e: ProviderError): ProcessError => ({
 	kind: "fetch_failed",
-	message: formatFetchError(e),
+	message: formatProviderError(e),
 	status: e.kind === "api_error" ? e.status : undefined,
 });
 
@@ -235,7 +220,7 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
 		.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
 		.flatMap(token =>
-			pipe(ctx.providerFactory.create(account.platform, token))
+			pipe(ctx.providerFactory.create(account.platform, account.platform_user_id, token))
 				.mapErr(toProcessError)
 				.tapErr(() => recordFailure(ctx.db, account.id))
 				.result()
@@ -265,44 +250,6 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		.unwrapOr(null as unknown as RawSnapshot)
 		.then(r => r as RawSnapshot | null);
 };
-
-type InternalFetchError = { type: "network"; cause: unknown } | { type: "http"; status: number; statusText: string };
-
-const toFetchError = (e: InternalFetchError, apiName: string): FetchError => (e.type === "http" ? { kind: "api_error", status: e.status, message: `${apiName} API error` } : { kind: "network_error", message: String(e.cause) });
-
-const fetchGitHub = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipe(
-		fetchResult<unknown[], FetchError>(
-			"https://api.github.com/users/me/events?per_page=100",
-			{
-				headers: {
-					Authorization: `Bearer ${token}`,
-					Accept: "application/vnd.github+json",
-					"X-GitHub-Api-Version": "2022-11-28",
-				},
-			},
-			e => toFetchError(e, "GitHub")
-		)
-	)
-		.map(events => ({ events, fetched_at: new Date().toISOString() }))
-		.result();
-
-const fetchBluesky = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipe(fetchResult<Record<string, unknown>, FetchError>("https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?limit=100", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "Bluesky")))
-		.map(data => ({ ...data, fetched_at: new Date().toISOString() }))
-		.result();
-
-const fetchYouTube = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipe(
-		fetchResult<Record<string, unknown>, FetchError>("https://www.googleapis.com/youtube/v3/search?part=snippet&forMine=true&type=video&maxResults=50", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "YouTube"))
-	)
-		.map(data => ({ ...data, fetched_at: new Date().toISOString() }))
-		.result();
-
-const fetchDevpad = (token: string): Promise<Result<Record<string, unknown>, FetchError>> =>
-	pipe(fetchResult<{ tasks: unknown }, FetchError>("https://api.devpad.io/tasks", { headers: { Authorization: `Bearer ${token}` } }, e => toFetchError(e, "Devpad")))
-		.map(({ tasks }) => ({ tasks, fetched_at: new Date().toISOString() }))
-		.result();
 
 const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	const storeResult = createRawStore(backend, account.platform, account.id);

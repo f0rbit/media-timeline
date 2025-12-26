@@ -10,7 +10,8 @@ export type { MemoryProviderControls, MemoryProviderState, SimulationConfig } fr
 export { createMemoryProviderState, simulateErrors, createMemoryProviderControlMethods } from "./memory-base";
 
 // Factory function for creating providers
-import type { Provider } from "./types";
+import { err, type Result } from "../utils";
+import type { Provider, ProviderError, ProviderFactory } from "./types";
 import { GitHubProvider, type GitHubProviderConfig } from "./github";
 import { BlueskyProvider, type BlueskyProviderConfig } from "./bluesky";
 import { YouTubeProvider, type YouTubeProviderConfig } from "./youtube";
@@ -28,5 +29,28 @@ export const createProvider = (params: ProviderConfig): Provider<unknown> => {
 			return new YouTubeProvider(params.config);
 		case "devpad":
 			return new DevpadProvider();
+	}
+};
+
+export const defaultProviderFactory: ProviderFactory = {
+	async create(platform, platformUserId, token) {
+		const provider = providerForPlatform(platform, platformUserId);
+		if (!provider) return err({ kind: "unknown_platform", platform });
+		return provider.fetch(token) as Promise<Result<Record<string, unknown>, ProviderError>>;
+	},
+};
+
+const providerForPlatform = (platform: string, platformUserId: string | null): Provider<unknown> | null => {
+	switch (platform) {
+		case "github":
+			return new GitHubProvider({ username: platformUserId ?? "me" });
+		case "bluesky":
+			return new BlueskyProvider({ actor: platformUserId ?? "" });
+		case "youtube":
+			return new YouTubeProvider({ playlist_id: platformUserId ?? "" });
+		case "devpad":
+			return new DevpadProvider();
+		default:
+			return null;
 	}
 };

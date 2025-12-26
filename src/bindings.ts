@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/d1";
 import { create_cloudflare_backend } from "@f0rbit/corpus/cloudflare";
 import * as schema from "./schema/database";
 import type { AppContext } from "./infrastructure";
-import type { ProviderFactory } from "./cron";
+import type { ProviderFactory } from "./platforms/types";
 
 export type Bindings = {
 	DB: D1Database;
