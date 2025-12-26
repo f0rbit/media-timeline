@@ -137,6 +137,7 @@ const formatProviderError = (e: ProviderError): string => {
 };
 
 const recordFailure = async (db: Database, accountId: string): Promise<void> => {
+	console.log("[recordFailure] Recording failure for account:", accountId);
 	const now = new Date().toISOString();
 	await db
 		.insert(rateLimits)
@@ -155,9 +156,11 @@ const recordFailure = async (db: Database, accountId: string): Promise<void> => 
 				updated_at: now,
 			},
 		});
+	console.log("[recordFailure] Failure recorded successfully for account:", accountId);
 };
 
 const recordSuccess = async (db: Database, accountId: string): Promise<void> => {
+	console.log("[recordSuccess] Recording success for account:", accountId);
 	const now = new Date().toISOString();
 	await db
 		.insert(rateLimits)
@@ -175,6 +178,7 @@ const recordSuccess = async (db: Database, accountId: string): Promise<void> => 
 			},
 		});
 	await db.update(accounts).set({ last_fetched_at: now, updated_at: now }).where(eq(accounts.id, accountId));
+	console.log("[recordSuccess] Success recorded for account:", accountId);
 };
 
 const logProcessError =
@@ -203,6 +207,8 @@ const toProcessError = (e: ProviderError): ProcessError => ({
 });
 
 const processAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	console.log("[processAccount] Starting for account:", { id: account.id, platform: account.platform, user_id: account.user_id, platform_user_id: account.platform_user_id });
+
 	const rateLimitRow = await ctx.db
 		.select({
 			remaining: rateLimits.remaining,
@@ -214,42 +220,74 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		.where(eq(rateLimits.account_id, account.id))
 		.get();
 
+	console.log("[processAccount] Rate limit state:", rateLimitRow);
+
 	if (!shouldFetch(toRateLimitState(rateLimitRow ?? null))) {
+		console.log("[processAccount] Skipping fetch due to rate limit state");
 		return null;
 	}
 
+	console.log("[processAccount] Before decryption");
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-		.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
-		.flatMap(token =>
-			pipe(ctx.providerFactory.create(account.platform, account.platform_user_id, token))
-				.mapErr(toProcessError)
+		.tap(() => console.log("[processAccount] Decryption result: success"))
+		.mapErr((e): ProcessError => {
+			console.log("[processAccount] Decryption result: failed -", e.message);
+			return { kind: "decryption_failed", message: e.message };
+		})
+		.flatMap(token => {
+			console.log("[processAccount] Before calling providerFactory.create:", { platform: account.platform, platformUserId: account.platform_user_id, hasToken: !!token });
+			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
+			console.log("[processAccount] providerFactory.create called, awaiting result...");
+			return pipe(result)
+				.tap(data => console.log("[processAccount] providerFactory.create result: success, data type:", typeof data))
+				.mapErr(e => {
+					console.log("[processAccount] providerFactory.create result: error -", e);
+					return toProcessError(e);
+				})
 				.tapErr(() => recordFailure(ctx.db, account.id))
-				.result()
-		)
-		.flatMap(rawData =>
-			pipe(createRawStore(ctx.backend, account.platform, account.id))
-				.mapErr((e): ProcessError => ({ kind: "store_failed", store_id: e.store_id }))
+				.result();
+		})
+		.flatMap(rawData => {
+			console.log("[processAccount] Before creating raw store for:", { platform: account.platform, accountId: account.id });
+			return pipe(createRawStore(ctx.backend, account.platform, account.id))
+				.tap(() => console.log("[processAccount] Raw store creation: success"))
+				.mapErr((e): ProcessError => {
+					console.log("[processAccount] Raw store creation: failed -", e);
+					return { kind: "store_failed", store_id: e.store_id };
+				})
 				.map(({ store }) => ({ rawData, store }))
-				.result()
-		)
-		.flatMap(({ rawData, store }) =>
-			pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
-				.mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
+				.result();
+		})
+		.flatMap(({ rawData, store }) => {
+			console.log("[processAccount] Before store.put");
+			return pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
+				.tap(result => console.log("[processAccount] store.put result: success, version:", result.version))
+				.mapErr((e): ProcessError => {
+					console.log("[processAccount] store.put result: failed -", e);
+					return { kind: "put_failed", message: String(e) };
+				})
 				.map((result: { version: string }) => ({ rawData, version: result.version }))
-				.result()
-		)
+				.result();
+		})
 		.tapErr(logProcessError(account.id))
-		.tap(() => recordSuccess(ctx.db, account.id))
-		.map(
-			(result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => ({
+		.tap(() => {
+			console.log("[processAccount] All operations successful, recording success");
+			return recordSuccess(ctx.db, account.id);
+		})
+		.map((result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => {
+			console.log("[processAccount] Creating final snapshot:", { account_id: account.id, platform: account.platform, version: result.version });
+			return {
 				account_id: account.id,
 				platform: account.platform,
 				version: result.version,
 				data: result.rawData,
-			})
-		)
+			};
+		})
 		.unwrapOr(null as unknown as RawSnapshot)
-		.then(r => r as RawSnapshot | null);
+		.then(r => {
+			console.log("[processAccount] Final result:", r ? "snapshot created" : "null (failed or skipped)");
+			return r as RawSnapshot | null;
+		});
 };
 
 const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {

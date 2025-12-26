@@ -317,6 +317,9 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
+	console.log("[refresh] Refresh endpoint hit with account_id:", accountId);
+	console.log("[refresh] User:", auth.user_id);
+
 	const accountWithUser = await ctx.db
 		.select({
 			id: accounts.id,
@@ -332,17 +335,37 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
 		.get();
 
+	console.log(
+		"[refresh] Account data from DB:",
+		accountWithUser
+			? {
+					id: accountWithUser.id,
+					platform: accountWithUser.platform,
+					platform_user_id: accountWithUser.platform_user_id,
+					is_active: accountWithUser.is_active,
+					user_id: accountWithUser.user_id,
+					hasAccessToken: !!accountWithUser.access_token_encrypted,
+					hasRefreshToken: !!accountWithUser.refresh_token_encrypted,
+				}
+			: "null"
+	);
+
 	if (!accountWithUser) {
+		console.log("[refresh] Account not found in DB");
 		return c.json({ error: "Not found", message: "Account not found" }, 404);
 	}
 
 	if (!accountWithUser.is_active) {
+		console.log("[refresh] Account is not active");
 		return c.json({ error: "Bad request", message: "Account is not active" }, 400);
 	}
 
+	console.log("[refresh] Before calling processAccount");
 	const { processAccount } = await import("./cron");
 
 	const snapshot = await processAccount(ctx, accountWithUser);
+
+	console.log("[refresh] processAccount result:", snapshot ? "snapshot created" : "null");
 
 	if (snapshot) {
 		return c.json({ status: "refreshed", account_id: accountId });
@@ -354,6 +377,8 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 connectionRoutes.post("/refresh-all", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
+
+	console.log("[refresh-all] Refresh-all endpoint hit for user:", auth.user_id);
 
 	const userAccounts = await ctx.db
 		.select({
@@ -368,7 +393,17 @@ connectionRoutes.post("/refresh-all", async c => {
 		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
 		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
 
+	console.log(
+		"[refresh-all] Found accounts:",
+		userAccounts.map(a => ({
+			id: a.id,
+			platform: a.platform,
+			platform_user_id: a.platform_user_id,
+		}))
+	);
+
 	if (userAccounts.length === 0) {
+		console.log("[refresh-all] No accounts found");
 		return c.json({ status: "completed", succeeded: 0, failed: 0, total: 0 });
 	}
 
@@ -378,16 +413,20 @@ connectionRoutes.post("/refresh-all", async c => {
 	let failed = 0;
 
 	for (const account of userAccounts) {
+		console.log("[refresh-all] Processing account:", { id: account.id, platform: account.platform });
 		try {
 			const snapshot = await processAccount(ctx, account);
+			console.log("[refresh-all] Account result:", { id: account.id, success: !!snapshot });
 			if (snapshot) {
 				succeeded++;
 			}
 		} catch (e) {
-			console.error(`Failed to refresh account ${account.id}:`, e);
+			console.error(`[refresh-all] Failed to refresh account ${account.id}:`, e);
 			failed++;
 		}
 	}
+
+	console.log("[refresh-all] Final result:", { succeeded, failed, total: userAccounts.length });
 
 	return c.json({
 		status: "completed",

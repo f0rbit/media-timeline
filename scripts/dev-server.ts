@@ -9,8 +9,8 @@ import { connectionRoutes, timelineRoutes } from "../src/routes";
 import * as schema from "../src/schema/database";
 import { hashApiKey } from "../src/utils";
 import type { Database as DrizzleDB } from "../src/db";
-import type { ProviderFactory } from "../src/platforms/types";
 import type { Backend } from "@f0rbit/corpus";
+import { defaultProviderFactory, type ProviderFactory } from "../src/platforms";
 
 type AppContext = {
 	db: DrizzleDB;
@@ -135,11 +135,7 @@ async function startDevServer() {
 	const appContext: AppContext = {
 		db: dbWithBatch as unknown as AppContext["db"],
 		backend: backend as unknown as AppContext["backend"],
-		providerFactory: {
-			async create(platform, _platformUserId, _token) {
-				return { ok: false, error: { kind: "unknown_platform" as const, platform } };
-			},
-		},
+		providerFactory: defaultProviderFactory,
 		encryptionKey: ENCRYPTION_KEY,
 	};
 
