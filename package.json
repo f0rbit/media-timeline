@@ -14,7 +14,9 @@
 		"build": "bun run --filter @media-timeline/website build",
 		"test": "bun test",
 		"test:coverage": "bun test --coverage",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+		"db:generate": "drizzle-kit generate",
+		"db:migrate:local": "DATABASE_URL=./local/dev.db drizzle-kit migrate"
 	},
 	"dependencies": {
 		"@f0rbit/corpus": "^0.2.0",
@@ -28,6 +30,7 @@
 		"@cloudflare/workers-types": "^4.20251205.0",
 		"@types/bun": "latest",
 		"concurrently": "^9.2.1",
+		"drizzle-kit": "^0.31.8",
 		"typescript": "^5.9.3",
 		"wrangler": "^3.114.15"
 	}
