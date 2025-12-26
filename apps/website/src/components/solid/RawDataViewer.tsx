@@ -19,9 +19,9 @@ export default function RawDataViewer(props: Props) {
 
 	return (
 		<div class="raw-viewer">
-			<div class="flex-row" style={{ "justify-content": "space-between", "margin-bottom": "8px" }}>
+			<div class="flex-row justify-between" style={{ "margin-bottom": "8px" }}>
 				<Show when={props.title}>
-					<span class="description">{props.title}</span>
+					<span class="tertiary text-sm">{props.title}</span>
 				</Show>
 				<div class="flex-row">
 					<button class="icon-btn" onClick={() => setCollapsed(!collapsed())}>

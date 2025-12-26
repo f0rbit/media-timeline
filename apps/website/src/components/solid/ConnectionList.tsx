@@ -14,7 +14,7 @@ export default function ConnectionList() {
 	return (
 		<div class="flex-col">
 			<Show when={data.loading}>
-				<p class="description">Loading connections...</p>
+				<p class="tertiary">Loading connections...</p>
 			</Show>
 
 			<Show when={data.error}>

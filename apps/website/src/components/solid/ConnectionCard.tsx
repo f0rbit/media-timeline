@@ -1,6 +1,7 @@
-import { createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { connections, type Connection } from "@/utils/api-client";
 import { formatRelativeTime, formatPlatformName } from "@/utils/formatters";
+import PlatformIcon from "./PlatformIcon";
 
 type Props = {
 	connection: Connection;
@@ -46,12 +47,12 @@ export default function ConnectionCard(props: Props) {
 
 	return (
 		<div class={`card platform-${props.connection.platform}`}>
-			<div class="flex-row" style={{ "justify-content": "space-between" }}>
+			<div class="flex-row justify-between">
 				<div class="flex-row" style={{ gap: "12px" }}>
 					<PlatformIcon platform={props.connection.platform} />
 					<div class="flex-col" style={{ gap: "2px" }}>
 						<h6>{formatPlatformName(props.connection.platform)}</h6>
-						<span class="description">{props.connection.platform_username ?? "Connected"}</span>
+						<span class="tertiary text-sm">{props.connection.platform_username ?? "Connected"}</span>
 					</div>
 				</div>
 				<div class="flex-row icons">
@@ -64,9 +65,13 @@ export default function ConnectionCard(props: Props) {
 				</div>
 			</div>
 
-			{props.connection.last_fetched_at && <small class="description">Last synced: {formatRelativeTime(props.connection.last_fetched_at)}</small>}
+			<Show when={props.connection.last_fetched_at}>
+				<small class="tertiary text-xs">Last synced: {formatRelativeTime(props.connection.last_fetched_at!)}</small>
+			</Show>
 
-			{error() && <small class="error-icon">{error()}</small>}
+			<Show when={error()}>
+				<small class="error-icon">{error()}</small>
+			</Show>
 		</div>
 	);
 }
@@ -99,9 +104,4 @@ function TrashIcon() {
 			<path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
 		</svg>
 	);
-}
-
-function PlatformIcon(props: { platform: string }) {
-	const iconClass = `platform-icon platform-${props.platform}`;
-	return <span class={iconClass}>{props.platform.charAt(0).toUpperCase()}</span>;
 }

@@ -1,7 +1,8 @@
-import { createResource, createSignal, createContext, useContext, For, Show, Match, Switch, type ParentComponent } from "solid-js";
+import { createResource, createSignal, createContext, useContext, For, Show, Match, Switch } from "solid-js";
 import { GitCommit, GitPullRequest, ChevronDown, ChevronRight } from "lucide-solid";
 import { timeline, initMockAuth, getMockUserId, type ApiResult, type TimelineResponse, type TimelineGroup, type TimelineItem, type CommitGroup, type PullRequestPayload, type PRCommit } from "@/utils/api-client";
-import { formatDate, formatRelativeTime } from "@/utils/formatters";
+import { formatRelativeTime } from "@/utils/formatters";
+import RawDataViewer from "./RawDataViewer";
 
 type ViewMode = "rendered" | "raw";
 
@@ -36,7 +37,7 @@ export default function TimelineList() {
 			</div>
 
 			<Show when={data.loading}>
-				<p class="description">Loading timeline...</p>
+				<p class="tertiary">Loading timeline...</p>
 			</Show>
 
 			<Show when={data.error}>
@@ -303,8 +304,8 @@ function CommitRow(props: { item: TimelineItem }) {
 				<GitCommit size={16} />
 			</div>
 			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
-				<div class="flex justify-between items-start" style={{ gap: "1rem" }}>
-					<div class="flex items-center" style={{ gap: "0.5rem", "min-width": 0 }}>
+				<div class="flex-row justify-between items-start" style={{ gap: "1rem" }}>
+					<div class="flex-row items-center min-w-0" style={{ gap: "0.5rem" }}>
 						<code class="text-xs muted mono shrink-0">{payload().sha?.slice(0, 7)}</code>
 						<Show when={props.item.url} fallback={<span class="secondary truncate">{props.item.title}</span>}>
 							<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="secondary truncate">
@@ -341,18 +342,6 @@ function GenericRow(props: { item: TimelineItem }) {
 					<span class="text-xs muted nowrap shrink-0">{formatRelativeTime(props.item.timestamp)}</span>
 				</div>
 			</div>
-		</div>
-	);
-}
-
-type RawDataViewerProps = {
-	data: TimelineResponse;
-};
-
-function RawDataViewer(props: RawDataViewerProps) {
-	return (
-		<div class="raw-data-viewer">
-			<pre class="code-block">{JSON.stringify(props.data, null, 2)}</pre>
 		</div>
 	);
 }

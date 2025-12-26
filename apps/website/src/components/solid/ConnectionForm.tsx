@@ -103,7 +103,7 @@ export default function ConnectionForm(props: Props) {
 			<section>
 				<label>Access Token</label>
 				<input type="password" value={accessToken()} onInput={e => setAccessToken(e.currentTarget.value)} placeholder={getPlaceholder(platform())} required />
-				<small class="description">Your token is encrypted before being stored.</small>
+				<small class="tertiary text-xs">Your token is encrypted before being stored.</small>
 			</section>
 
 			<Show when={error()}>
