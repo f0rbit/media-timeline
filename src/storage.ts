@@ -22,24 +22,42 @@ export type RawStore = { store: Store<RawData>; id: RawStoreId };
 export type TimelineStore = { store: Store<TimelineData>; id: TimelineStoreId };
 
 export function createRawStore(backend: Backend, platform: string, accountId: string): Result<RawStore, CorpusError> {
+	console.log("[createRawStore] Starting with:", { platform, accountId });
 	const id = rawStoreId(platform, accountId);
+	console.log("[createRawStore] Store ID:", id);
+
 	const corpus = create_corpus()
 		.with_backend(backend)
 		.with_store(define_store(id, json_codec(RawDataSchema)))
 		.build();
+	console.log("[createRawStore] Corpus created, available stores:", Object.keys(corpus.stores));
+
 	const store = corpus.stores[id];
-	if (!store) return err({ kind: "store_not_found", store_id: id });
+	if (!store) {
+		console.log("[createRawStore] FAILURE - Store not found:", id);
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	console.log("[createRawStore] SUCCESS - Store created:", id);
 	return ok({ store, id });
 }
 
 export function createTimelineStore(backend: Backend, userId: string): Result<TimelineStore, CorpusError> {
+	console.log("[createTimelineStore] Starting with userId:", userId);
 	const id = timelineStoreId(userId);
+	console.log("[createTimelineStore] Store ID:", id);
+
 	const corpus = create_corpus()
 		.with_backend(backend)
 		.with_store(define_store(id, json_codec(TimelineDataSchema)))
 		.build();
+	console.log("[createTimelineStore] Corpus created, available stores:", Object.keys(corpus.stores));
+
 	const store = corpus.stores[id];
-	if (!store) return err({ kind: "store_not_found", store_id: id });
+	if (!store) {
+		console.log("[createTimelineStore] FAILURE - Store not found:", id);
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	console.log("[createTimelineStore] SUCCESS - Store created:", id);
 	return ok({ store, id });
 }
 

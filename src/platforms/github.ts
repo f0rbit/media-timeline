@@ -62,20 +62,33 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 		this.config = config;
 	}
 
-	fetch(token: string): Promise<FetchResult<GitHubRaw>> {
+	async fetch(token: string): Promise<FetchResult<GitHubRaw>> {
 		const url = `https://api.github.com/users/${this.config.username}/events`;
+		console.log("[GitHubProvider.fetch] API URL:", url);
+		console.log("[GitHubProvider.fetch] Token present:", !!token);
+
 		return tryCatchAsync(
-			async () =>
-				handleGitHubResponse(
-					await fetch(url, {
-						headers: {
-							Authorization: `Bearer ${token}`,
-							Accept: "application/vnd.github+json",
-							"X-GitHub-Api-Version": "2022-11-28",
-						},
-					})
-				),
-			toProviderError
+			async () => {
+				console.log("[GitHubProvider.fetch] Making fetch request...");
+				const response = await fetch(url, {
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: "application/vnd.github+json",
+						"X-GitHub-Api-Version": "2022-11-28",
+					},
+				});
+				console.log("[GitHubProvider.fetch] Response status:", response.status);
+				console.log("[GitHubProvider.fetch] Response headers:", Object.fromEntries(response.headers.entries()));
+
+				const result = await handleGitHubResponse(response);
+				console.log("[GitHubProvider.fetch] Parsed result events count:", result.events?.length ?? 0);
+				console.log("[GitHubProvider.fetch] Raw response data preview:", JSON.stringify(result).slice(0, 500));
+				return result;
+			},
+			error => {
+				console.log("[GitHubProvider.fetch] Error occurred:", error);
+				return toProviderError(error);
+			}
 		);
 	}
 }
@@ -93,9 +106,18 @@ const truncateMessage = (message: string): string => {
 	return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
 };
 
-export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] =>
-	raw.events.filter(isPushEvent).flatMap(event =>
-		event.payload.commits.map((commit): TimelineItem => {
+export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] => {
+	console.log("[normalizeGitHub] Input data structure keys:", Object.keys(raw));
+	console.log("[normalizeGitHub] Events array length:", raw.events?.length ?? 0);
+	console.log("[normalizeGitHub] Events types:", raw.events?.map(e => e.type) ?? []);
+
+	const pushEvents = raw.events.filter(isPushEvent);
+	console.log("[normalizeGitHub] PushEvents found:", pushEvents.length);
+
+	const items = pushEvents.flatMap((event, eventIndex) => {
+		console.log(`[normalizeGitHub] Processing event ${eventIndex + 1}/${pushEvents.length}:`, { type: event.type, repo: event.repo.name, commits: event.payload.commits.length });
+		return event.payload.commits.map((commit, commitIndex): TimelineItem => {
+			console.log(`[normalizeGitHub] Processing commit ${commitIndex + 1}/${event.payload.commits.length}:`, { sha: commit.sha.slice(0, 7), message: commit.message.slice(0, 50) });
 			const payload: CommitPayload = {
 				type: "commit",
 				repo: event.repo.name,
@@ -111,8 +133,15 @@ export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] =>
 				url: makeCommitUrl(event.repo.name, commit.sha),
 				payload,
 			};
-		})
-	);
+		});
+	});
+
+	console.log("[normalizeGitHub] Final items array length:", items.length);
+	if (items.length > 0) {
+		console.log("[normalizeGitHub] First item:", JSON.stringify(items[0]).slice(0, 300));
+	}
+	return items;
+};
 
 // === MEMORY PROVIDER (for tests) ===
 

@@ -291,72 +291,202 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 };
 
 const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	console.log("[getLatestSnapshot] Starting for account:", { id: account.id, platform: account.platform });
 	const storeResult = createRawStore(backend, account.platform, account.id);
-	if (!storeResult.ok) return null;
+	console.log("[getLatestSnapshot] Store creation result:", storeResult.ok ? "success" : "failed");
+	if (!storeResult.ok) {
+		console.log("[getLatestSnapshot] Store creation failed, returning null");
+		return null;
+	}
 
+	console.log("[getLatestSnapshot] Fetching latest snapshot from store...");
 	const snapshot = to_nullable(await storeResult.value.store.get_latest());
-	if (!snapshot) return null;
+	console.log("[getLatestSnapshot] Snapshot fetched:", snapshot ? "found" : "null");
+	if (snapshot) {
+		console.log("[getLatestSnapshot] Snapshot meta:", snapshot.meta);
+		console.log("[getLatestSnapshot] Snapshot data preview:", JSON.stringify(snapshot.data).slice(0, 500));
+	}
+	if (!snapshot) {
+		console.log("[getLatestSnapshot] No snapshot found, returning null");
+		return null;
+	}
 
-	return {
+	const result: RawSnapshot = {
 		account_id: account.id,
 		platform: account.platform,
 		version: snapshot.meta.version,
 		data: snapshot.data,
 	};
+	console.log("[getLatestSnapshot] Returning RawSnapshot:", { account_id: result.account_id, platform: result.platform, version: result.version });
+	return result;
 };
 
-const gatherLatestSnapshots = (backend: Backend, accounts: AccountWithUser[]): Promise<RawSnapshot[]> =>
-	Promise.all(accounts.map(account => getLatestSnapshot(backend, account))).then(results => results.filter((s): s is RawSnapshot => s !== null));
+const gatherLatestSnapshots = async (backend: Backend, accounts: AccountWithUser[]): Promise<RawSnapshot[]> => {
+	console.log(
+		"[gatherLatestSnapshots] Starting with accounts:",
+		accounts.map(a => ({ id: a.id, platform: a.platform }))
+	);
+	console.log("[gatherLatestSnapshots] Account count:", accounts.length);
+
+	const results = await Promise.all(
+		accounts.map(async (account, index) => {
+			console.log(`[gatherLatestSnapshots] Processing account ${index + 1}/${accounts.length}:`, account.id);
+			const snapshot = await getLatestSnapshot(backend, account);
+			console.log(`[gatherLatestSnapshots] Account ${account.id} result:`, snapshot ? "snapshot found" : "null");
+			return snapshot;
+		})
+	);
+
+	console.log("[gatherLatestSnapshots] All results gathered, total:", results.length);
+	const filtered = results.filter((s): s is RawSnapshot => s !== null);
+	console.log("[gatherLatestSnapshots] Filtered results (non-null):", filtered.length);
+	console.log(
+		"[gatherLatestSnapshots] Filtered snapshots:",
+		filtered.map(s => ({ account_id: s.account_id, platform: s.platform, version: s.version }))
+	);
+	return filtered;
+};
 
 const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
-	if (snapshots.length === 0) return;
+	console.log("[combineUserTimeline] Starting for user:", userId);
+	console.log("[combineUserTimeline] Input snapshots count:", snapshots.length);
+	console.log(
+		"[combineUserTimeline] Input snapshots platforms:",
+		snapshots.map(s => s.platform)
+	);
+	console.log(
+		"[combineUserTimeline] Input snapshots data sizes:",
+		snapshots.map(s => JSON.stringify(s.data).length)
+	);
 
-	const normalizeResults = snapshots.map(normalizeSnapshot);
+	if (snapshots.length === 0) {
+		console.log("[combineUserTimeline] No snapshots, returning early");
+		return;
+	}
+
+	// Log each snapshot's data before normalization
+	for (const snapshot of snapshots) {
+		console.log(`[combineUserTimeline] Snapshot ${snapshot.platform} data preview:`, JSON.stringify(snapshot.data).slice(0, 200));
+	}
+
+	console.log("[combineUserTimeline] Normalizing snapshots...");
+	const normalizeResults = snapshots.map((snapshot, index) => {
+		console.log(`[combineUserTimeline] Normalizing snapshot ${index + 1}/${snapshots.length} (${snapshot.platform})...`);
+		const result = normalizeSnapshot(snapshot);
+		console.log(`[combineUserTimeline] Normalize result for ${snapshot.platform}:`, result.ok ? `ok, ${result.value.length} items` : `error: ${result.error.message}`);
+		return result;
+	});
 
 	for (const r of normalizeResults) {
 		if (!r.ok) {
-			console.error(`Failed to normalize ${r.error.platform} data: ${r.error.message}`);
+			console.error(`[combineUserTimeline] Failed to normalize ${r.error.platform} data: ${r.error.message}`);
 		}
 	}
 
 	const items = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
+	console.log("[combineUserTimeline] Items after filtering successful results:", items.length);
+	console.log(
+		"[combineUserTimeline] Items preview:",
+		items.slice(0, 3).map(i => ({ id: i.id, type: i.type, platform: i.platform }))
+	);
 
 	const entries: TimelineEntry[] = groupCommits(items);
+	console.log("[combineUserTimeline] Items after groupCommits:", entries.length);
+	console.log(
+		"[combineUserTimeline] Entry types:",
+		entries.map(e => e.type)
+	);
+
 	const dateGroups = groupByDate(entries);
+	console.log("[combineUserTimeline] DateGroups after groupByDate:", dateGroups.length);
+	console.log(
+		"[combineUserTimeline] DateGroups dates:",
+		dateGroups.map(g => g.date)
+	);
+	console.log(
+		"[combineUserTimeline] DateGroups items per date:",
+		dateGroups.map(g => ({ date: g.date, count: g.items.length }))
+	);
 
 	const timeline = {
 		user_id: userId,
 		generated_at: new Date().toISOString(),
 		groups: dateGroups,
 	};
+	console.log("[combineUserTimeline] Final timeline object:", { user_id: timeline.user_id, generated_at: timeline.generated_at, groups_count: timeline.groups.length });
+	console.log("[combineUserTimeline] Timeline JSON preview:", JSON.stringify(timeline).slice(0, 500));
 
 	const parents = snapshots.map(s => ({
 		store_id: rawStoreId(s.platform, s.account_id),
 		version: s.version,
 		role: "source" as const,
 	}));
+	console.log("[combineUserTimeline] Parents for store:", parents);
 
+	console.log("[combineUserTimeline] Creating timeline store...");
 	await pipe(createTimelineStore(backend, userId))
-		.tapErr(() => console.error(`Failed to create timeline store for user ${userId}`))
-		.tap(({ store }) => store.put(timeline, { parents }).then(() => {}))
+		.tap(({ store, id }) => console.log("[combineUserTimeline] Timeline store created:", id))
+		.tapErr(() => console.error(`[combineUserTimeline] Failed to create timeline store for user ${userId}`))
+		.tap(async ({ store }) => {
+			console.log("[combineUserTimeline] Putting timeline into store...");
+			await store.put(timeline, { parents });
+			console.log("[combineUserTimeline] Timeline stored successfully");
+		})
 		.result();
+
+	console.log("[combineUserTimeline] Completed for user:", userId);
 };
 
-const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> =>
-	tryCatch(
+const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> => {
+	console.log("[normalizeSnapshot] Starting for platform:", snapshot.platform);
+	console.log("[normalizeSnapshot] Raw data preview:", JSON.stringify(snapshot.data).slice(0, 500));
+
+	return tryCatch(
 		() => {
+			console.log("[normalizeSnapshot] Matching platform case:", snapshot.platform);
+			let result: TimelineItem[];
 			switch (snapshot.platform as Platform) {
 				case "github":
-					return normalizeGitHub(GitHubRawSchema.parse(snapshot.data));
+					console.log("[normalizeSnapshot] Case: github - parsing with GitHubRawSchema");
+					const githubParsed = GitHubRawSchema.parse(snapshot.data);
+					console.log("[normalizeSnapshot] GitHub parsed successfully, events count:", githubParsed.events?.length ?? 0);
+					result = normalizeGitHub(githubParsed);
+					console.log("[normalizeSnapshot] GitHub normalized, items count:", result.length);
+					break;
 				case "bluesky":
-					return normalizeBluesky(BlueskyRawSchema.parse(snapshot.data));
+					console.log("[normalizeSnapshot] Case: bluesky - parsing with BlueskyRawSchema");
+					const blueskyParsed = BlueskyRawSchema.parse(snapshot.data);
+					console.log("[normalizeSnapshot] Bluesky parsed successfully");
+					result = normalizeBluesky(blueskyParsed);
+					console.log("[normalizeSnapshot] Bluesky normalized, items count:", result.length);
+					break;
 				case "youtube":
-					return normalizeYouTube(YouTubeRawSchema.parse(snapshot.data));
+					console.log("[normalizeSnapshot] Case: youtube - parsing with YouTubeRawSchema");
+					const youtubeParsed = YouTubeRawSchema.parse(snapshot.data);
+					console.log("[normalizeSnapshot] YouTube parsed successfully");
+					result = normalizeYouTube(youtubeParsed);
+					console.log("[normalizeSnapshot] YouTube normalized, items count:", result.length);
+					break;
 				case "devpad":
-					return normalizeDevpad(DevpadRawSchema.parse(snapshot.data));
+					console.log("[normalizeSnapshot] Case: devpad - parsing with DevpadRawSchema");
+					const devpadParsed = DevpadRawSchema.parse(snapshot.data);
+					console.log("[normalizeSnapshot] Devpad parsed successfully");
+					result = normalizeDevpad(devpadParsed);
+					console.log("[normalizeSnapshot] Devpad normalized, items count:", result.length);
+					break;
 				default:
-					return [];
+					console.log("[normalizeSnapshot] Case: default (unknown platform), returning empty array");
+					result = [];
 			}
+			console.log("[normalizeSnapshot] Final result items count:", result.length);
+			if (result.length > 0) {
+				console.log("[normalizeSnapshot] First item preview:", JSON.stringify(result[0]).slice(0, 300));
+			}
+			return result;
 		},
-		(e): NormalizeError => ({ kind: "parse_error", platform: snapshot.platform, message: String(e) })
+		(e): NormalizeError => {
+			console.log("[normalizeSnapshot] ERROR during normalization:", String(e));
+			return { kind: "parse_error", platform: snapshot.platform, message: String(e) };
+		}
 	);
+};

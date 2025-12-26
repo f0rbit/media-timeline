@@ -40,8 +40,16 @@ const buildCommitGroup = (repo: string, date: string, commits: CommitItem[]): Co
 export const combineTimelines = (items: TimelineItem[]): TimelineItem[] => [...items].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
 export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
+	console.log("[groupCommits] Input items count:", items.length);
+	console.log(
+		"[groupCommits] Input item types:",
+		items.map(i => i.type)
+	);
+
 	const commits = items.filter(isCommitItem);
 	const nonCommits = items.filter(item => !isCommitItem(item));
+	console.log("[groupCommits] Commits found:", commits.length);
+	console.log("[groupCommits] Non-commits found:", nonCommits.length);
 
 	const groupedByRepoDate = commits.reduce<Map<string, CommitItem[]>>((acc, commit) => {
 		const date = extractDateKey(commit.timestamp);
@@ -50,17 +58,34 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 		acc.set(key, [...existing, commit]);
 		return acc;
 	}, new Map());
+	console.log("[groupCommits] Unique repo:date groups:", groupedByRepoDate.size);
+	console.log("[groupCommits] Group keys:", Array.from(groupedByRepoDate.keys()));
 
 	const commitGroups = Array.from(groupedByRepoDate.entries()).map(([key, groupCommits]) => {
 		const [repo, date] = key.split(":") as [string, string];
+		console.log(`[groupCommits] Building group for ${key}: ${groupCommits.length} commits`);
 		return buildCommitGroup(repo, date, groupCommits);
 	});
+	console.log("[groupCommits] Commit groups created:", commitGroups.length);
 
-	return [...commitGroups, ...nonCommits];
+	const result = [...commitGroups, ...nonCommits];
+	console.log("[groupCommits] Final output count:", result.length);
+	console.log(
+		"[groupCommits] Output types:",
+		result.map(e => e.type)
+	);
+	return result;
 };
 
 export const groupByDate = (entries: TimelineEntry[]): DateGroup[] => {
+	console.log("[groupByDate] Input entries count:", entries.length);
+	console.log(
+		"[groupByDate] Input entry types:",
+		entries.map(e => e.type)
+	);
+
 	const sorted = [...entries].sort(compareTimestampDesc);
+	console.log("[groupByDate] Sorted entries count:", sorted.length);
 
 	const grouped = sorted.reduce<Map<string, TimelineEntry[]>>((acc, entry) => {
 		const date = getDateKey(entry);
@@ -68,10 +93,26 @@ export const groupByDate = (entries: TimelineEntry[]): DateGroup[] => {
 		acc.set(date, [...existing, entry]);
 		return acc;
 	}, new Map());
+	console.log("[groupByDate] Unique dates found:", grouped.size);
+	console.log("[groupByDate] Dates:", Array.from(grouped.keys()));
+	console.log(
+		"[groupByDate] Items per date:",
+		Array.from(grouped.entries()).map(([d, items]) => ({ date: d, count: items.length }))
+	);
 
-	return Array.from(grouped.entries())
+	const result = Array.from(grouped.entries())
 		.sort(([a], [b]) => b.localeCompare(a))
 		.map(([date, items]) => ({ date, items }));
+
+	console.log("[groupByDate] Final groups count:", result.length);
+	console.log(
+		"[groupByDate] Final groups:",
+		result.map(g => ({ date: g.date, itemCount: g.items.length }))
+	);
+	if (result.length > 0) {
+		console.log("[groupByDate] First group preview:", JSON.stringify(result[0]).slice(0, 500));
+	}
+	return result;
 };
 
 export type { TimelineEntry };
