@@ -1100,3 +1100,141 @@ hr {
 .tag-grid .tag-badge {
 	width: 100%;
 }
+
+.platform-card {
+	display: flex;
+	flex-direction: column;
+	gap: 0;
+}
+
+.card-inactive {
+	opacity: 0.7;
+	border-style: dashed;
+}
+
+.card-setup {
+	border-style: dashed;
+	background: var(--input-background);
+}
+
+.status-badge {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	font-size: 0.75rem;
+	padding: 2px 8px;
+	border-radius: 12px;
+	background: var(--input-background);
+	border: 1px solid var(--input-border);
+	white-space: nowrap;
+}
+
+.status-active .status-icon {
+	color: oklch(from var(--item-green) 0.6 0.15 h);
+}
+
+.status-inactive .status-icon,
+.status-not-connected .status-icon {
+	color: var(--text-muted);
+}
+
+.status-error .status-icon {
+	color: oklch(from var(--item-red) 0.6 0.15 h);
+}
+
+.setup-form {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--input-border);
+}
+
+.form-row {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+}
+
+.form-row input[type="text"],
+.form-row input[type="password"] {
+	padding: 8px;
+	width: 100%;
+}
+
+.platform-settings {
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--input-border);
+}
+
+.settings-section {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.settings-title {
+	margin: 0;
+}
+
+.repo-list {
+	display: flex;
+	flex-direction: column;
+	gap: 4px;
+	max-height: 200px;
+	overflow-y: auto;
+	padding: 8px;
+	background: var(--input-background);
+	border: 1px solid var(--input-border);
+	border-radius: 4px;
+}
+
+.repo-item {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	padding: 4px;
+	cursor: pointer;
+}
+
+.repo-item:hover {
+	background: var(--input-border);
+	border-radius: 2px;
+}
+
+.repo-hidden {
+	opacity: 0.5;
+}
+
+.repo-name {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.repo-count {
+	text-align: right;
+	flex-shrink: 0;
+}
+
+.filter-toggles {
+	display: flex;
+	flex-direction: column;
+	gap: 8px;
+}
+
+.filter-toggle {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	cursor: pointer;
+}
+
+.filter-toggle input[type="checkbox"] {
+	width: 16px;
+	height: 16px;
+	cursor: pointer;
+}

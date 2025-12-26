@@ -1,15 +1,22 @@
 import { createResource, For, Show } from "solid-js";
-import { connections, initMockAuth, type ApiResult, type ConnectionsResponse } from "@/utils/api-client";
-import ConnectionCard from "./ConnectionCard";
+import { connections, initMockAuth, type ConnectionWithSettings } from "@/utils/api-client";
+import PlatformCard from "./PlatformCard";
+import type { Platform } from "./PlatformSetupForm";
+
+const PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad"];
 
 export default function ConnectionList() {
 	initMockAuth();
 
 	const [data, { refetch }] = createResource(async () => {
-		const result: ApiResult<ConnectionsResponse> = await connections.list();
-		if (result.ok === false) throw new Error(result.error.message);
+		const result = await connections.listWithSettings();
+		if (!result.ok) throw new Error(result.error.message);
 		return result.data.accounts;
 	});
+
+	const getConnection = (platform: Platform): ConnectionWithSettings | null => {
+		return data()?.find(c => c.platform === platform) ?? null;
+	};
 
 	return (
 		<div class="flex-col">
@@ -21,15 +28,8 @@ export default function ConnectionList() {
 				<p class="error-icon">Failed to load connections: {data.error.message}</p>
 			</Show>
 
-			<Show when={data() && data()!.length > 0}>
-				<For each={data()}>{conn => <ConnectionCard connection={conn} onRefresh={refetch} onDelete={refetch} />}</For>
-			</Show>
-
-			<Show when={data() && data()!.length === 0}>
-				<div class="empty-state">
-					<p>No connections yet.</p>
-					<a href="/connections/new">Add your first connection</a>
-				</div>
+			<Show when={!data.loading && !data.error}>
+				<For each={PLATFORMS}>{platform => <PlatformCard platform={platform} connection={getConnection(platform)} onConnectionChange={refetch} />}</For>
 			</Show>
 		</div>
 	);

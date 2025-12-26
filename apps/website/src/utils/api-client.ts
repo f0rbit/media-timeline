@@ -99,6 +99,7 @@ export const api = {
 	get: <T>(path: string) => request<T>(path, { method: "GET" }),
 	post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body }),
 	put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body }),
+	patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
 	delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
@@ -111,8 +112,23 @@ export type Connection = {
 	created_at: string;
 };
 
+export type PlatformSettings = Record<string, unknown>;
+
+export type ConnectionWithSettings = Connection & {
+	settings?: PlatformSettings;
+};
+
 export type ConnectionsResponse = {
 	accounts: Connection[];
+};
+
+export type ConnectionsWithSettingsResponse = {
+	accounts: ConnectionWithSettings[];
+};
+
+export type GitHubRepo = {
+	name: string;
+	commit_count: number;
 };
 
 export type PRCommit = {
@@ -183,10 +199,15 @@ export type TimelineResponse = {
 
 export const connections = {
 	list: () => api.get<ConnectionsResponse>("/connections"),
+	listWithSettings: () => api.get<ConnectionsWithSettingsResponse>("/connections?include_settings=true"),
 	create: (data: { platform: string; access_token: string; platform_username?: string }) => api.post<{ account_id: string }>("/connections", data),
+	update: (accountId: string, data: { is_active?: boolean }) => api.patch<{ updated: boolean }>(`/connections/${accountId}`, data),
 	delete: (accountId: string) => api.delete<{ success: boolean }>(`/connections/${accountId}`),
 	refresh: (accountId: string) => api.post<{ status: string }>(`/connections/${accountId}/refresh`),
 	refreshAll: () => api.post<{ status: string; succeeded: number; failed: number }>("/connections/refresh-all"),
+	getSettings: (accountId: string) => api.get<{ settings: PlatformSettings }>(`/connections/${accountId}/settings`),
+	updateSettings: (accountId: string, settings: PlatformSettings) => api.put<{ updated: boolean }>(`/connections/${accountId}/settings`, { settings }),
+	getRepos: (accountId: string) => api.get<{ repos: GitHubRepo[] }>(`/connections/${accountId}/repos`),
 };
 
 export const timeline = {
