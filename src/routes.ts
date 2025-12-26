@@ -311,3 +311,88 @@ connectionRoutes.post("/:account_id/members", async c => {
 
 	return c.json({ member_id: memberId, role: "member" }, 201);
 });
+
+connectionRoutes.post("/:account_id/refresh", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const accountId = c.req.param("account_id");
+
+	const accountWithUser = await ctx.db
+		.select({
+			id: accounts.id,
+			platform: accounts.platform,
+			platform_user_id: accounts.platform_user_id,
+			access_token_encrypted: accounts.access_token_encrypted,
+			refresh_token_encrypted: accounts.refresh_token_encrypted,
+			is_active: accounts.is_active,
+			user_id: accountMembers.user_id,
+		})
+		.from(accounts)
+		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
+		.get();
+
+	if (!accountWithUser) {
+		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	}
+
+	if (!accountWithUser.is_active) {
+		return c.json({ error: "Bad request", message: "Account is not active" }, 400);
+	}
+
+	const { processAccount } = await import("./cron");
+
+	const snapshot = await processAccount(ctx, accountWithUser);
+
+	if (snapshot) {
+		return c.json({ status: "refreshed", account_id: accountId });
+	}
+
+	return c.json({ status: "skipped", message: "Rate limited or no changes" });
+});
+
+connectionRoutes.post("/refresh-all", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+
+	const userAccounts = await ctx.db
+		.select({
+			id: accounts.id,
+			platform: accounts.platform,
+			platform_user_id: accounts.platform_user_id,
+			access_token_encrypted: accounts.access_token_encrypted,
+			refresh_token_encrypted: accounts.refresh_token_encrypted,
+			user_id: accountMembers.user_id,
+		})
+		.from(accounts)
+		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
+
+	if (userAccounts.length === 0) {
+		return c.json({ status: "completed", succeeded: 0, failed: 0, total: 0 });
+	}
+
+	const { processAccount } = await import("./cron");
+
+	let succeeded = 0;
+	let failed = 0;
+
+	for (const account of userAccounts) {
+		try {
+			const snapshot = await processAccount(ctx, account);
+			if (snapshot) {
+				succeeded++;
+			}
+		} catch (e) {
+			console.error(`Failed to refresh account ${account.id}:`, e);
+			failed++;
+		}
+	}
+
+	return c.json({
+		status: "completed",
+		succeeded,
+		failed,
+		total: userAccounts.length,
+	});
+});

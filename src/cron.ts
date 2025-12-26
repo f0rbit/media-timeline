@@ -8,6 +8,7 @@ import { createRawStore, createTimelineStore, rawStoreId, shouldFetch, type RawD
 import { groupByDate, groupCommits } from "./timeline";
 import { decrypt, pipe, to_nullable, tryCatch, type Result } from "./utils";
 
+export { processAccount };
 export type { ProviderFactory };
 
 type RawSnapshot = {
