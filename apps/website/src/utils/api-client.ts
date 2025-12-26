@@ -125,9 +125,21 @@ export type TimelineItem = {
 	payload: Record<string, unknown>;
 };
 
+export type CommitGroup = {
+	type: "commit_group";
+	repo: string;
+	date: string;
+	commits: TimelineItem[];
+	total_additions?: number;
+	total_deletions?: number;
+	total_files_changed?: number;
+};
+
+export type TimelineEntry = TimelineItem | CommitGroup;
+
 export type TimelineGroup = {
 	date: string;
-	items: TimelineItem[];
+	items: TimelineEntry[];
 };
 
 export type TimelineResponse = {

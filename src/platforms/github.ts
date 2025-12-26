@@ -96,43 +96,81 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 
 			console.log("[GitHubProvider.fetch] Total commits fetched:", commits.length);
 
-			// Extract pull requests from events
+			// Extract pull requests from events and fetch full details
 			const pullRequests: GitHubPullRequest[] = [];
 			const prEvents = events.filter(e => e.type === "PullRequestEvent");
 
-			for (const event of prEvents) {
+			// Deduplicate by PR number per repo (keep first occurrence)
+			const seenPRs = new Set<string>();
+			const uniquePREvents = prEvents.filter(e => {
+				const payload = e.payload as { number?: number };
+				const key = `${e.repo.name}:${payload.number}`;
+				if (seenPRs.has(key)) return false;
+				seenPRs.add(key);
+				return true;
+			});
+
+			// Fetch full PR details for each unique PR (limit to 10 to avoid rate limits)
+			const prsToFetch = uniquePREvents.slice(0, 10);
+
+			for (const event of prsToFetch) {
 				const payload = event.payload as {
 					action?: string;
 					number?: number;
 					pull_request?: {
 						id?: number;
 						number?: number;
-						title?: string;
-						state?: string;
-						html_url?: string;
-						created_at?: string;
 						merged_at?: string | null;
 						head?: { ref?: string };
 						base?: { ref?: string };
 					};
 				};
 
-				const pr = payload.pull_request;
-				if (!pr) continue;
+				const prNumber = payload.pull_request?.number ?? payload.number;
+				if (!prNumber) continue;
 
-				pullRequests.push({
-					id: pr.id ?? 0,
-					number: pr.number ?? payload.number ?? 0,
-					title: pr.title ?? "Untitled PR",
-					state: pr.state === "open" ? "open" : pr.merged_at ? "merged" : "closed",
-					action: payload.action ?? "unknown",
-					url: pr.html_url ?? `https://github.com/${event.repo.name}/pull/${pr.number}`,
-					repo: event.repo.name,
-					created_at: pr.created_at ?? event.created_at ?? new Date().toISOString(),
-					merged_at: pr.merged_at ?? undefined,
-					head_ref: pr.head?.ref ?? "unknown",
-					base_ref: pr.base?.ref ?? "unknown",
-				});
+				const [owner, repo] = event.repo.name.split("/");
+				if (!owner || !repo) continue;
+
+				try {
+					// Fetch full PR details to get title
+					const { data: fullPR } = await octokit.rest.pulls.get({
+						owner,
+						repo,
+						pull_number: prNumber,
+					});
+
+					pullRequests.push({
+						id: fullPR.id,
+						number: fullPR.number,
+						title: fullPR.title,
+						state: fullPR.merged_at ? "merged" : fullPR.state === "open" ? "open" : "closed",
+						action: payload.action ?? "unknown",
+						url: fullPR.html_url,
+						repo: event.repo.name,
+						created_at: fullPR.created_at,
+						merged_at: fullPR.merged_at ?? undefined,
+						head_ref: fullPR.head.ref,
+						base_ref: fullPR.base.ref,
+					});
+				} catch (error) {
+					console.log(`[GitHubProvider.fetch] Failed to fetch PR #${prNumber} from ${event.repo.name}:`, error);
+					// Fall back to minimal info from event
+					const pr = payload.pull_request;
+					pullRequests.push({
+						id: pr?.id ?? 0,
+						number: prNumber,
+						title: `PR #${prNumber}`, // Better fallback than "Untitled PR"
+						state: pr?.merged_at ? "merged" : "closed",
+						action: payload.action ?? "unknown",
+						url: `https://github.com/${event.repo.name}/pull/${prNumber}`,
+						repo: event.repo.name,
+						created_at: event.created_at ?? new Date().toISOString(),
+						merged_at: pr?.merged_at ?? undefined,
+						head_ref: pr?.head?.ref ?? "unknown",
+						base_ref: pr?.base?.ref ?? "unknown",
+					});
+				}
 			}
 
 			console.log("[GitHubProvider.fetch] Pull requests extracted:", pullRequests.length);
