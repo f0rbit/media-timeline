@@ -1,0 +1,17 @@
+---
+import AppLayout from "../../layouts/AppLayout.astro";
+---
+
+<AppLayout title="Connections | Media Timeline">
+  <section>
+    <div class="flex-row" style="justify-content: space-between;">
+      <h3>Connections</h3>
+      <a href="/connections/new">+ Add Connection</a>
+    </div>
+    <p class="description">Manage your connected platforms.</p>
+  </section>
+  <div class="empty-state">
+    <p>No connections yet.</p>
+    <a href="/connections/new">Add your first connection</a>
+  </div>
+</AppLayout>
