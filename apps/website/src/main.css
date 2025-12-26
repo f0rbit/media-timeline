@@ -622,7 +622,7 @@ form section label {
 }
 
 .status-active {
-	color: var(--item-green);
+	color: oklch(from var(--item-green) 0.85 0.1 h);
 }
 .status-inactive {
 	color: var(--text-muted);
@@ -1071,7 +1071,6 @@ hr {
 
 .card-setup {
 	border-style: dashed;
-	background: var(--input-background);
 }
 
 .status-badge {
@@ -1084,10 +1083,6 @@ hr {
 	background: var(--input-background);
 	border: 1px solid var(--input-border);
 	white-space: nowrap;
-}
-
-.status-active .status-icon {
-	color: oklch(from var(--item-green) 0.6 0.15 h);
 }
 
 .status-inactive .status-icon,
@@ -1121,8 +1116,8 @@ hr {
 }
 
 .platform-settings {
-	margin-top: 12px;
-	padding-top: 12px;
+	margin-top: 4px;
+	padding-top: 8px;
 	border-top: 1px solid var(--input-border);
 }
 

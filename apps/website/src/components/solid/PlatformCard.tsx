@@ -34,9 +34,10 @@ export default function PlatformCard(props: Props) {
 			<div class="flex-row justify-between">
 				<div class="flex-row" style={{ gap: "12px" }}>
 					<PlatformIcon platform={props.platform} size={24} />
-					<div class="flex-col" style={{ gap: "2px" }}>
+					<div class="flex-row">
 						<h6 class="secondary font-medium">{formatPlatformName(props.platform)}</h6>
 						<Show when={props.connection}>
+							<span class="tertiary text-sm">{"·"}</span>
 							<span class="tertiary text-sm">
 								{props.connection!.platform_username ?? "Connected"}
 								<Show when={state() === "inactive"}> · Paused</Show>
