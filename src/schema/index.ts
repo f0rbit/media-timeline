@@ -9,11 +9,9 @@ export {
 	DevpadRawSchema,
 	DevpadTaskSchema,
 	GitHubBaseEventSchema,
-	GitHubCommitSchema,
 	GitHubEventSchema,
 	GitHubExtendedCommitSchema,
 	GitHubPullRequestSchema,
-	GitHubPushEventSchema,
 	GitHubRawSchema,
 	GitHubRepoSchema,
 	YouTubeRawSchema,
@@ -61,11 +59,9 @@ import {
 	DevpadRawSchema,
 	DevpadTaskSchema,
 	GitHubBaseEventSchema,
-	GitHubCommitSchema,
 	GitHubEventSchema,
 	GitHubExtendedCommitSchema,
 	GitHubPullRequestSchema,
-	GitHubPushEventSchema,
 	GitHubRawSchema,
 	GitHubRepoSchema,
 	YouTubeRawSchema,
@@ -76,11 +72,9 @@ import {
 import { accountMembers, accounts, apiKeys, rateLimits, users } from "./database";
 
 export type GitHubRepo = z.infer<typeof GitHubRepoSchema>;
-export type GitHubCommit = z.infer<typeof GitHubCommitSchema>;
 export type GitHubExtendedCommit = z.infer<typeof GitHubExtendedCommitSchema>;
 export type GitHubPullRequest = z.infer<typeof GitHubPullRequestSchema>;
 export type GitHubBaseEvent = z.infer<typeof GitHubBaseEventSchema>;
-export type GitHubPushEvent = z.infer<typeof GitHubPushEventSchema>;
 export type GitHubEvent = z.infer<typeof GitHubEventSchema>;
 export type GitHubRaw = z.infer<typeof GitHubRawSchema>;
 

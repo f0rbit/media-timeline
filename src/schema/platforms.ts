@@ -10,35 +10,12 @@ export const GitHubRepoSchema = z.object({
 	url: z.string(),
 });
 
-export const GitHubCommitSchema = z.object({
-	sha: z.string(),
-	message: z.string(),
-	author: z
-		.object({
-			name: z.string(),
-			email: z.string(),
-		})
-		.optional(),
-	url: z.string().url().optional(),
-});
-
 export const GitHubBaseEventSchema = z.object({
 	id: z.string(),
 	type: z.string(),
 	created_at: z.string(),
 	repo: GitHubRepoSchema,
 	payload: z.record(z.unknown()),
-});
-
-export const GitHubPushEventSchema = z.object({
-	id: z.string(),
-	type: z.literal("PushEvent"),
-	created_at: z.string(),
-	repo: GitHubRepoSchema,
-	payload: z.object({
-		ref: z.string().optional(),
-		commits: z.array(GitHubCommitSchema).default([]),
-	}),
 });
 
 export const GitHubEventSchema = GitHubBaseEventSchema;
@@ -50,6 +27,7 @@ export const GitHubExtendedCommitSchema = z.object({
 	date: z.string(),
 	url: z.string(),
 	repo: z.string(),
+	branch: z.string(),
 });
 
 // Pull request schema for data extracted from PullRequestEvents
@@ -66,16 +44,15 @@ export const GitHubPullRequestSchema = z.object({
 	head_ref: z.string(),
 	base_ref: z.string(),
 	// Commit SHAs associated with this PR (fetched from pulls.listCommits)
-	commit_shas: z.array(z.string()).optional(),
+	commit_shas: z.array(z.string()).default([]),
 	// The merge commit SHA (for deduplication of merge commits)
 	merge_commit_sha: z.string().optional(),
 });
 
 export const GitHubRawSchema = FetchedAtSchema.extend({
 	events: z.array(GitHubEventSchema),
-	// Extended fields from new provider (optional for backward compatibility)
-	commits: z.array(GitHubExtendedCommitSchema).optional(),
-	pull_requests: z.array(GitHubPullRequestSchema).optional(),
+	commits: z.array(GitHubExtendedCommitSchema).default([]),
+	pull_requests: z.array(GitHubPullRequestSchema).default([]),
 });
 
 export const BlueskyAuthorSchema = z.object({
@@ -99,9 +76,9 @@ export const BlueskyPostSchema = z.object({
 			})
 			.optional(),
 	}),
-	replyCount: z.number().optional(),
-	repostCount: z.number().optional(),
-	likeCount: z.number().optional(),
+	replyCount: z.number().default(0),
+	repostCount: z.number().default(0),
+	likeCount: z.number().default(0),
 	embed: z
 		.object({
 			images: z
@@ -175,7 +152,7 @@ export const DevpadTaskSchema = z.object({
 	status: z.enum(["todo", "in_progress", "done", "archived"]),
 	priority: z.enum(["low", "medium", "high"]).optional(),
 	project: z.string().optional(),
-	tags: z.array(z.string()).optional(),
+	tags: z.array(z.string()).default([]),
 	created_at: z.string(),
 	updated_at: z.string(),
 	due_date: z.string().optional(),

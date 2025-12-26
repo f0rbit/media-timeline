@@ -8,7 +8,7 @@ export const CommitPayloadSchema = z.object({
 	sha: z.string(),
 	message: z.string(),
 	repo: z.string(),
-	branch: z.string().optional(),
+	branch: z.string(),
 	additions: z.number().optional(),
 	deletions: z.number().optional(),
 	files_changed: z.number().optional(),
@@ -20,12 +20,12 @@ export const PostPayloadSchema = z.object({
 	author_handle: z.string(),
 	author_name: z.string().optional(),
 	author_avatar: z.string().url().optional(),
-	reply_count: z.number().optional(),
-	repost_count: z.number().optional(),
-	like_count: z.number().optional(),
-	has_media: z.boolean().optional(),
-	is_reply: z.boolean().optional(),
-	is_repost: z.boolean().optional(),
+	reply_count: z.number().default(0),
+	repost_count: z.number().default(0),
+	like_count: z.number().default(0),
+	has_media: z.boolean().default(false),
+	is_reply: z.boolean().default(false),
+	is_repost: z.boolean().default(false),
 });
 
 export const VideoPayloadSchema = z.object({
@@ -44,7 +44,7 @@ export const TaskPayloadSchema = z.object({
 	status: z.enum(["todo", "in_progress", "done", "archived"]),
 	priority: z.enum(["low", "medium", "high"]).optional(),
 	project: z.string().optional(),
-	tags: z.array(z.string()).optional(),
+	tags: z.array(z.string()).default([]),
 	due_date: z.string().datetime().optional(),
 	completed_at: z.string().datetime().optional(),
 });
@@ -53,7 +53,7 @@ export const TaskPayloadSchema = z.object({
 export const PRCommitSchema = z.object({
 	sha: z.string(),
 	message: z.string(),
-	url: z.string().optional(),
+	url: z.string(),
 });
 
 export const PullRequestPayloadSchema = z.object({
@@ -69,7 +69,7 @@ export const PullRequestPayloadSchema = z.object({
 	deletions: z.number().optional(),
 	changed_files: z.number().optional(),
 	// Commits that belong to this PR (populated during timeline processing)
-	commits: z.array(PRCommitSchema).optional(),
+	commits: z.array(PRCommitSchema).default([]),
 });
 
 export const PayloadSchema = z.discriminatedUnion("type", [CommitPayloadSchema, PostPayloadSchema, VideoPayloadSchema, TaskPayloadSchema, PullRequestPayloadSchema]);
@@ -80,18 +80,19 @@ export const TimelineItemSchema = z.object({
 	type: TimelineTypeSchema,
 	timestamp: z.string().datetime(),
 	title: z.string(),
-	url: z.string().url().optional(),
+	url: z.string().url(),
 	payload: PayloadSchema,
 });
 
 export const CommitGroupSchema = z.object({
 	type: z.literal("commit_group"),
 	repo: z.string(),
+	branch: z.string(),
 	date: z.string(),
 	commits: z.array(TimelineItemSchema),
-	total_additions: z.number().optional(),
-	total_deletions: z.number().optional(),
-	total_files_changed: z.number().optional(),
+	total_additions: z.number().default(0),
+	total_deletions: z.number().default(0),
+	total_files_changed: z.number().default(0),
 });
 
 export const DateGroupSchema = z.object({
