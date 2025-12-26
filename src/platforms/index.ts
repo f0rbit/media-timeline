@@ -43,7 +43,7 @@ export const defaultProviderFactory: ProviderFactory = {
 const providerForPlatform = (platform: string, platformUserId: string | null): Provider<unknown> | null => {
 	switch (platform) {
 		case "github":
-			return new GitHubProvider({ username: platformUserId ?? "me" });
+			return new GitHubProvider({ username: platformUserId ?? undefined });
 		case "bluesky":
 			return new BlueskyProvider({ actor: platformUserId ?? "" });
 		case "youtube":

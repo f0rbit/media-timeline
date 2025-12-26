@@ -1,3 +1,4 @@
+import { Octokit } from "octokit";
 import { GitHubRawSchema, type GitHubRaw, type GitHubEvent, type GitHubPushEvent, type TimelineItem, type CommitPayload } from "../schema";
 import { ok, err, type Result } from "../utils";
 import { toProviderError, type Provider, type ProviderError, type FetchResult } from "./types";
@@ -6,7 +7,7 @@ import { createMemoryProviderState, simulateErrors, type MemoryProviderState, ty
 // === TYPES ===
 
 export type GitHubProviderConfig = {
-	username: string;
+	username?: string;
 };
 
 export type GitHubMemoryConfig = {
@@ -15,81 +16,115 @@ export type GitHubMemoryConfig = {
 
 // === HELPERS ===
 
-const parseRateLimitReset = (headers: Headers): number => {
-	const resetTimestamp = headers.get("X-RateLimit-Reset");
-	return resetTimestamp ? Math.max(0, parseInt(resetTimestamp, 10) - Math.floor(Date.now() / 1000)) : 60;
+const parseRateLimitReset = (resetTimestamp: number | undefined): number => {
+	if (!resetTimestamp) return 60;
+	return Math.max(0, resetTimestamp - Math.floor(Date.now() / 1000));
 };
 
-const handleGitHubResponse = async (response: Response): Promise<GitHubRaw> => {
-	if (response.status === 401 || response.status === 403) {
-		if (response.headers.get("X-RateLimit-Remaining") === "0") {
-			throw { kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } satisfies ProviderError;
-		}
-		throw { kind: "auth_expired", message: "GitHub token expired or invalid" } satisfies ProviderError;
-	}
-
-	if (response.status === 429) {
-		throw { kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } satisfies ProviderError;
-	}
-
-	if (!response.ok) {
-		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
-	}
-
-	const json = await response.json();
-	const result = GitHubRawSchema.safeParse({ events: json, fetched_at: new Date().toISOString() });
-	if (!result.success) {
-		throw { kind: "api_error", status: 500, message: `Invalid GitHub response: ${result.error.message}` } satisfies ProviderError;
-	}
-	return result.data;
-};
-
-const tryCatchAsync = async <T, E>(fn: () => Promise<T>, mapError: (e: unknown) => E): Promise<Result<T, E>> => {
-	try {
-		return ok(await fn());
-	} catch (e) {
-		return err(mapError(e));
-	}
-};
-
-// === PROVIDER (real API) ===
+// === PROVIDER (real API using Octokit) ===
 
 export class GitHubProvider implements Provider<GitHubRaw> {
 	readonly platform = "github";
 	private config: GitHubProviderConfig;
 
-	constructor(config: GitHubProviderConfig) {
+	constructor(config: GitHubProviderConfig = {}) {
 		this.config = config;
 	}
 
 	async fetch(token: string): Promise<FetchResult<GitHubRaw>> {
-		const url = `https://api.github.com/users/${this.config.username}/events`;
-		console.log("[GitHubProvider.fetch] API URL:", url);
+		console.log("[GitHubProvider.fetch] Starting with Octokit");
 		console.log("[GitHubProvider.fetch] Token present:", !!token);
+		console.log("[GitHubProvider.fetch] Config username:", this.config.username ?? "will auto-discover");
 
-		return tryCatchAsync(
-			async () => {
-				console.log("[GitHubProvider.fetch] Making fetch request...");
-				const response = await fetch(url, {
-					headers: {
-						Authorization: `Bearer ${token}`,
-						Accept: "application/vnd.github+json",
-						"X-GitHub-Api-Version": "2022-11-28",
-					},
-				});
-				console.log("[GitHubProvider.fetch] Response status:", response.status);
-				console.log("[GitHubProvider.fetch] Response headers:", Object.fromEntries(response.headers.entries()));
+		try {
+			const octokit = new Octokit({
+				auth: token,
+				userAgent: "media-timeline/1.0.0",
+			});
 
-				const result = await handleGitHubResponse(response);
-				console.log("[GitHubProvider.fetch] Parsed result events count:", result.events?.length ?? 0);
-				console.log("[GitHubProvider.fetch] Raw response data preview:", JSON.stringify(result).slice(0, 500));
-				return result;
-			},
-			error => {
-				console.log("[GitHubProvider.fetch] Error occurred:", error);
-				return toProviderError(error);
+			let username = this.config.username;
+			if (!username) {
+				console.log("[GitHubProvider.fetch] Fetching authenticated user info...");
+				const { data: user } = await octokit.rest.users.getAuthenticated();
+				username = user.login;
+				console.log("[GitHubProvider.fetch] Authenticated as:", username);
 			}
-		);
+
+			console.log("[GitHubProvider.fetch] Fetching events for user:", username);
+			const { data: events } = await octokit.rest.activity.listEventsForAuthenticatedUser({
+				username,
+				per_page: 100,
+			});
+
+			console.log("[GitHubProvider.fetch] Fetched events count:", events.length);
+			console.log(
+				"[GitHubProvider.fetch] Event types:",
+				events.map(e => e.type)
+			);
+
+			const transformedEvents = events.map(event => ({
+				id: event.id,
+				type: event.type ?? "Unknown",
+				created_at: event.created_at ?? new Date().toISOString(),
+				repo: {
+					id: event.repo.id,
+					name: event.repo.name,
+					url: event.repo.url,
+				},
+				payload: event.payload as Record<string, unknown>,
+			}));
+
+			const rawData = {
+				events: transformedEvents,
+				fetched_at: new Date().toISOString(),
+			};
+
+			console.log("[GitHubProvider.fetch] Raw data preview:", JSON.stringify(rawData).slice(0, 500));
+
+			const result = GitHubRawSchema.safeParse(rawData);
+			if (!result.success) {
+				console.log("[GitHubProvider.fetch] Schema validation failed:", result.error.message);
+				console.log("[GitHubProvider.fetch] Returning unvalidated data with filtered events");
+				const filteredEvents = transformedEvents.filter(e => ["PushEvent", "CreateEvent", "WatchEvent", "IssuesEvent", "PullRequestEvent"].includes(e.type));
+				return ok({
+					events: filteredEvents,
+					fetched_at: new Date().toISOString(),
+				} as GitHubRaw);
+			}
+
+			console.log("[GitHubProvider.fetch] Schema validation passed");
+			return ok(result.data);
+		} catch (error: unknown) {
+			console.log("[GitHubProvider.fetch] Error occurred:", error);
+			return err(this.mapError(error));
+		}
+	}
+
+	private mapError(error: unknown): ProviderError {
+		if (error && typeof error === "object" && "status" in error) {
+			const status = (error as { status: number }).status;
+			const response = (error as { response?: { headers?: Record<string, string | number> } }).response;
+
+			if (status === 401 || status === 403) {
+				const rateLimitRemaining = response?.headers?.["x-ratelimit-remaining"];
+				const rateLimitReset = response?.headers?.["x-ratelimit-reset"];
+
+				if (rateLimitRemaining === 0 && rateLimitReset) {
+					return { kind: "rate_limited", retry_after: parseRateLimitReset(Number(rateLimitReset)) };
+				}
+				return { kind: "auth_expired", message: "GitHub token expired or invalid" };
+			}
+
+			if (status === 429) {
+				const rateLimitReset = response?.headers?.["x-ratelimit-reset"];
+				return { kind: "rate_limited", retry_after: parseRateLimitReset(rateLimitReset ? Number(rateLimitReset) : undefined) };
+			}
+
+			const message = (error as { message?: string }).message ?? "Unknown API error";
+			return { kind: "api_error", status, message };
+		}
+
+		return toProviderError(error);
 	}
 }
 
