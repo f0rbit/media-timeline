@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { handleCron } from "../../src/cron";
 import type { GitHubRaw, Platform } from "../../src/schema";
 import { type TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, BLUESKY_FIXTURES, DEVPAD_FIXTURES, GITHUB_FIXTURES, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS, YOUTUBE_FIXTURES } from "./fixtures";
+import { ACCOUNTS, BLUESKY_FIXTURES, DEVPAD_FIXTURES, GITHUB_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw, USERS, YOUTUBE_FIXTURES } from "./fixtures";
 import { addAccountMember, createProviderFactoryFromAccounts, createTestContext, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
 
 describe("cron workflow", () => {
@@ -88,14 +88,12 @@ describe("cron workflow", () => {
 
 			const newCommitSha = "abc123def456789012345678901234567890abcd";
 			const newData = makeGitHubRaw([
-				...initialData.events,
-				makeGitHubPushEvent({
-					created_at: new Date().toISOString(),
-					repo: { id: 1, name: "alice/repo", url: "https://api.github.com/repos/alice/repo" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: newCommitSha, message: "new commit with different content" })],
-					},
+				...(initialData.commits ?? []),
+				makeGitHubExtendedCommit({
+					sha: newCommitSha,
+					date: new Date().toISOString(),
+					repo: "alice/repo",
+					message: "new commit with different content",
 				}),
 			]);
 
@@ -119,8 +117,8 @@ describe("cron workflow", () => {
 			const secondGet = await store.get(secondVersionId);
 			expect(secondGet.ok).toBe(true);
 			if (secondGet.ok) {
-				const events = (secondGet.value.data as GitHubRaw).events;
-				expect(events.length).toBe(2);
+				const commits = (secondGet.value.data as GitHubRaw).commits;
+				expect(commits?.length).toBe(2);
 			}
 		});
 
@@ -178,19 +176,9 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.bob_github);
 
-			const aliceData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 1, name: "alice/repo", url: "https://api.github.com/repos/alice/repo" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "alice commit" })] },
-				}),
-			]);
+			const aliceData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/repo", message: "alice commit" })]);
 
-			const bobData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 2, name: "bob/repo", url: "https://api.github.com/repos/bob/repo" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "bob commit" })] },
-				}),
-			]);
+			const bobData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "bob/repo", message: "bob commit" })]);
 
 			const providerFactory = createProviderFactoryFromAccounts({
 				[ACCOUNTS.alice_github.id]: aliceData,
@@ -231,12 +219,7 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
 			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
 
-			const sharedData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 99, name: "org/shared-repo", url: "https://api.github.com/repos/org/shared-repo" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "shared commit" })] },
-				}),
-			]);
+			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "org/shared-repo", message: "shared commit" })]);
 
 			const providerFactory = createProviderFactoryFromAccounts({
 				[ACCOUNTS.shared_org_github.id]: sharedData,

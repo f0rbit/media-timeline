@@ -272,13 +272,13 @@ describe("resilience", () => {
 		});
 
 		it("provider returns data when no simulation flags set", async () => {
-			ctx.providers.github.setEvents(GITHUB_FIXTURES.singleCommit().events);
+			ctx.providers.github.setCommits(GITHUB_FIXTURES.singleCommit().commits ?? []);
 
 			const result = await ctx.providers.github.fetch("fake-token");
 
 			expect(result.ok).toBe(true);
 			if (result.ok) {
-				expect(result.value.events).toHaveLength(1);
+				expect(result.value.commits).toHaveLength(1);
 			}
 		});
 

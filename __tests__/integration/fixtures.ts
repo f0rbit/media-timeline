@@ -1,28 +1,27 @@
-import type { BlueskyAuthor, BlueskyFeedItem, BlueskyPost, BlueskyRaw, DevpadRaw, DevpadTask, GitHubCommit, GitHubEvent, GitHubPushEvent, GitHubRaw, YouTubeRaw, YouTubeVideo } from "../../src/schema";
+import type { BlueskyAuthor, BlueskyFeedItem, BlueskyPost, BlueskyRaw, DevpadRaw, DevpadTask, GitHubEvent, GitHubExtendedCommit, GitHubRaw, YouTubeRaw, YouTubeVideo } from "../../src/schema";
 import { daysAgo, type DeepPartial, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
 
-export const makeGitHubCommit = (overrides: DeepPartial<GitHubCommit> = {}): GitHubCommit =>
-	mergeDeep(
-		{
-			sha: randomSha(),
-			message: "feat: add new feature",
-			author: { name: "Test User", email: "test@example.com" },
-			url: "https://api.github.com/repos/test/repo/commits/abc123",
-		},
-		overrides
-	);
+export type GitHubExtendedCommitInput = {
+	sha?: string;
+	message?: string;
+	date?: string;
+	url?: string;
+	repo?: string;
+	branch?: string;
+};
 
-export const makeGitHubPushEvent = (overrides: DeepPartial<GitHubPushEvent> = {}): GitHubPushEvent =>
-	mergeDeep(
-		{
-			id: uuid(),
-			type: "PushEvent" as const,
-			created_at: new Date().toISOString(),
-			repo: { id: 12345, name: "test-user/test-repo", url: "https://api.github.com/repos/test-user/test-repo" },
-			payload: { ref: "refs/heads/main", commits: [makeGitHubCommit()] },
-		},
-		overrides
-	);
+export const makeGitHubExtendedCommit = (overrides: GitHubExtendedCommitInput = {}): GitHubExtendedCommit => {
+	const sha = overrides.sha ?? randomSha();
+	const repo = overrides.repo ?? "test-user/test-repo";
+	return {
+		sha,
+		message: overrides.message ?? "feat: add new feature",
+		date: overrides.date ?? new Date().toISOString(),
+		url: overrides.url ?? `https://github.com/${repo}/commit/${sha}`,
+		repo,
+		branch: overrides.branch ?? "main",
+	};
+};
 
 export const makeGitHubWatchEvent = (overrides: Partial<GitHubEvent> = {}): GitHubEvent => {
 	const base = {
@@ -35,8 +34,10 @@ export const makeGitHubWatchEvent = (overrides: Partial<GitHubEvent> = {}): GitH
 	return { ...base, ...overrides } as GitHubEvent;
 };
 
-export const makeGitHubRaw = (events: GitHubEvent[] = [], fetchedAt?: string): GitHubRaw => ({
+export const makeGitHubRaw = (commits: GitHubExtendedCommit[] = [], events: GitHubEvent[] = [], fetchedAt?: string): GitHubRaw => ({
 	events,
+	commits,
+	pull_requests: [],
 	fetched_at: fetchedAt ?? new Date().toISOString(),
 });
 
@@ -123,94 +124,31 @@ export const makeDevpadRaw = (tasks: DevpadTask[] = [], fetchedAt?: string): Dev
 
 export const GITHUB_FIXTURES = {
 	singleCommit: (repo = "alice/project", timestamp = hoursAgo(1)) => {
-		const sha = randomSha();
-		return makeGitHubRaw([
-			makeGitHubPushEvent({
-				created_at: timestamp,
-				repo: { id: 1, name: repo, url: `https://api.github.com/repos/${repo}` },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ sha, message: "Initial commit" })],
-				},
-			}),
-		]);
+		return makeGitHubRaw([makeGitHubExtendedCommit({ repo, date: timestamp, message: "Initial commit" })]);
 	},
 
 	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hoursAgo(2)) => {
-		const commits = [makeGitHubCommit({ sha: randomSha(), message: "feat: add feature A" }), makeGitHubCommit({ sha: randomSha(), message: "feat: add feature B" }), makeGitHubCommit({ sha: randomSha(), message: "fix: bug fix" })];
 		return makeGitHubRaw([
-			makeGitHubPushEvent({
-				created_at: baseTimestamp,
-				repo: { id: 1, name: repo, url: `https://api.github.com/repos/${repo}` },
-				payload: { ref: "refs/heads/main", commits },
-			}),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature A" }),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature B" }),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "fix: bug fix" }),
 		]);
 	},
 
 	multipleReposSameDay: (timestamp = hoursAgo(1)) => {
-		const events = [
-			makeGitHubPushEvent({
-				created_at: timestamp,
-				repo: { id: 1, name: "alice/repo-a", url: "https://api.github.com/repos/alice/repo-a" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "update repo-a" })],
-				},
-			}),
-			makeGitHubPushEvent({
-				created_at: timestamp,
-				repo: { id: 2, name: "alice/repo-b", url: "https://api.github.com/repos/alice/repo-b" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "update repo-b" })],
-				},
-			}),
-		];
-		return makeGitHubRaw(events);
+		return makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/repo-a", date: timestamp, message: "update repo-a" }), makeGitHubExtendedCommit({ repo: "alice/repo-b", date: timestamp, message: "update repo-b" })]);
 	},
 
 	acrossMultipleDays: () => {
-		const events = [
-			makeGitHubPushEvent({
-				created_at: daysAgo(0),
-				repo: { id: 1, name: "alice/project", url: "https://api.github.com/repos/alice/project" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "today commit" })],
-				},
-			}),
-			makeGitHubPushEvent({
-				created_at: daysAgo(1),
-				repo: { id: 1, name: "alice/project", url: "https://api.github.com/repos/alice/project" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "yesterday commit" })],
-				},
-			}),
-			makeGitHubPushEvent({
-				created_at: daysAgo(2),
-				repo: { id: 1, name: "alice/project", url: "https://api.github.com/repos/alice/project" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "two days ago commit" })],
-				},
-			}),
-		];
-		return makeGitHubRaw(events);
+		return makeGitHubRaw([
+			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(0), message: "today commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(1), message: "yesterday commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(2), message: "two days ago commit" }),
+		]);
 	},
 
 	withNonPushEvents: () => {
-		const events: GitHubEvent[] = [
-			makeGitHubPushEvent({
-				created_at: hoursAgo(1),
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "a commit" })],
-				},
-			}),
-			makeGitHubWatchEvent({ created_at: hoursAgo(2) }),
-		];
-		return makeGitHubRaw(events);
+		return makeGitHubRaw([makeGitHubExtendedCommit({ date: hoursAgo(1), message: "a commit" })], [makeGitHubWatchEvent({ created_at: hoursAgo(2) })]);
 	},
 
 	empty: () => makeGitHubRaw([]),
@@ -455,7 +393,7 @@ export const makeTimelineItem = (
 		type: "commit" | "post" | "video" | "task";
 		timestamp: string;
 		title: string;
-		url?: string;
+		url: string;
 		payload: Record<string, unknown>;
 	}> = {}
 ) => ({
@@ -465,6 +403,6 @@ export const makeTimelineItem = (
 	timestamp: new Date().toISOString(),
 	title: "Test item",
 	url: "https://example.com",
-	payload: { type: "commit", sha: randomSha(), message: "test", repo: "test/repo" },
+	payload: { type: "commit", sha: randomSha(), message: "test", repo: "test/repo", branch: "main" },
 	...overrides,
 });

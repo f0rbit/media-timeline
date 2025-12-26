@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { handleCron } from "../../src/cron";
 import type { TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, GITHUB_FIXTURES, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
+import { ACCOUNTS, GITHUB_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw, USERS } from "./fixtures";
 import { addAccountMember, createProviderFactoryFromAccounts, createTestContext, getAccountMembers, getUserAccounts, seedAccount, seedUser, type TestContext } from "./setup";
 
 describe("multi-tenant", () => {
@@ -23,15 +23,7 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
 			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
 
-			const sharedData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 99, name: "org/shared-repo", url: "https://api.github.com/repos/org/shared-repo" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: "shared123", message: "shared commit" })],
-					},
-				}),
-			]);
+			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ sha: "shared123", repo: "org/shared-repo", message: "shared commit" })]);
 
 			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
 			await handleCron({ ...ctx.appContext, providerFactory });
@@ -94,19 +86,9 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.shared_org_github, "owner");
 			await addAccountMember(ctx, USERS.alice.id, ACCOUNTS.shared_org_github.id, "member");
 
-			const aliceData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 1, name: "alice/personal", url: "https://api.github.com/repos/alice/personal" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "alice personal" })] },
-				}),
-			]);
+			const aliceData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/personal", message: "alice personal" })]);
 
-			const sharedData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 99, name: "org/shared", url: "https://api.github.com/repos/org/shared" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "shared work" })] },
-				}),
-			]);
+			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "org/shared", message: "shared work" })]);
 
 			const providerFactory = createProviderFactoryFromAccounts({
 				[ACCOUNTS.alice_github.id]: aliceData,
@@ -319,10 +301,10 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky, "owner");
 
 			const githubData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					created_at: new Date(Date.now() - 3600000).toISOString(),
-					repo: { id: 1, name: "alice/repo", url: "https://api.github.com/repos/alice/repo" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "github commit" })] },
+				makeGitHubExtendedCommit({
+					date: new Date(Date.now() - 3600000).toISOString(),
+					repo: "alice/repo",
+					message: "github commit",
 				}),
 			]);
 
