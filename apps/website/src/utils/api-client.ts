@@ -118,7 +118,7 @@ export type ConnectionsResponse = {
 export type PRCommit = {
 	sha: string;
 	message: string;
-	url?: string;
+	url: string;
 };
 
 export type CommitPayload = {
@@ -126,6 +126,7 @@ export type CommitPayload = {
 	sha: string;
 	message: string;
 	repo: string;
+	branch: string;
 };
 
 export type PullRequestPayload = {
@@ -137,7 +138,7 @@ export type PullRequestPayload = {
 	action: string;
 	head_ref: string;
 	base_ref: string;
-	commits?: PRCommit[];
+	commits: PRCommit[];
 	commit_shas?: string[];
 };
 
@@ -147,18 +148,19 @@ export type TimelineItem = {
 	type: string;
 	timestamp: string;
 	title: string;
-	url?: string;
+	url: string;
 	payload: CommitPayload | PullRequestPayload | Record<string, unknown>;
 };
 
 export type CommitGroup = {
 	type: "commit_group";
 	repo: string;
+	branch: string;
 	date: string;
 	commits: TimelineItem[];
-	total_additions?: number;
-	total_deletions?: number;
-	total_files_changed?: number;
+	total_additions: number;
+	total_deletions: number;
+	total_files_changed: number;
 };
 
 export type TimelineEntry = TimelineItem | CommitGroup;
@@ -175,6 +177,7 @@ export type TimelineResponse = {
 	meta: {
 		version: string;
 		generated_at: string;
+		github_usernames?: string[];
 	};
 };
 

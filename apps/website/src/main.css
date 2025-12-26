@@ -203,10 +203,6 @@ p.description {
 	color: var(--text-tertiary);
 }
 
-/* ============================================
-   UTILITY CLASSES
-   ============================================ */
-
 .flex-col {
 	display: flex;
 	flex-direction: column;
@@ -233,6 +229,91 @@ p.description {
 	align-items: baseline;
 }
 
+.primary {
+	color: var(--text-primary);
+}
+.secondary {
+	color: var(--text-secondary);
+}
+.tertiary {
+	color: var(--text-tertiary);
+}
+.muted {
+	color: var(--text-muted);
+}
+
+.text-xs {
+	font-size: 0.75rem;
+}
+.text-sm {
+	font-size: 0.875rem;
+}
+.text-base {
+	font-size: 1rem;
+}
+
+.font-normal {
+	font-weight: 400;
+}
+.font-medium {
+	font-weight: 500;
+}
+.font-bold {
+	font-weight: 700;
+}
+
+.mono {
+	font-family: monospace;
+}
+
+.truncate {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+.nowrap {
+	white-space: nowrap;
+}
+
+.inline-flex {
+	display: inline-flex;
+	align-items: center;
+}
+
+.items-center {
+	align-items: center;
+}
+.items-baseline {
+	align-items: baseline;
+}
+.items-start {
+	align-items: flex-start;
+}
+
+.justify-between {
+	justify-content: space-between;
+}
+.justify-center {
+	justify-content: center;
+}
+
+.flex-wrap {
+	flex-wrap: wrap;
+}
+.shrink-0 {
+	flex-shrink: 0;
+}
+.flex-1 {
+	flex: 1;
+}
+.min-w-0 {
+	min-width: 0;
+}
+
+a.secondary:hover {
+	color: var(--text-link);
+}
+
 .icons {
 	display: flex;
 	gap: 4px;
@@ -249,10 +330,6 @@ p.description {
 .hidden {
 	display: none;
 }
-
-/* ============================================
-   COMPONENT CLASSES
-   ============================================ */
 
 .version-tag {
 	font-size: x-small;
@@ -287,10 +364,6 @@ footer {
 	align-items: center;
 	gap: 10px;
 }
-
-/* ============================================
-   FORM INPUTS
-   ============================================ */
 
 h1 > input[type="text"],
 h2 > input[type="text"],
@@ -361,10 +434,6 @@ input[type="password"]:focus {
 	border-color: var(--input-focus);
 }
 
-/* ============================================
-   ICONS & STATUS
-   ============================================ */
-
 .lucide {
 	width: 1.1rem;
 	height: 1.1rem;
@@ -412,10 +481,6 @@ input[type="password"]:focus {
 	color: oklch(from var(--item-red) 0.8 0.15 h);
 }
 
-/* ============================================
-   CODE & PRE
-   ============================================ */
-
 code > pre {
 	background: var(--input-background);
 	border: 1px solid var(--input-border);
@@ -434,10 +499,6 @@ code > pre {
 	background: oklch(from var(--input-border) 23% 0.017 h);
 	overflow: auto;
 }
-
-/* ============================================
-   DETAILS/SUMMARY
-   ============================================ */
 
 details > summary {
 	cursor: pointer;
@@ -475,10 +536,6 @@ details[open] .down-arrow {
 	display: none;
 }
 
-/* ============================================
-   CARD PRIMITIVES
-   ============================================ */
-
 .card {
 	border: 1px solid var(--input-border);
 	border-radius: 4px;
@@ -495,15 +552,10 @@ details[open] .down-arrow {
 	opacity: 1;
 }
 
-/* ============================================
-   BUTTON STYLES
-   ============================================ */
-
 .button-reset {
 	background: none;
 	border: none;
 	padding: 0;
-	font: inherit;
 	cursor: pointer;
 	outline: inherit;
 }
@@ -543,10 +595,6 @@ button.icon-btn:disabled {
 	cursor: not-allowed;
 }
 
-/* ============================================
-   VIEW TOGGLE
-   ============================================ */
-
 .view-toggle {
 	display: flex;
 	gap: 2px;
@@ -573,10 +621,6 @@ button.icon-btn:disabled {
 	background: var(--input-border);
 }
 
-/* ============================================
-   EMPTY STATE
-   ============================================ */
-
 .empty-state {
 	text-align: center;
 	padding: 40px 20px;
@@ -587,10 +631,6 @@ button.icon-btn:disabled {
 	margin-bottom: 16px;
 }
 
-/* ============================================
-   FORMS
-   ============================================ */
-
 form.flex-col {
 	gap: 16px;
 }
@@ -600,10 +640,6 @@ form section label {
 	color: var(--text-tertiary);
 	margin-bottom: 4px;
 }
-
-/* ============================================
-   RAW DATA VIEWER
-   ============================================ */
 
 .raw-viewer {
 	font-family: monospace;
@@ -622,10 +658,6 @@ form section label {
 	word-break: break-word;
 }
 
-/* ============================================
-   PLATFORM COLORS
-   ============================================ */
-
 .platform-github {
 	--platform-color: oklch(45% 0.02 290);
 }
@@ -639,10 +671,6 @@ form section label {
 	--platform-color: oklch(55% 0.1 150);
 }
 
-/* ============================================
-   CONNECTION STATUS
-   ============================================ */
-
 .status-active {
 	color: var(--item-green);
 }
@@ -652,10 +680,6 @@ form section label {
 .status-error {
 	color: var(--item-red);
 }
-
-/* ============================================
-   TIMELINE
-   ============================================ */
 
 .timeline {
 	display: flex;
@@ -720,55 +744,6 @@ form section label {
 	background: var(--input-border);
 }
 
-.timeline-content {
-	display: flex;
-	flex-direction: column;
-	gap: 0.25rem;
-	flex: 1;
-	min-width: 0;
-}
-
-.timeline-main-row {
-	display: flex;
-	justify-content: space-between;
-	align-items: flex-start;
-	gap: 1rem;
-}
-
-.timeline-repo {
-	font-weight: 500;
-	color: var(--text-secondary);
-}
-
-.timeline-repo-small {
-	font-size: 0.75rem;
-	color: var(--text-muted);
-}
-
-.timeline-time {
-	font-size: 0.75rem;
-	color: var(--text-muted);
-	white-space: nowrap;
-	flex-shrink: 0;
-}
-
-.timeline-expand-btn {
-	display: inline-flex;
-	align-items: center;
-	gap: 0.25rem;
-	padding: 0.125rem 0;
-	background: none;
-	border: none;
-	color: var(--text-muted);
-	font-size: 0.75rem;
-	cursor: pointer;
-	transition: color 0.15s;
-}
-
-.timeline-expand-btn:hover {
-	color: var(--text-secondary);
-}
-
 .timeline-nested-list {
 	display: flex;
 	flex-direction: column;
@@ -779,45 +754,9 @@ form section label {
 	margin-left: 0.125rem;
 }
 
-.timeline-nested-row {
-	display: flex;
-	gap: 0.5rem;
-	align-items: baseline;
-	padding: 0.125rem 0.5rem;
-	font-size: 0.8125rem;
-}
-
-.timeline-sha {
-	font-size: 0.75rem;
-	color: var(--text-muted);
-	font-family: monospace;
-	flex-shrink: 0;
-}
-
-.timeline-commit-msg {
-	color: var(--text-secondary);
-	text-decoration: none;
-	overflow: hidden;
-	text-overflow: ellipsis;
-	white-space: nowrap;
-}
-
-a.timeline-commit-msg:hover {
-	color: var(--text-link);
-}
-
-.timeline-pr-header {
-	display: flex;
-	gap: 0.5rem;
-	align-items: center;
-	flex-wrap: wrap;
-	min-width: 0;
-}
-
 .timeline-state {
 	font-size: 0.75rem;
 	font-weight: 500;
-	text-transform: capitalize;
 	padding: 0.0625rem 0.375rem;
 	border-radius: 0.25rem;
 }
@@ -849,41 +788,6 @@ a.timeline-commit-msg:hover {
 	}
 }
 
-.timeline-pr-title {
-	color: var(--text-secondary);
-	text-decoration: none;
-	font-weight: 500;
-}
-
-a.timeline-pr-title:hover {
-	color: var(--text-link);
-}
-
-.timeline-pr-meta {
-	display: flex;
-	gap: 0.5rem;
-	align-items: baseline;
-	font-size: 0.75rem;
-	color: var(--text-muted);
-}
-
-.timeline-pr-branches {
-	font-family: monospace;
-}
-
-.timeline-commit-header {
-	display: flex;
-	gap: 0.5rem;
-	align-items: center;
-	min-width: 0;
-}
-
-.timeline-generic-header {
-	display: flex;
-	gap: 0.5rem;
-	align-items: center;
-}
-
 .timeline-type-badge {
 	font-size: 0.75rem;
 	color: var(--text-muted);
@@ -892,10 +796,6 @@ a.timeline-pr-title:hover {
 	border-radius: 0.25rem;
 	border: 1px solid var(--input-border);
 }
-
-/* ============================================
-   ARTICLE STYLING
-   ============================================ */
 
 article {
 	h1,
@@ -986,10 +886,6 @@ article {
 		color: var(--text-subtlish);
 	}
 }
-
-/* ============================================
-   MISCELLANEOUS
-   ============================================ */
 
 hr {
 	width: 90%;

@@ -75,6 +75,15 @@ timelineRoutes.get("/:user_id", async c => {
 	const from = c.req.query("from");
 	const to = c.req.query("to");
 
+	// Fetch GitHub usernames for repo owner stripping
+	const githubAccounts = await ctx.db
+		.select({ platform_username: accounts.platform_username })
+		.from(accounts)
+		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+		.where(and(eq(accountMembers.user_id, userId), eq(accounts.platform, "github"), eq(accounts.is_active, true)));
+
+	const githubUsernames = githubAccounts.map(a => a.platform_username).filter((u): u is string => u !== null);
+
 	const result = await pipe(createTimelineStore(ctx.backend, userId))
 		.mapErr((e): TimelineRouteError => e)
 		.map(({ store }) => store)
@@ -93,7 +102,10 @@ timelineRoutes.get("/:user_id", async c => {
 				if (to && group.date > to) return false;
 				return true;
 			});
-			return { meta: snapshot.meta, data: { ...snapshot.data, groups: filteredGroups } };
+			return {
+				meta: { ...snapshot.meta, github_usernames: githubUsernames },
+				data: { ...snapshot.data, groups: filteredGroups },
+			};
 		})
 		.result();
 

@@ -1,9 +1,18 @@
-import { createResource, createSignal, For, Show, Match, Switch } from "solid-js";
+import { createResource, createSignal, createContext, useContext, For, Show, Match, Switch, type ParentComponent } from "solid-js";
 import { GitCommit, GitPullRequest, ChevronDown, ChevronRight } from "lucide-solid";
 import { timeline, initMockAuth, getMockUserId, type ApiResult, type TimelineResponse, type TimelineGroup, type TimelineItem, type CommitGroup, type PullRequestPayload, type PRCommit } from "@/utils/api-client";
 import { formatDate, formatRelativeTime } from "@/utils/formatters";
 
 type ViewMode = "rendered" | "raw";
+
+const GithubUsernamesContext = createContext<string[]>([]);
+
+const stripOwnerPrefix = (repo: string, usernames: string[]): string => {
+	const [owner, name] = repo.split("/");
+	if (!owner || !name) return repo;
+	if (usernames.some(u => u.toLowerCase() === owner.toLowerCase())) return name;
+	return repo;
+};
 
 export default function TimelineList() {
 	initMockAuth();
@@ -16,6 +25,8 @@ export default function TimelineList() {
 		if (result.ok === false) throw new Error(result.error.message);
 		return result.data;
 	});
+
+	const githubUsernames = () => data()?.meta.github_usernames ?? [];
 
 	return (
 		<div class="timeline">
@@ -33,9 +44,11 @@ export default function TimelineList() {
 			</Show>
 
 			<Show when={data()}>
-				<Show when={viewMode() === "rendered"} fallback={<RawDataViewer data={data()!} />}>
-					<TimelineGroups groups={data()!.data.groups} />
-				</Show>
+				<GithubUsernamesContext.Provider value={githubUsernames()}>
+					<Show when={viewMode() === "rendered"} fallback={<RawDataViewer data={data()!} />}>
+						<TimelineGroups groups={data()!.data.groups} />
+					</Show>
+				</GithubUsernamesContext.Provider>
 			</Show>
 		</div>
 	);
@@ -121,18 +134,25 @@ function TimelineEntry(props: TimelineEntryProps) {
 
 function CommitGroupRow(props: { group: CommitGroup }) {
 	const [expanded, setExpanded] = createSignal(false);
+	const githubUsernames = useContext(GithubUsernamesContext);
 	const firstCommit = () => props.group.commits[0];
 	const shouldCollapse = () => props.group.commits.length > 8;
+	const displayRepo = () => stripOwnerPrefix(props.group.repo, githubUsernames);
 
 	return (
 		<div class="timeline-row">
 			<div class="timeline-icon">
 				<GitCommit size={16} />
 			</div>
-			<div class="timeline-content">
-				<div class="timeline-main-row">
-					<span class="timeline-repo">{props.group.repo}</span>
-					<span class="timeline-time">{formatRelativeTime(firstCommit()?.timestamp ?? props.group.date)}</span>
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<span class="text-xs muted nowrap shrink-0">{formatRelativeTime(firstCommit()?.timestamp ?? props.group.date)}</span>
+				<div class="flex-row justify-between items-start" style={{ gap: "1rem" }}>
+					<span class="inline-flex items-baseline">
+						<span class="secondary font-medium">{displayRepo()}</span>
+						<Show when={props.group.branch}>
+							<span class="muted font-medium">{`:${props.group.branch}`}</span>
+						</Show>
+					</span>
 				</div>
 				<Show
 					when={shouldCollapse()}
@@ -142,7 +162,7 @@ function CommitGroupRow(props: { group: CommitGroup }) {
 						</div>
 					}
 				>
-					<button class="timeline-expand-btn" onClick={() => setExpanded(!expanded())}>
+					<button class="button-reset inline-flex text-xs muted" style={{ gap: "0.25rem", padding: "0.125rem 0" }} onClick={() => setExpanded(!expanded())}>
 						<Show when={expanded()} fallback={<ChevronRight size={14} />}>
 							<ChevronDown size={14} />
 						</Show>
@@ -163,10 +183,10 @@ function NestedCommitRow(props: { commit: TimelineItem }) {
 	const payload = () => props.commit.payload as { sha?: string };
 
 	return (
-		<div class="timeline-nested-row">
-			<code class="timeline-sha">{payload().sha?.slice(0, 7)}</code>
-			<Show when={props.commit.url} fallback={<span class="timeline-commit-msg">{props.commit.title}</span>}>
-				<a href={props.commit.url} target="_blank" rel="noopener noreferrer" class="timeline-commit-msg">
+		<div class="flex-row items-baseline" style={{ gap: "0.5rem", padding: "0.125rem 0.5rem", "font-size": "0.8125rem" }}>
+			<code class="text-xs muted mono shrink-0">{payload().sha?.slice(0, 7)}</code>
+			<Show when={props.commit.url} fallback={<span class="secondary truncate">{props.commit.title}</span>}>
+				<a href={props.commit.url} target="_blank" rel="noopener noreferrer" class="secondary truncate">
 					{props.commit.title}
 				</a>
 			</Show>
@@ -176,9 +196,11 @@ function NestedCommitRow(props: { commit: TimelineItem }) {
 
 function PullRequestRow(props: { item: TimelineItem }) {
 	const [expanded, setExpanded] = createSignal(false);
+	const githubUsernames = useContext(GithubUsernamesContext);
 	const payload = () => props.item.payload as PullRequestPayload;
 	const commits = () => payload().commits ?? [];
 	const hasCommits = () => commits().length > 0;
+	const displayRepo = () => stripOwnerPrefix(payload().repo, githubUsernames);
 
 	const stateClass = () => {
 		switch (payload().state) {
@@ -198,22 +220,27 @@ function PullRequestRow(props: { item: TimelineItem }) {
 			<div class="timeline-icon timeline-icon-pr">
 				<GitPullRequest size={16} />
 			</div>
-			<div class="timeline-content">
-				<div class="timeline-main-row">
-					<div class="timeline-pr-header">
-						<span class={`timeline-state ${stateClass()}`}>{payload().state}</span>
-						<Show when={props.item.url} fallback={<span class="timeline-pr-title">{props.item.title}</span>}>
-							<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="timeline-pr-title">
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
+					<span class="muted nowrap shrink-0">{formatRelativeTime(props.item.timestamp)}</span>
+					<span class="muted">·</span>
+					<span class={`timeline-state ${stateClass()}`}>{payload().state}</span>
+				</div>
+				<div class="flex-row justify-between items-start" style={{ gap: "1rem" }}>
+					<div class="flex-row items-center flex-wrap min-w-0" style={{ gap: "0.5rem" }}>
+						<Show when={props.item.url} fallback={<span class="secondary font-medium">{props.item.title}</span>}>
+							<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="secondary font-medium">
 								{props.item.title}
 							</a>
 						</Show>
 					</div>
-					<span class="timeline-time">{formatRelativeTime(props.item.timestamp)}</span>
 				</div>
-				<div class="timeline-pr-meta">
+				<div class="flex-row items-baseline text-xs muted" style={{ gap: "0.5rem" }}>
+					<span>{displayRepo()}</span>
+					<span>·</span>
 					<span>#{payload().number}</span>
-					<span style={{ color: "var(--text-muted)" }}> · </span>
-					<span class="timeline-pr-branches">
+					<span>·</span>
+					<span class="mono">
 						{payload().head_ref} → {payload().base_ref}
 					</span>
 				</div>
@@ -226,7 +253,7 @@ function PullRequestRow(props: { item: TimelineItem }) {
 							</div>
 						}
 					>
-						<button class="timeline-expand-btn" onClick={() => setExpanded(!expanded())}>
+						<button class="button-reset inline-flex text-xs muted" style={{ gap: "0.25rem", padding: "0.125rem 0" }} onClick={() => setExpanded(!expanded())}>
 							<Show when={expanded()} fallback={<ChevronRight size={14} />}>
 								<ChevronDown size={14} />
 							</Show>
@@ -251,10 +278,10 @@ function PRCommitRow(props: { commit: PRCommit }) {
 	};
 
 	return (
-		<div class="timeline-nested-row">
-			<code class="timeline-sha">{props.commit.sha.slice(0, 7)}</code>
-			<Show when={props.commit.url} fallback={<span class="timeline-commit-msg">{truncatedMessage()}</span>}>
-				<a href={props.commit.url} target="_blank" rel="noopener noreferrer" class="timeline-commit-msg">
+		<div class="flex-row items-baseline" style={{ gap: "0.5rem", padding: "0.125rem 0.5rem", "font-size": "0.8125rem" }}>
+			<code class="text-xs muted mono shrink-0">{props.commit.sha.slice(0, 7)}</code>
+			<Show when={props.commit.url} fallback={<span class="secondary truncate">{truncatedMessage()}</span>}>
+				<a href={props.commit.url} target="_blank" rel="noopener noreferrer" class="secondary truncate">
 					{truncatedMessage()}
 				</a>
 			</Show>
@@ -263,27 +290,32 @@ function PRCommitRow(props: { commit: PRCommit }) {
 }
 
 function CommitRow(props: { item: TimelineItem }) {
+	const githubUsernames = useContext(GithubUsernamesContext);
 	const payload = () => props.item.payload as { sha?: string; repo?: string };
+	const displayRepo = () => {
+		const repo = payload().repo;
+		return repo ? stripOwnerPrefix(repo, githubUsernames) : undefined;
+	};
 
 	return (
 		<div class="timeline-row">
 			<div class="timeline-icon">
 				<GitCommit size={16} />
 			</div>
-			<div class="timeline-content">
-				<div class="timeline-main-row">
-					<div class="timeline-commit-header">
-						<code class="timeline-sha">{payload().sha?.slice(0, 7)}</code>
-						<Show when={props.item.url} fallback={<span class="timeline-commit-msg">{props.item.title}</span>}>
-							<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="timeline-commit-msg">
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<div class="flex justify-between items-start" style={{ gap: "1rem" }}>
+					<div class="flex items-center" style={{ gap: "0.5rem", "min-width": 0 }}>
+						<code class="text-xs muted mono shrink-0">{payload().sha?.slice(0, 7)}</code>
+						<Show when={props.item.url} fallback={<span class="secondary truncate">{props.item.title}</span>}>
+							<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="secondary truncate">
 								{props.item.title}
 							</a>
 						</Show>
 					</div>
-					<span class="timeline-time">{formatRelativeTime(props.item.timestamp)}</span>
+					<span class="text-xs muted nowrap shrink-0">{formatRelativeTime(props.item.timestamp)}</span>
 				</div>
-				<Show when={payload().repo}>
-					<span class="timeline-repo-small">{payload().repo}</span>
+				<Show when={displayRepo()}>
+					<span class="text-xs muted">{displayRepo()}</span>
 				</Show>
 			</div>
 		</div>
@@ -296,9 +328,9 @@ function GenericRow(props: { item: TimelineItem }) {
 			<div class="timeline-icon">
 				<div class="timeline-dot" />
 			</div>
-			<div class="timeline-content">
-				<div class="timeline-main-row">
-					<div class="timeline-generic-header">
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<div class="flex-row justify-between items-start" style={{ gap: "1rem" }}>
+					<div class="flex-row items-center" style={{ gap: "0.5rem" }}>
 						<span class="timeline-type-badge">{props.item.type}</span>
 						<Show when={props.item.url} fallback={<span>{props.item.title}</span>}>
 							<a href={props.item.url} target="_blank" rel="noopener noreferrer">
@@ -306,7 +338,7 @@ function GenericRow(props: { item: TimelineItem }) {
 							</a>
 						</Show>
 					</div>
-					<span class="timeline-time">{formatRelativeTime(props.item.timestamp)}</span>
+					<span class="text-xs muted nowrap shrink-0">{formatRelativeTime(props.item.timestamp)}</span>
 				</div>
 			</div>
 		</div>
