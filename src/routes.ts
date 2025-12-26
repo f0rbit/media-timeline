@@ -1,3 +1,4 @@
+import { type CorpusError as LibCorpusError } from "@f0rbit/corpus";
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -44,8 +45,8 @@ const RawSnapshotSchema = z.object({
 type TimelineSnapshot = z.infer<typeof TimelineSnapshotSchema>;
 type RawSnapshot = z.infer<typeof RawSnapshotSchema>;
 
-type TimelineRouteError = CorpusError | { kind: "not_found" } | { kind: "validation_error"; message: string };
-type RawRouteError = CorpusError | { kind: "not_found" } | { kind: "validation_error"; message: string };
+type TimelineRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; message: string };
+type RawRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; message: string };
 
 const CreateConnectionBodySchema = z.object({
 	platform: z.enum(["github", "bluesky", "youtube", "devpad"]),
@@ -78,8 +79,9 @@ timelineRoutes.get("/:user_id", async c => {
 		.mapErr((e): TimelineRouteError => e)
 		.map(({ store }) => store)
 		.flatMap(async (store): Promise<Result<unknown, TimelineRouteError>> => {
-			const latest = (await store.get_latest()) as Result<unknown, unknown>;
-			return latest.ok ? ok(latest.value) : err({ kind: "not_found" });
+			const latest = await store.get_latest();
+			if (!latest.ok) return err(latest.error);
+			return ok(latest.value);
 		})
 		.flatMap((raw): Result<TimelineSnapshot, TimelineRouteError> => {
 			const parsed = TimelineSnapshotSchema.safeParse(raw);
@@ -105,7 +107,10 @@ timelineRoutes.get("/:user_id", async c => {
 			if (error.kind === "validation_error") {
 				return c.json({ error: "Internal error", message: "Invalid timeline data format" }, 500) as Response;
 			}
-			return c.json({ error: "Not found", message: "No timeline data available" }, 404) as Response;
+			if (error.kind === "not_found") {
+				return c.json({ error: "Not found", message: "No timeline data available" }, 404) as Response;
+			}
+			return c.json({ error: "Internal error", message: "Unexpected error" }, 500) as Response;
 		}
 	);
 });
@@ -129,8 +134,9 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 		.mapErr((e): RawRouteError => e)
 		.map(({ store }) => store)
 		.flatMap(async (store): Promise<Result<unknown, RawRouteError>> => {
-			const latest = (await store.get_latest()) as Result<unknown, unknown>;
-			return latest.ok ? ok(latest.value) : err({ kind: "not_found" });
+			const latest = await store.get_latest();
+			if (!latest.ok) return err(latest.error);
+			return ok(latest.value);
 		})
 		.flatMap((raw): Result<RawSnapshot, RawRouteError> => {
 			const parsed = RawSnapshotSchema.safeParse(raw);
@@ -149,7 +155,10 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 			if (error.kind === "validation_error") {
 				return c.json({ error: "Internal error", message: "Invalid raw data format" }, 500) as Response;
 			}
-			return c.json({ error: "Not found", message: "No raw data available for this account" }, 404) as Response;
+			if (error.kind === "not_found") {
+				return c.json({ error: "Not found", message: "No raw data available for this account" }, 404) as Response;
+			}
+			return c.json({ error: "Internal error", message: "Unexpected error" }, 500) as Response;
 		}
 	);
 });
