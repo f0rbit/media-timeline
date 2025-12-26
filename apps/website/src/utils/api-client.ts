@@ -21,7 +21,7 @@ export function getApiKey(): string | null {
 }
 
 const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = "mt_mock_" + btoa(MOCK_USER_ID).slice(0, 24);
+const MOCK_API_KEY = "mt_dev_" + btoa(MOCK_USER_ID).slice(0, 24);
 
 export function getMockApiKey(): string {
 	return MOCK_API_KEY;

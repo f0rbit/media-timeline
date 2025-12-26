@@ -7,7 +7,8 @@
 	],
 	"scripts": {
 		"dev": "bun run --filter @media-timeline/website dev",
-		"dev:api": "sst dev",
+		"dev:api": "bun run scripts/dev-server.ts",
+		"dev:sst": "sst dev",
 		"build": "bun run --filter @media-timeline/website build",
 		"test": "bun test",
 		"test:coverage": "bun test --coverage",
