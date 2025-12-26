@@ -239,7 +239,16 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
 			console.log("[processAccount] providerFactory.create called, awaiting result...");
 			return pipe(result)
-				.tap(data => console.log("[processAccount] providerFactory.create result: success, data type:", typeof data))
+				.tap(data => {
+					console.log("[processAccount] providerFactory.create result: success, data type:", typeof data);
+					console.log("[processAccount] providerFactory.create result keys:", Object.keys(data as Record<string, unknown>));
+					const d = data as { commits?: unknown[]; pull_requests?: unknown[]; events?: unknown[] };
+					console.log("[processAccount] providerFactory.create result counts:", {
+						events: d.events?.length ?? 0,
+						commits: d.commits?.length ?? 0,
+						pull_requests: d.pull_requests?.length ?? 0,
+					});
+				})
 				.mapErr(e => {
 					console.log("[processAccount] providerFactory.create result: error -", e);
 					return toProcessError(e);

@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 export const PlatformSchema = z.enum(["github", "bluesky", "youtube", "devpad"]);
-export const TimelineTypeSchema = z.enum(["commit", "post", "video", "task"]);
+export const TimelineTypeSchema = z.enum(["commit", "post", "video", "task", "pull_request"]);
 
 export const CommitPayloadSchema = z.object({
 	type: z.literal("commit"),
@@ -49,7 +49,21 @@ export const TaskPayloadSchema = z.object({
 	completed_at: z.string().datetime().optional(),
 });
 
-export const PayloadSchema = z.discriminatedUnion("type", [CommitPayloadSchema, PostPayloadSchema, VideoPayloadSchema, TaskPayloadSchema]);
+export const PullRequestPayloadSchema = z.object({
+	type: z.literal("pull_request"),
+	repo: z.string(),
+	number: z.number(),
+	title: z.string(),
+	state: z.enum(["open", "closed", "merged"]),
+	action: z.string(),
+	head_ref: z.string(),
+	base_ref: z.string(),
+	additions: z.number().optional(),
+	deletions: z.number().optional(),
+	changed_files: z.number().optional(),
+});
+
+export const PayloadSchema = z.discriminatedUnion("type", [CommitPayloadSchema, PostPayloadSchema, VideoPayloadSchema, TaskPayloadSchema, PullRequestPayloadSchema]);
 
 export const TimelineItemSchema = z.object({
 	id: z.string(),
@@ -88,6 +102,7 @@ export type CommitPayload = z.infer<typeof CommitPayloadSchema>;
 export type PostPayload = z.infer<typeof PostPayloadSchema>;
 export type VideoPayload = z.infer<typeof VideoPayloadSchema>;
 export type TaskPayload = z.infer<typeof TaskPayloadSchema>;
+export type PullRequestPayload = z.infer<typeof PullRequestPayloadSchema>;
 export type Payload = z.infer<typeof PayloadSchema>;
 export type TimelineItem = z.infer<typeof TimelineItemSchema>;
 export type CommitGroup = z.infer<typeof CommitGroupSchema>;

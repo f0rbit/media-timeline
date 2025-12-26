@@ -43,8 +43,35 @@ export const GitHubPushEventSchema = z.object({
 
 export const GitHubEventSchema = GitHubBaseEventSchema;
 
+// Extended commit schema for data fetched from Commits API
+export const GitHubExtendedCommitSchema = z.object({
+	sha: z.string(),
+	message: z.string(),
+	date: z.string(),
+	url: z.string(),
+	repo: z.string(),
+});
+
+// Pull request schema for data extracted from PullRequestEvents
+export const GitHubPullRequestSchema = z.object({
+	id: z.number(),
+	number: z.number(),
+	title: z.string(),
+	state: z.enum(["open", "closed", "merged"]),
+	action: z.string(),
+	url: z.string(),
+	repo: z.string(),
+	created_at: z.string(),
+	merged_at: z.string().optional(),
+	head_ref: z.string(),
+	base_ref: z.string(),
+});
+
 export const GitHubRawSchema = FetchedAtSchema.extend({
 	events: z.array(GitHubEventSchema),
+	// Extended fields from new provider (optional for backward compatibility)
+	commits: z.array(GitHubExtendedCommitSchema).optional(),
+	pull_requests: z.array(GitHubPullRequestSchema).optional(),
 });
 
 export const BlueskyAuthorSchema = z.object({

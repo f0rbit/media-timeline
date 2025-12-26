@@ -30,6 +30,9 @@ export default function TimelineItem(props: Props) {
 				<Match when={props.item.type === "commit_group"}>
 					<CommitGroupView item={props.item} />
 				</Match>
+				<Match when={props.item.type === "pull_request"}>
+					<PullRequestView item={props.item} />
+				</Match>
 				<Match when={props.item.type === "post"}>
 					<PostView item={props.item} />
 				</Match>
@@ -97,6 +100,65 @@ function CommitGroupView(props: { item: TimelineItemData }) {
 					</For>
 				</ul>
 			</details>
+		</div>
+	);
+}
+
+function PullRequestView(props: { item: TimelineItemData }) {
+	const repo = () => props.item.payload.repo as string | undefined;
+	const number = () => props.item.payload.number as number | undefined;
+	const state = () => props.item.payload.state as string | undefined;
+	const action = () => props.item.payload.action as string | undefined;
+	const headRef = () => props.item.payload.head_ref as string | undefined;
+	const baseRef = () => props.item.payload.base_ref as string | undefined;
+
+	const stateColor = () => {
+		switch (state()) {
+			case "merged":
+				return "var(--pr-merged, #8957e5)";
+			case "open":
+				return "var(--pr-open, #3fb950)";
+			case "closed":
+				return "var(--pr-closed, #f85149)";
+			default:
+				return "var(--text-muted)";
+		}
+	};
+
+	return (
+		<div class="flex-col" style={{ gap: "4px" }}>
+			<div class="flex-row" style={{ gap: "8px", "align-items": "center" }}>
+				<Show when={state()}>
+					<span
+						style={{
+							color: stateColor(),
+							"font-size": "smaller",
+							"font-weight": "500",
+							"text-transform": "capitalize",
+						}}
+					>
+						{state()}
+					</span>
+				</Show>
+				<Show when={props.item.url} fallback={<span>{props.item.title}</span>}>
+					<a href={props.item.url} target="_blank" rel="noopener noreferrer">
+						{props.item.title}
+					</a>
+				</Show>
+			</div>
+			<div class="flex-row" style={{ gap: "8px", "font-size": "smaller", color: "var(--text-muted)" }}>
+				<Show when={repo()}>
+					<span>{repo()}</span>
+				</Show>
+				<Show when={number()}>
+					<span>#{number()}</span>
+				</Show>
+				<Show when={headRef() && baseRef()}>
+					<span>
+						{headRef()} → {baseRef()}
+					</span>
+				</Show>
+			</div>
 		</div>
 	);
 }
