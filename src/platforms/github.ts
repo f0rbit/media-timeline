@@ -84,12 +84,7 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 			const result = GitHubRawSchema.safeParse(rawData);
 			if (!result.success) {
 				console.log("[GitHubProvider.fetch] Schema validation failed:", result.error.message);
-				console.log("[GitHubProvider.fetch] Returning unvalidated data with filtered events");
-				const filteredEvents = transformedEvents.filter(e => ["PushEvent", "CreateEvent", "WatchEvent", "IssuesEvent", "PullRequestEvent"].includes(e.type));
-				return ok({
-					events: filteredEvents,
-					fetched_at: new Date().toISOString(),
-				} as GitHubRaw);
+				return ok(rawData as GitHubRaw);
 			}
 
 			console.log("[GitHubProvider.fetch] Schema validation passed");
@@ -130,7 +125,19 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 
 // === NORMALIZER ===
 
-const isPushEvent = (event: { type: string }): event is GitHubPushEvent => event.type === "PushEvent";
+type PushEventWithCommits = {
+	id: string;
+	type: "PushEvent";
+	created_at: string;
+	repo: { id: number; name: string; url: string };
+	payload: { ref?: string; commits: Array<{ sha: string; message: string }> };
+};
+
+const isPushEventWithCommits = (event: GitHubEvent): event is PushEventWithCommits => {
+	if (event.type !== "PushEvent") return false;
+	const payload = event.payload as { commits?: unknown[] };
+	return Array.isArray(payload.commits) && payload.commits.length > 0;
+};
 
 const makeCommitId = (repo: string, sha: string): string => `github:commit:${repo}:${sha.slice(0, 7)}`;
 
@@ -146,8 +153,8 @@ export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] => {
 	console.log("[normalizeGitHub] Events array length:", raw.events?.length ?? 0);
 	console.log("[normalizeGitHub] Events types:", raw.events?.map(e => e.type) ?? []);
 
-	const pushEvents = raw.events.filter(isPushEvent);
-	console.log("[normalizeGitHub] PushEvents found:", pushEvents.length);
+	const pushEvents = raw.events.filter(isPushEventWithCommits);
+	console.log("[normalizeGitHub] PushEvents with commits found:", pushEvents.length);
 
 	const items = pushEvents.flatMap((event, eventIndex) => {
 		console.log(`[normalizeGitHub] Processing event ${eventIndex + 1}/${pushEvents.length}:`, { type: event.type, repo: event.repo.name, commits: event.payload.commits.length });

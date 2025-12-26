@@ -4,62 +4,44 @@ const FetchedAtSchema = z.object({
 	fetched_at: z.string().datetime(),
 });
 
+export const GitHubRepoSchema = z.object({
+	id: z.number(),
+	name: z.string(),
+	url: z.string(),
+});
+
 export const GitHubCommitSchema = z.object({
 	sha: z.string(),
 	message: z.string(),
-	author: z.object({
-		name: z.string(),
-		email: z.string(),
-	}),
-	url: z.string().url(),
+	author: z
+		.object({
+			name: z.string(),
+			email: z.string(),
+		})
+		.optional(),
+	url: z.string().url().optional(),
+});
+
+export const GitHubBaseEventSchema = z.object({
+	id: z.string(),
+	type: z.string(),
+	created_at: z.string(),
+	repo: GitHubRepoSchema,
+	payload: z.record(z.unknown()),
 });
 
 export const GitHubPushEventSchema = z.object({
 	id: z.string(),
 	type: z.literal("PushEvent"),
 	created_at: z.string(),
-	repo: z.object({
-		id: z.number(),
-		name: z.string(),
-		url: z.string(),
-	}),
+	repo: GitHubRepoSchema,
 	payload: z.object({
-		ref: z.string(),
-		commits: z.array(GitHubCommitSchema),
+		ref: z.string().optional(),
+		commits: z.array(GitHubCommitSchema).default([]),
 	}),
 });
 
-export const GitHubEventSchema = z.discriminatedUnion("type", [
-	GitHubPushEventSchema,
-	z.object({
-		id: z.string(),
-		type: z.literal("CreateEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ ref: z.string().nullable(), ref_type: z.string() }),
-	}),
-	z.object({
-		id: z.string(),
-		type: z.literal("WatchEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ action: z.string() }),
-	}),
-	z.object({
-		id: z.string(),
-		type: z.literal("IssuesEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ action: z.string(), issue: z.object({ number: z.number(), title: z.string() }) }),
-	}),
-	z.object({
-		id: z.string(),
-		type: z.literal("PullRequestEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ action: z.string(), pull_request: z.object({ number: z.number(), title: z.string() }) }),
-	}),
-]);
+export const GitHubEventSchema = GitHubBaseEventSchema;
 
 export const GitHubRawSchema = FetchedAtSchema.extend({
 	events: z.array(GitHubEventSchema),

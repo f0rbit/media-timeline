@@ -8,10 +8,12 @@ export {
 	BlueskyRawSchema,
 	DevpadRawSchema,
 	DevpadTaskSchema,
+	GitHubBaseEventSchema,
 	GitHubCommitSchema,
 	GitHubEventSchema,
 	GitHubPushEventSchema,
 	GitHubRawSchema,
+	GitHubRepoSchema,
 	YouTubeRawSchema,
 	YouTubeThumbnailSchema,
 	YouTubeVideoSchema,
@@ -54,10 +56,12 @@ import {
 	BlueskyRawSchema,
 	DevpadRawSchema,
 	DevpadTaskSchema,
+	GitHubBaseEventSchema,
 	GitHubCommitSchema,
 	GitHubEventSchema,
 	GitHubPushEventSchema,
 	GitHubRawSchema,
+	GitHubRepoSchema,
 	YouTubeRawSchema,
 	YouTubeThumbnailSchema,
 	YouTubeVideoSchema,
@@ -65,7 +69,9 @@ import {
 
 import { accountMembers, accounts, apiKeys, rateLimits, users } from "./database";
 
+export type GitHubRepo = z.infer<typeof GitHubRepoSchema>;
 export type GitHubCommit = z.infer<typeof GitHubCommitSchema>;
+export type GitHubBaseEvent = z.infer<typeof GitHubBaseEventSchema>;
 export type GitHubPushEvent = z.infer<typeof GitHubPushEventSchema>;
 export type GitHubEvent = z.infer<typeof GitHubEventSchema>;
 export type GitHubRaw = z.infer<typeof GitHubRawSchema>;
