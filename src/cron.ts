@@ -6,7 +6,7 @@ import { normalizeBluesky, normalizeDevpad, normalizeGitHub, normalizeYouTube } 
 import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
 import { createRawStore, createTimelineStore, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
-import { decrypt, err, fetchResult, match, pipe, type Result } from "./utils";
+import { decrypt, err, fetchResult, match, ok, pipe, to_nullable, tryCatch, type Result } from "./utils";
 
 type RawSnapshot = {
 	account_id: string;
@@ -37,6 +37,8 @@ export type CronResult = {
 	failed_accounts: string[];
 	timelines_generated: number;
 };
+
+type NormalizeError = { kind: "parse_error"; platform: string; message: string };
 
 type FetchError = { kind: "network_error"; message: string } | { kind: "api_error"; status: number; message: string } | { kind: "unknown_platform"; platform: string };
 
@@ -302,22 +304,20 @@ const fetchDevpad = (token: string): Promise<Result<Record<string, unknown>, Fet
 		.map(({ tasks }) => ({ tasks, fetched_at: new Date().toISOString() }))
 		.result();
 
-const getLatestSnapshot = (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> =>
-	match(
-		createRawStore(backend, account.platform, account.id),
-		async ({ store }) =>
-			match(
-				(await store.get_latest()) as Result<{ meta: { version: string }; data: unknown }, unknown>,
-				({ meta, data }): RawSnapshot => ({
-					account_id: account.id,
-					platform: account.platform,
-					version: meta.version,
-					data,
-				}),
-				() => null
-			),
-		() => Promise.resolve(null)
-	);
+const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	const storeResult = createRawStore(backend, account.platform, account.id);
+	if (!storeResult.ok) return null;
+
+	const snapshot = to_nullable(await storeResult.value.store.get_latest());
+	if (!snapshot) return null;
+
+	return {
+		account_id: account.id,
+		platform: account.platform,
+		version: snapshot.meta.version,
+		data: snapshot.data,
+	};
+};
 
 const gatherLatestSnapshots = (backend: Backend, accounts: AccountWithUser[]): Promise<RawSnapshot[]> =>
 	Promise.all(accounts.map(account => getLatestSnapshot(backend, account))).then(results => results.filter((s): s is RawSnapshot => s !== null));
@@ -325,7 +325,16 @@ const gatherLatestSnapshots = (backend: Backend, accounts: AccountWithUser[]): P
 const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
 	if (snapshots.length === 0) return;
 
-	const items = snapshots.flatMap(normalizeSnapshot);
+	const normalizeResults = snapshots.map(normalizeSnapshot);
+
+	for (const r of normalizeResults) {
+		if (!r.ok) {
+			console.error(`Failed to normalize ${r.error.platform} data: ${r.error.message}`);
+		}
+	}
+
+	const items = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
+
 	const entries: TimelineEntry[] = groupCommits(items);
 	const dateGroups = groupByDate(entries);
 
@@ -347,17 +356,21 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 		.result();
 };
 
-const normalizeSnapshot = (snapshot: RawSnapshot): TimelineItem[] => {
-	switch (snapshot.platform as Platform) {
-		case "github":
-			return normalizeGitHub(GitHubRawSchema.parse(snapshot.data));
-		case "bluesky":
-			return normalizeBluesky(BlueskyRawSchema.parse(snapshot.data));
-		case "youtube":
-			return normalizeYouTube(YouTubeRawSchema.parse(snapshot.data));
-		case "devpad":
-			return normalizeDevpad(DevpadRawSchema.parse(snapshot.data));
-		default:
-			return [];
-	}
-};
+const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> =>
+	tryCatch(
+		() => {
+			switch (snapshot.platform as Platform) {
+				case "github":
+					return normalizeGitHub(GitHubRawSchema.parse(snapshot.data));
+				case "bluesky":
+					return normalizeBluesky(BlueskyRawSchema.parse(snapshot.data));
+				case "youtube":
+					return normalizeYouTube(YouTubeRawSchema.parse(snapshot.data));
+				case "devpad":
+					return normalizeDevpad(DevpadRawSchema.parse(snapshot.data));
+				default:
+					return [];
+			}
+		},
+		(e): NormalizeError => ({ kind: "parse_error", platform: snapshot.platform, message: String(e) })
+	);
