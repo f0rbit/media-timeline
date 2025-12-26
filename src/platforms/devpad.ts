@@ -61,6 +61,8 @@ export class DevpadProvider implements Provider<DevpadRaw> {
 
 const makeTaskId = (id: string): string => `devpad:task:${id}`;
 
+const makeTaskUrl = (id: string): string => `https://devpad.tools/tasks/${id}`;
+
 export const normalizeDevpad = (raw: DevpadRaw): TimelineItem[] =>
 	raw.tasks.map((task): TimelineItem => {
 		const payload: TaskPayload = {
@@ -78,6 +80,7 @@ export const normalizeDevpad = (raw: DevpadRaw): TimelineItem[] =>
 			type: "task",
 			timestamp: task.updated_at,
 			title: task.title,
+			url: makeTaskUrl(task.id),
 			payload,
 		};
 	});
