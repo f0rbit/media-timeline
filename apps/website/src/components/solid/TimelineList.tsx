@@ -2,9 +2,6 @@ import { createResource, createSignal, createContext, useContext, For, Show, Mat
 import { GitCommit, GitPullRequest, ChevronDown, ChevronRight } from "lucide-solid";
 import { timeline, initMockAuth, getMockUserId, type ApiResult, type TimelineResponse, type TimelineGroup, type TimelineItem, type CommitGroup, type PullRequestPayload, type PRCommit } from "@/utils/api-client";
 import { formatRelativeTime } from "@/utils/formatters";
-import RawDataViewer from "./RawDataViewer";
-
-type ViewMode = "rendered" | "raw";
 
 const GithubUsernamesContext = createContext<string[]>([]);
 
@@ -17,25 +14,21 @@ const stripOwnerPrefix = (repo: string, usernames: string[]): string => {
 
 export default function TimelineList() {
 	initMockAuth();
+	const userId = getMockUserId();
 
-	const [viewMode, setViewMode] = createSignal<ViewMode>("rendered");
-
-	const [data] = createResource(async () => {
-		const userId = getMockUserId();
-		const result: ApiResult<TimelineResponse> = await timeline.get(userId);
-		if (result.ok === false) throw new Error(result.error.message);
-		return result.data;
-	});
+	const [data] = createResource(
+		() => userId,
+		async id => {
+			const result: ApiResult<TimelineResponse> = await timeline.get(id);
+			if (result.ok === false) throw new Error(result.error.message);
+			return result.data;
+		}
+	);
 
 	const githubUsernames = () => data()?.meta.github_usernames ?? [];
 
 	return (
 		<div class="timeline">
-			<div class="timeline-header">
-				<h2>Timeline</h2>
-				<ViewToggle mode={viewMode()} onChange={setViewMode} />
-			</div>
-
 			<Show when={data.loading}>
 				<p class="tertiary">Loading timeline...</p>
 			</Show>
@@ -46,29 +39,9 @@ export default function TimelineList() {
 
 			<Show when={data()}>
 				<GithubUsernamesContext.Provider value={githubUsernames()}>
-					<Show when={viewMode() === "rendered"} fallback={<RawDataViewer data={data()!} />}>
-						<TimelineGroups groups={data()!.data.groups} />
-					</Show>
+					<TimelineGroups groups={data()!.data.groups} />
 				</GithubUsernamesContext.Provider>
 			</Show>
-		</div>
-	);
-}
-
-type ViewToggleProps = {
-	mode: ViewMode;
-	onChange: (mode: ViewMode) => void;
-};
-
-function ViewToggle(props: ViewToggleProps) {
-	return (
-		<div class="view-toggle">
-			<button class={props.mode === "rendered" ? "toggle-btn active" : "toggle-btn"} onClick={() => props.onChange("rendered")}>
-				Rendered
-			</button>
-			<button class={props.mode === "raw" ? "toggle-btn active" : "toggle-btn"} onClick={() => props.onChange("raw")}>
-				Raw JSON
-			</button>
 		</div>
 	);
 }

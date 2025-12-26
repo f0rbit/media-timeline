@@ -588,32 +588,6 @@ button.icon-btn:disabled {
 	cursor: not-allowed;
 }
 
-.view-toggle {
-	display: flex;
-	gap: 2px;
-	border: 1px solid var(--input-border);
-	border-radius: 4px;
-	overflow: hidden;
-}
-
-.view-toggle button {
-	padding: 4px 12px;
-	border: none;
-	background: var(--input-background);
-	color: var(--text-secondary);
-	cursor: pointer;
-	font-size: smaller;
-}
-
-.view-toggle button.active {
-	background: var(--input-border);
-	color: var(--text-primary);
-}
-
-.view-toggle button:hover:not(.active) {
-	background: var(--input-border);
-}
-
 .empty-state {
 	text-align: center;
 	padding: 40px 20px;
@@ -632,23 +606,6 @@ form section label {
 	font-size: smaller;
 	color: var(--text-tertiary);
 	margin-bottom: 4px;
-}
-
-.raw-viewer {
-	font-family: monospace;
-	font-size: 0.85rem;
-	background: var(--input-background);
-	border: 1px solid var(--input-border);
-	border-radius: 4px;
-	padding: 12px;
-	overflow: auto;
-	max-height: 400px;
-}
-
-.raw-viewer pre {
-	margin: 0;
-	white-space: pre-wrap;
-	word-break: break-word;
 }
 
 .platform-github {
