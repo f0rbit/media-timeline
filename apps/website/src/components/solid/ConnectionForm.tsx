@@ -77,11 +77,13 @@ export default function ConnectionForm(props: Props) {
 						{p => (
 							<button
 								type="button"
-								class={`card flex-row ${platform() === p ? "active" : ""}`}
+								class={`flex-row ${platform() === p ? "active" : ""}`}
 								style={{
 									padding: "8px 12px",
 									cursor: "pointer",
-									border: platform() === p ? "1px solid var(--text-link)" : undefined,
+									background: "none",
+									border: platform() === p ? "1px solid var(--text-link)" : "1px solid var(--input-border)",
+									"border-radius": "4px",
 								}}
 								onClick={() => setPlatform(p)}
 							>
