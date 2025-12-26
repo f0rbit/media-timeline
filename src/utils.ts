@@ -2,6 +2,12 @@ export { ok, err, type Result } from "@f0rbit/corpus";
 
 import { ok, err, type Result } from "@f0rbit/corpus";
 
+export const to_nullable = <T, E>(result: Result<T, E>): T | null => (result.ok ? result.value : null);
+export const to_fallback = <T, E>(result: Result<T, E>, fallback: T): T => (result.ok ? result.value : fallback);
+export const null_on = <T, E>(fn: () => Result<T, E>): T | null => to_nullable(fn());
+export const fallback_on = <T, E>(fn: () => Result<T, E>, fallback: T): T => to_fallback(fn(), fallback);
+export const format_error = <E>(error: E): string => (typeof error === "object" && error !== null ? JSON.stringify(error) : String(error));
+
 export const match = <T, E, R>(result: Result<T, E>, onOk: (value: T) => R, onErr: (error: E) => R): R => {
 	if (result.ok) return onOk(result.value);
 	return onErr(result.error);
