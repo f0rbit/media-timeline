@@ -49,7 +49,20 @@ export type {
 	VideoPayload,
 } from "./timeline";
 
-export { accountMembers, accounts, apiKeys, rateLimits, users } from "./database";
+export { accountMembers, accounts, apiKeys, rateLimits, users, accountSettings } from "./database";
+
+export {
+	GitHubSettingsSchema,
+	BlueskySettingsSchema,
+	YouTubeSettingsSchema,
+	DevpadSettingsSchema,
+	PlatformSettingsSchemaMap,
+	type GitHubSettings,
+	type BlueskySettings,
+	type YouTubeSettings,
+	type DevpadSettings,
+	type PlatformSettings,
+} from "./settings";
 
 import {
 	BlueskyAuthorSchema,
@@ -69,7 +82,7 @@ import {
 	YouTubeVideoSchema,
 } from "./platforms";
 
-import { accountMembers, accounts, apiKeys, rateLimits, users } from "./database";
+import { accountMembers, accounts, apiKeys, rateLimits, users, accountSettings } from "./database";
 
 export type GitHubRepo = z.infer<typeof GitHubRepoSchema>;
 export type GitHubExtendedCommit = z.infer<typeof GitHubExtendedCommitSchema>;
@@ -104,5 +117,8 @@ export type NewApiKey = InferInsertModel<typeof apiKeys>;
 
 export type RateLimit = InferSelectModel<typeof rateLimits>;
 export type NewRateLimit = InferInsertModel<typeof rateLimits>;
+
+export type AccountSetting = InferSelectModel<typeof accountSettings>;
+export type NewAccountSetting = InferInsertModel<typeof accountSettings>;
 
 export type CorpusPath = `raw/github/${string}` | `raw/bluesky/${string}` | `raw/youtube/${string}` | `raw/devpad/${string}` | `timeline/${string}`;

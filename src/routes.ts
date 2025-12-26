@@ -6,7 +6,7 @@ import { z } from "zod";
 import { getAuth } from "./auth";
 import type { Bindings } from "./bindings";
 import type { AppContext } from "./infrastructure";
-import { accountMembers, accounts, DateGroupSchema } from "./schema";
+import { accountMembers, accounts, accountSettings, DateGroupSchema } from "./schema";
 import { createRawStore, createTimelineStore, RawDataSchema, type CorpusError } from "./storage";
 import { encrypt, err, match, ok, pipe, type Result } from "./utils";
 
@@ -59,6 +59,14 @@ const CreateConnectionBodySchema = z.object({
 
 const AddMemberBodySchema = z.object({
 	user_id: z.string().min(1),
+});
+
+const UpdateConnectionStatusSchema = z.object({
+	is_active: z.boolean(),
+});
+
+const UpdateSettingsBodySchema = z.object({
+	settings: z.record(z.string(), z.unknown()),
 });
 
 export const timelineRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -180,6 +188,7 @@ export const connectionRoutes = new Hono<{ Bindings: Bindings; Variables: Variab
 connectionRoutes.get("/", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
+	const includeSettings = c.req.query("include_settings") === "true";
 
 	const results = await ctx.db
 		.select({
@@ -195,7 +204,27 @@ connectionRoutes.get("/", async c => {
 		.innerJoin(accounts, eq(accountMembers.account_id, accounts.id))
 		.where(eq(accountMembers.user_id, auth.user_id));
 
-	return c.json({ accounts: results });
+	if (!includeSettings) {
+		return c.json({ accounts: results });
+	}
+
+	const accountsWithSettings = await Promise.all(
+		results.map(async account => {
+			const settings = await ctx.db.select().from(accountSettings).where(eq(accountSettings.account_id, account.account_id));
+
+			const settingsMap = settings.reduce(
+				(acc, s) => {
+					acc[s.setting_key] = JSON.parse(s.setting_value);
+					return acc;
+				},
+				{} as Record<string, unknown>
+			);
+
+			return { ...account, settings: settingsMap };
+		})
+	);
+
+	return c.json({ accounts: accountsWithSettings });
 });
 
 connectionRoutes.post("/", async c => {
@@ -473,4 +502,182 @@ connectionRoutes.post("/refresh-all", async c => {
 		failed,
 		total: userAccounts.length,
 	});
+});
+
+connectionRoutes.patch("/:account_id", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const accountId = c.req.param("account_id");
+	const parseResult = UpdateConnectionStatusSchema.safeParse(await c.req.json());
+
+	if (!parseResult.success) {
+		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+	}
+
+	const body = parseResult.data;
+
+	const membership = await ctx.db
+		.select({ role: accountMembers.role })
+		.from(accountMembers)
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
+		.get();
+
+	if (!membership) {
+		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	}
+
+	const now = new Date().toISOString();
+	await ctx.db.update(accounts).set({ is_active: body.is_active, updated_at: now }).where(eq(accounts.id, accountId));
+
+	const updated = await ctx.db.select().from(accounts).where(eq(accounts.id, accountId)).get();
+
+	return c.json({ success: true, connection: updated });
+});
+
+connectionRoutes.get("/:account_id/settings", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const accountId = c.req.param("account_id");
+
+	const membership = await ctx.db
+		.select()
+		.from(accountMembers)
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
+		.get();
+
+	if (!membership) {
+		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	}
+
+	const settings = await ctx.db.select().from(accountSettings).where(eq(accountSettings.account_id, accountId));
+
+	const settingsMap = settings.reduce(
+		(acc, s) => {
+			acc[s.setting_key] = JSON.parse(s.setting_value);
+			return acc;
+		},
+		{} as Record<string, unknown>
+	);
+
+	return c.json({ settings: settingsMap });
+});
+
+connectionRoutes.put("/:account_id/settings", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const accountId = c.req.param("account_id");
+	const parseResult = UpdateSettingsBodySchema.safeParse(await c.req.json());
+
+	if (!parseResult.success) {
+		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+	}
+
+	const body = parseResult.data;
+
+	const membership = await ctx.db
+		.select({ role: accountMembers.role })
+		.from(accountMembers)
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
+		.get();
+
+	if (!membership) {
+		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	}
+
+	if (membership.role !== "owner") {
+		return c.json({ error: "Forbidden", message: "Only owners can update settings" }, 403);
+	}
+
+	const now = new Date().toISOString();
+
+	for (const [key, value] of Object.entries(body.settings)) {
+		const existing = await ctx.db
+			.select()
+			.from(accountSettings)
+			.where(and(eq(accountSettings.account_id, accountId), eq(accountSettings.setting_key, key)))
+			.get();
+
+		if (existing) {
+			await ctx.db
+				.update(accountSettings)
+				.set({ setting_value: JSON.stringify(value), updated_at: now })
+				.where(eq(accountSettings.id, existing.id));
+		} else {
+			await ctx.db.insert(accountSettings).values({
+				id: crypto.randomUUID(),
+				account_id: accountId,
+				setting_key: key,
+				setting_value: JSON.stringify(value),
+				created_at: now,
+				updated_at: now,
+			});
+		}
+	}
+
+	return c.json({ updated: true });
+});
+
+type GitHubRepoInfo = {
+	name: string;
+	commit_count: number;
+};
+
+const extractReposFromGitHubData = (data: unknown): GitHubRepoInfo[] => {
+	const events = (data as Record<string, unknown>)?.events ?? [];
+	if (!Array.isArray(events)) return [];
+
+	const repoMap = new Map<string, number>();
+
+	for (const event of events) {
+		const e = event as Record<string, unknown>;
+		if (e.type === "PushEvent" && (e.repo as Record<string, unknown>)?.name) {
+			const repoName = (e.repo as Record<string, unknown>).name as string;
+			const current = repoMap.get(repoName) ?? 0;
+			const payload = e.payload as Record<string, unknown> | undefined;
+			const commits = Array.isArray(payload?.commits) ? payload.commits.length : 1;
+			repoMap.set(repoName, current + commits);
+		}
+	}
+
+	return Array.from(repoMap.entries())
+		.map(([name, commit_count]) => ({ name, commit_count }))
+		.sort((a, b) => b.commit_count - a.commit_count);
+};
+
+connectionRoutes.get("/:account_id/repos", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const accountId = c.req.param("account_id");
+
+	const account = await ctx.db
+		.select({
+			id: accounts.id,
+			platform: accounts.platform,
+		})
+		.from(accounts)
+		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
+		.get();
+
+	if (!account) {
+		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	}
+
+	if (account.platform !== "github") {
+		return c.json({ error: "Bad request", message: "Not a GitHub account" }, 400);
+	}
+
+	const rawStoreResult = createRawStore(ctx.backend, "github", accountId);
+	if (!rawStoreResult.ok) {
+		return c.json({ repos: [] });
+	}
+
+	const latest = await rawStoreResult.value.store.get_latest();
+	if (!latest.ok) {
+		return c.json({ repos: [] });
+	}
+
+	const repos = extractReposFromGitHubData(latest.value.data);
+
+	return c.json({ repos });
 });

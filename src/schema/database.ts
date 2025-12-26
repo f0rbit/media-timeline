@@ -86,3 +86,52 @@ export const rateLimits = sqliteTable(
 		account_idx: uniqueIndex("idx_rate_limits_account").on(table.account_id),
 	})
 );
+
+export const accountSettings = sqliteTable(
+	"account_settings",
+	{
+		id: text("id").primaryKey(),
+		account_id: text("account_id")
+			.notNull()
+			.references(() => accounts.id, { onDelete: "cascade" }),
+		setting_key: text("setting_key").notNull(),
+		setting_value: text("setting_value").notNull(),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		account_key_idx: uniqueIndex("idx_account_settings_unique").on(table.account_id, table.setting_key),
+		account_idx: index("idx_account_settings_account").on(table.account_id),
+	})
+);
+
+export const corpusSnapshots = sqliteTable(
+	"corpus_snapshots",
+	{
+		store_id: text("store_id").notNull(),
+		version: text("version").notNull(),
+		content_hash: text("content_hash").notNull(),
+		created_at: text("created_at").notNull(),
+		tags: text("tags"),
+		metadata: text("metadata"),
+	},
+	table => ({
+		pk: uniqueIndex("corpus_snapshots_pk").on(table.store_id, table.version),
+		store_idx: index("idx_corpus_snapshots_store").on(table.store_id),
+		created_idx: index("idx_corpus_snapshots_created").on(table.store_id, table.created_at),
+	})
+);
+
+export const corpusParents = sqliteTable(
+	"corpus_parents",
+	{
+		child_store_id: text("child_store_id").notNull(),
+		child_version: text("child_version").notNull(),
+		parent_store_id: text("parent_store_id").notNull(),
+		parent_version: text("parent_version").notNull(),
+		role: text("role"),
+	},
+	table => ({
+		pk: uniqueIndex("corpus_parents_pk").on(table.child_store_id, table.child_version, table.parent_store_id, table.parent_version),
+	})
+);

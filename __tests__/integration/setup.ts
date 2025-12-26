@@ -168,6 +168,18 @@ const SCHEMA = `
     UNIQUE(account_id)
   );
 
+  CREATE TABLE IF NOT EXISTS account_settings (
+    id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    setting_key TEXT NOT NULL,
+    setting_value TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_account_settings_unique ON account_settings(account_id, setting_key);
+  CREATE INDEX IF NOT EXISTS idx_account_settings_account ON account_settings(account_id);
+
   CREATE TABLE IF NOT EXISTS corpus_snapshots (
     store_id TEXT NOT NULL,
     version TEXT NOT NULL,
