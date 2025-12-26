@@ -1,6 +1,7 @@
 import { createResource, createSignal, For, Show, Match, Switch } from "solid-js";
-import { timeline, initMockAuth, getMockUserId, type ApiResult, type TimelineResponse, type TimelineGroup, type TimelineItem, type CommitGroup } from "@/utils/api-client";
-import { formatDate, formatTime, formatPlatformName, formatRelativeTime } from "@/utils/formatters";
+import { GitCommit, GitPullRequest, ChevronDown, ChevronRight } from "lucide-solid";
+import { timeline, initMockAuth, getMockUserId, type ApiResult, type TimelineResponse, type TimelineGroup, type TimelineItem, type CommitGroup, type PullRequestPayload, type PRCommit } from "@/utils/api-client";
+import { formatDate, formatRelativeTime } from "@/utils/formatters";
 
 type ViewMode = "rendered" | "raw";
 
@@ -17,8 +18,8 @@ export default function TimelineList() {
 	});
 
 	return (
-		<div class="timeline-container">
-			<div class="timeline-header flex-row" style={{ "justify-content": "space-between", "margin-bottom": "16px" }}>
+		<div class="timeline">
+			<div class="timeline-header">
 				<h2>Timeline</h2>
 				<ViewToggle mode={viewMode()} onChange={setViewMode} />
 			</div>
@@ -47,7 +48,7 @@ type ViewToggleProps = {
 
 function ViewToggle(props: ViewToggleProps) {
 	return (
-		<div class="view-toggle flex-row" style={{ gap: "8px" }}>
+		<div class="view-toggle">
 			<button class={props.mode === "rendered" ? "toggle-btn active" : "toggle-btn"} onClick={() => props.onChange("rendered")}>
 				Rendered
 			</button>
@@ -63,19 +64,24 @@ type TimelineGroupsProps = {
 };
 
 function TimelineGroups(props: TimelineGroupsProps) {
+	// Flatten all items from all groups into a single sorted list
+	const allItems = () => {
+		const items: (TimelineItem | CommitGroup)[] = [];
+		for (const group of props.groups) {
+			items.push(...group.items);
+		}
+		// Sort by timestamp descending
+		return items.sort((a, b) => {
+			const timeA = a.type === "commit_group" ? (a.commits[0]?.timestamp ?? a.date) : a.timestamp;
+			const timeB = b.type === "commit_group" ? (b.commits[0]?.timestamp ?? b.date) : b.timestamp;
+			return new Date(timeB).getTime() - new Date(timeA).getTime();
+		});
+	};
+
 	return (
-		<Show when={props.groups.length > 0} fallback={<EmptyTimeline />}>
-			<div class="timeline-groups flex-col" style={{ gap: "24px" }}>
-				<For each={props.groups}>
-					{group => (
-						<div class="date-group">
-							<h3 class="date-header">{formatDate(group.date)}</h3>
-							<div class="items flex-col" style={{ gap: "12px" }}>
-								<For each={group.items}>{item => <TimelineEntry item={item} />}</For>
-							</div>
-						</div>
-					)}
-				</For>
+		<Show when={allItems().length > 0} fallback={<EmptyTimeline />}>
+			<div class="timeline-flat">
+				<For each={allItems()}>{item => <TimelineEntry item={item} />}</For>
 			</div>
 		</Show>
 	);
@@ -98,155 +104,211 @@ function TimelineEntry(props: TimelineEntryProps) {
 	return (
 		<Switch>
 			<Match when={props.item.type === "commit_group"}>
-				<CommitGroupCard group={props.item as CommitGroup} />
+				<CommitGroupRow group={props.item as CommitGroup} />
 			</Match>
 			<Match when={props.item.type === "pull_request"}>
-				<PullRequestCard item={props.item as TimelineItem} />
+				<PullRequestRow item={props.item as TimelineItem} />
 			</Match>
 			<Match when={props.item.type === "commit"}>
-				<CommitCard item={props.item as TimelineItem} />
+				<CommitRow item={props.item as TimelineItem} />
 			</Match>
 			<Match when={true}>
-				<GenericItemCard item={props.item as TimelineItem} />
+				<GenericRow item={props.item as TimelineItem} />
 			</Match>
 		</Switch>
 	);
 }
 
-function CommitGroupCard(props: { group: CommitGroup }) {
+function CommitGroupRow(props: { group: CommitGroup }) {
+	const [expanded, setExpanded] = createSignal(false);
 	const firstCommit = () => props.group.commits[0];
-	const platform = () => firstCommit()?.platform ?? "github";
+	const shouldCollapse = () => props.group.commits.length > 8;
 
 	return (
-		<div class={`card timeline-item platform-${platform()}`}>
-			<div class="flex-row" style={{ "justify-content": "space-between", "align-items": "flex-start" }}>
-				<div class="flex-col" style={{ gap: "4px", flex: 1 }}>
-					<div class="flex-row" style={{ gap: "8px", "align-items": "center" }}>
-						<span class={`platform-badge platform-${platform()}`}>{formatPlatformName(platform())}</span>
-						<span class="repo-name">{props.group.repo}</span>
-					</div>
-					<details>
-						<summary style={{ cursor: "pointer" }}>
-							<span class="commit-count">{props.group.commits.length} commits</span>
-						</summary>
-						<ul class="commit-list" style={{ "margin-top": "8px", "padding-left": "16px" }}>
-							<For each={props.group.commits}>
-								{commit => (
-									<li style={{ "margin-bottom": "4px" }}>
-										<div class="flex-row" style={{ gap: "8px" }}>
-											<code style={{ "font-size": "smaller", color: "var(--text-muted)" }}>{(commit.payload as { sha?: string })?.sha?.slice(0, 7) ?? ""}</code>
-											<Show when={commit.url} fallback={<span>{commit.title}</span>}>
-												<a href={commit.url} target="_blank" rel="noopener noreferrer">
-													{commit.title}
-												</a>
-											</Show>
-										</div>
-									</li>
-								)}
-							</For>
-						</ul>
-					</details>
+		<div class="timeline-row">
+			<div class="timeline-icon">
+				<GitCommit size={16} />
+			</div>
+			<div class="timeline-content">
+				<div class="timeline-main-row">
+					<span class="timeline-repo">{props.group.repo}</span>
+					<span class="timeline-time">{formatRelativeTime(firstCommit()?.timestamp ?? props.group.date)}</span>
 				</div>
-				<small class="description">{formatRelativeTime(firstCommit()?.timestamp ?? props.group.date)}</small>
+				<Show
+					when={shouldCollapse()}
+					fallback={
+						<div class="timeline-nested-list">
+							<For each={props.group.commits}>{commit => <NestedCommitRow commit={commit} />}</For>
+						</div>
+					}
+				>
+					<button class="timeline-expand-btn" onClick={() => setExpanded(!expanded())}>
+						<Show when={expanded()} fallback={<ChevronRight size={14} />}>
+							<ChevronDown size={14} />
+						</Show>
+						<span>{props.group.commits.length} commits</span>
+					</button>
+					<Show when={expanded()}>
+						<div class="timeline-nested-list">
+							<For each={props.group.commits}>{commit => <NestedCommitRow commit={commit} />}</For>
+						</div>
+					</Show>
+				</Show>
 			</div>
 		</div>
 	);
 }
 
-function PullRequestCard(props: { item: TimelineItem }) {
-	const payload = () => props.item.payload as { state?: string; number?: number; head_ref?: string; base_ref?: string };
+function NestedCommitRow(props: { commit: TimelineItem }) {
+	const payload = () => props.commit.payload as { sha?: string };
 
-	const stateColor = () => {
+	return (
+		<div class="timeline-nested-row">
+			<code class="timeline-sha">{payload().sha?.slice(0, 7)}</code>
+			<Show when={props.commit.url} fallback={<span class="timeline-commit-msg">{props.commit.title}</span>}>
+				<a href={props.commit.url} target="_blank" rel="noopener noreferrer" class="timeline-commit-msg">
+					{props.commit.title}
+				</a>
+			</Show>
+		</div>
+	);
+}
+
+function PullRequestRow(props: { item: TimelineItem }) {
+	const [expanded, setExpanded] = createSignal(false);
+	const payload = () => props.item.payload as PullRequestPayload;
+	const commits = () => payload().commits ?? [];
+	const hasCommits = () => commits().length > 0;
+
+	const stateClass = () => {
 		switch (payload().state) {
 			case "merged":
-				return "var(--pr-merged, #8957e5)";
+				return "timeline-state-merged";
 			case "open":
-				return "var(--pr-open, #3fb950)";
+				return "timeline-state-open";
 			case "closed":
-				return "var(--pr-closed, #f85149)";
+				return "timeline-state-closed";
 			default:
-				return "var(--text-muted)";
+				return "";
 		}
 	};
 
 	return (
-		<div class={`card timeline-item platform-${props.item.platform}`}>
-			<div class="flex-row" style={{ "justify-content": "space-between", "align-items": "flex-start" }}>
-				<div class="flex-col" style={{ gap: "4px", flex: 1 }}>
-					<div class="flex-row" style={{ gap: "8px", "align-items": "center" }}>
-						<span class={`platform-badge platform-${props.item.platform}`}>{formatPlatformName(props.item.platform)}</span>
-						<Show when={payload().state}>
-							<span style={{ color: stateColor(), "font-weight": "500", "text-transform": "capitalize" }}>{payload().state}</span>
-						</Show>
-					</div>
-					<h4 class="item-title">{props.item.title}</h4>
-					<div class="flex-row" style={{ gap: "8px", "font-size": "smaller", color: "var(--text-muted)" }}>
-						<Show when={payload().number}>
-							<span>#{payload().number}</span>
-						</Show>
-						<Show when={payload().head_ref && payload().base_ref}>
-							<span>
-								{payload().head_ref} → {payload().base_ref}
-							</span>
-						</Show>
-					</div>
-				</div>
-				<small class="description">{formatTime(props.item.timestamp)}</small>
+		<div class="timeline-row">
+			<div class="timeline-icon timeline-icon-pr">
+				<GitPullRequest size={16} />
 			</div>
-			<Show when={props.item.url}>
-				<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="item-link">
-					View on {formatPlatformName(props.item.platform)}
+			<div class="timeline-content">
+				<div class="timeline-main-row">
+					<div class="timeline-pr-header">
+						<span class={`timeline-state ${stateClass()}`}>{payload().state}</span>
+						<Show when={props.item.url} fallback={<span class="timeline-pr-title">{props.item.title}</span>}>
+							<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="timeline-pr-title">
+								{props.item.title}
+							</a>
+						</Show>
+					</div>
+					<span class="timeline-time">{formatRelativeTime(props.item.timestamp)}</span>
+				</div>
+				<div class="timeline-pr-meta">
+					<span>#{payload().number}</span>
+					<span style={{ color: "var(--text-muted)" }}> · </span>
+					<span class="timeline-pr-branches">
+						{payload().head_ref} → {payload().base_ref}
+					</span>
+				</div>
+				<Show when={hasCommits()}>
+					<Show
+						when={commits().length > 8}
+						fallback={
+							<div class="timeline-nested-list">
+								<For each={commits()}>{commit => <PRCommitRow commit={commit} />}</For>
+							</div>
+						}
+					>
+						<button class="timeline-expand-btn" onClick={() => setExpanded(!expanded())}>
+							<Show when={expanded()} fallback={<ChevronRight size={14} />}>
+								<ChevronDown size={14} />
+							</Show>
+							<span>{commits().length} commits</span>
+						</button>
+						<Show when={expanded()}>
+							<div class="timeline-nested-list">
+								<For each={commits()}>{commit => <PRCommitRow commit={commit} />}</For>
+							</div>
+						</Show>
+					</Show>
+				</Show>
+			</div>
+		</div>
+	);
+}
+
+function PRCommitRow(props: { commit: PRCommit }) {
+	const truncatedMessage = () => {
+		const firstLine = props.commit.message.split("\n")[0] ?? "";
+		return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
+	};
+
+	return (
+		<div class="timeline-nested-row">
+			<code class="timeline-sha">{props.commit.sha.slice(0, 7)}</code>
+			<Show when={props.commit.url} fallback={<span class="timeline-commit-msg">{truncatedMessage()}</span>}>
+				<a href={props.commit.url} target="_blank" rel="noopener noreferrer" class="timeline-commit-msg">
+					{truncatedMessage()}
 				</a>
 			</Show>
 		</div>
 	);
 }
 
-function CommitCard(props: { item: TimelineItem }) {
+function CommitRow(props: { item: TimelineItem }) {
 	const payload = () => props.item.payload as { sha?: string; repo?: string };
 
 	return (
-		<div class={`card timeline-item platform-${props.item.platform}`}>
-			<div class="flex-row" style={{ "justify-content": "space-between", "align-items": "flex-start" }}>
-				<div class="flex-col" style={{ gap: "4px", flex: 1 }}>
-					<div class="flex-row" style={{ gap: "8px", "align-items": "center" }}>
-						<span class={`platform-badge platform-${props.item.platform}`}>{formatPlatformName(props.item.platform)}</span>
-						<code style={{ "font-size": "smaller", color: "var(--text-muted)" }}>{payload().sha?.slice(0, 7)}</code>
-					</div>
-					<h4 class="item-title">{props.item.title}</h4>
-					<Show when={payload().repo}>
-						<span style={{ "font-size": "smaller", color: "var(--text-tertiary)" }}>{payload().repo}</span>
-					</Show>
-				</div>
-				<small class="description">{formatTime(props.item.timestamp)}</small>
+		<div class="timeline-row">
+			<div class="timeline-icon">
+				<GitCommit size={16} />
 			</div>
-			<Show when={props.item.url}>
-				<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="item-link">
-					View on {formatPlatformName(props.item.platform)}
-				</a>
-			</Show>
+			<div class="timeline-content">
+				<div class="timeline-main-row">
+					<div class="timeline-commit-header">
+						<code class="timeline-sha">{payload().sha?.slice(0, 7)}</code>
+						<Show when={props.item.url} fallback={<span class="timeline-commit-msg">{props.item.title}</span>}>
+							<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="timeline-commit-msg">
+								{props.item.title}
+							</a>
+						</Show>
+					</div>
+					<span class="timeline-time">{formatRelativeTime(props.item.timestamp)}</span>
+				</div>
+				<Show when={payload().repo}>
+					<span class="timeline-repo-small">{payload().repo}</span>
+				</Show>
+			</div>
 		</div>
 	);
 }
 
-function GenericItemCard(props: { item: TimelineItem }) {
+function GenericRow(props: { item: TimelineItem }) {
 	return (
-		<div class={`card timeline-item platform-${props.item.platform}`}>
-			<div class="flex-row" style={{ "justify-content": "space-between", "align-items": "flex-start" }}>
-				<div class="flex-col" style={{ gap: "4px", flex: 1 }}>
-					<div class="flex-row" style={{ gap: "8px", "align-items": "center" }}>
-						<span class={`platform-badge platform-${props.item.platform}`}>{formatPlatformName(props.item.platform)}</span>
-						<span class="type-badge">{props.item.type}</span>
-					</div>
-					<h4 class="item-title">{props.item.title}</h4>
-				</div>
-				<small class="description">{formatTime(props.item.timestamp)}</small>
+		<div class="timeline-row">
+			<div class="timeline-icon">
+				<div class="timeline-dot" />
 			</div>
-			<Show when={props.item.url}>
-				<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="item-link">
-					View on {formatPlatformName(props.item.platform)}
-				</a>
-			</Show>
+			<div class="timeline-content">
+				<div class="timeline-main-row">
+					<div class="timeline-generic-header">
+						<span class="timeline-type-badge">{props.item.type}</span>
+						<Show when={props.item.url} fallback={<span>{props.item.title}</span>}>
+							<a href={props.item.url} target="_blank" rel="noopener noreferrer">
+								{props.item.title}
+							</a>
+						</Show>
+					</div>
+					<span class="timeline-time">{formatRelativeTime(props.item.timestamp)}</span>
+				</div>
+			</div>
 		</div>
 	);
 }

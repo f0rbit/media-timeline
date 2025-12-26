@@ -65,6 +65,10 @@ export const GitHubPullRequestSchema = z.object({
 	merged_at: z.string().optional(),
 	head_ref: z.string(),
 	base_ref: z.string(),
+	// Commit SHAs associated with this PR (fetched from pulls.listCommits)
+	commit_shas: z.array(z.string()).optional(),
+	// The merge commit SHA (for deduplication of merge commits)
+	merge_commit_sha: z.string().optional(),
 });
 
 export const GitHubRawSchema = FetchedAtSchema.extend({

@@ -49,6 +49,13 @@ export const TaskPayloadSchema = z.object({
 	completed_at: z.string().datetime().optional(),
 });
 
+// Commit info embedded in PR payload (for display)
+export const PRCommitSchema = z.object({
+	sha: z.string(),
+	message: z.string(),
+	url: z.string().optional(),
+});
+
 export const PullRequestPayloadSchema = z.object({
 	type: z.literal("pull_request"),
 	repo: z.string(),
@@ -61,6 +68,8 @@ export const PullRequestPayloadSchema = z.object({
 	additions: z.number().optional(),
 	deletions: z.number().optional(),
 	changed_files: z.number().optional(),
+	// Commits that belong to this PR (populated during timeline processing)
+	commits: z.array(PRCommitSchema).optional(),
 });
 
 export const PayloadSchema = z.discriminatedUnion("type", [CommitPayloadSchema, PostPayloadSchema, VideoPayloadSchema, TaskPayloadSchema, PullRequestPayloadSchema]);

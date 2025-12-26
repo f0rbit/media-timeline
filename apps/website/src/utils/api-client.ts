@@ -115,6 +115,32 @@ export type ConnectionsResponse = {
 	accounts: Connection[];
 };
 
+export type PRCommit = {
+	sha: string;
+	message: string;
+	url?: string;
+};
+
+export type CommitPayload = {
+	type: "commit";
+	sha: string;
+	message: string;
+	repo: string;
+};
+
+export type PullRequestPayload = {
+	type: "pull_request";
+	repo: string;
+	number: number;
+	title: string;
+	state: "open" | "closed" | "merged";
+	action: string;
+	head_ref: string;
+	base_ref: string;
+	commits?: PRCommit[];
+	commit_shas?: string[];
+};
+
 export type TimelineItem = {
 	id: string;
 	platform: string;
@@ -122,7 +148,7 @@ export type TimelineItem = {
 	timestamp: string;
 	title: string;
 	url?: string;
-	payload: Record<string, unknown>;
+	payload: CommitPayload | PullRequestPayload | Record<string, unknown>;
 };
 
 export type CommitGroup = {

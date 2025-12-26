@@ -1,4 +1,5 @@
 import { Octokit } from "octokit";
+import { parallel_map } from "@f0rbit/corpus";
 import { type GitHubRaw, type GitHubEvent, type GitHubExtendedCommit, type GitHubPullRequest, type TimelineItem, type CommitPayload, type PullRequestPayload } from "../schema";
 import { ok, err, type Result } from "../utils";
 import { toProviderError, type Provider, type ProviderError, type FetchResult } from "./types";
@@ -96,8 +97,7 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 
 			console.log("[GitHubProvider.fetch] Total commits fetched:", commits.length);
 
-			// Extract pull requests from events and fetch full details
-			const pullRequests: GitHubPullRequest[] = [];
+			// Extract pull requests from events and fetch full details + commits in parallel
 			const prEvents = events.filter(e => e.type === "PullRequestEvent");
 
 			// Deduplicate by PR number per repo (keep first occurrence)
@@ -110,70 +110,89 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 				return true;
 			});
 
-			// Fetch full PR details for each unique PR (limit to 10 to avoid rate limits)
-			const prsToFetch = uniquePREvents.slice(0, 10);
-
-			for (const event of prsToFetch) {
-				const payload = event.payload as {
-					action?: string;
-					number?: number;
-					pull_request?: {
-						id?: number;
+			// Prepare PR fetch tasks (limit to 10 to avoid rate limits)
+			const prsToFetch = uniquePREvents
+				.slice(0, 10)
+				.map(event => {
+					const payload = event.payload as {
+						action?: string;
 						number?: number;
-						merged_at?: string | null;
-						head?: { ref?: string };
-						base?: { ref?: string };
+						pull_request?: {
+							id?: number;
+							number?: number;
+							merged_at?: string | null;
+							head?: { ref?: string };
+							base?: { ref?: string };
+						};
 					};
-				};
+					return { event, payload };
+				})
+				.filter(({ payload }) => {
+					const prNumber = payload.pull_request?.number ?? payload.number;
+					return prNumber !== undefined;
+				});
 
-				const prNumber = payload.pull_request?.number ?? payload.number;
-				if (!prNumber) continue;
+			console.log("[GitHubProvider.fetch] Fetching PR details and commits in parallel for", prsToFetch.length, "PRs");
 
-				const [owner, repo] = event.repo.name.split("/");
-				if (!owner || !repo) continue;
+			// Fetch PR details and commits in parallel (concurrency 3 to respect rate limits)
+			const pullRequests = await parallel_map(
+				prsToFetch,
+				async ({ event, payload }): Promise<GitHubPullRequest> => {
+					const prNumber = payload.pull_request?.number ?? payload.number!;
+					const [owner, repo] = event.repo.name.split("/");
 
-				try {
-					// Fetch full PR details to get title
-					const { data: fullPR } = await octokit.rest.pulls.get({
-						owner,
-						repo,
-						pull_number: prNumber,
-					});
+					if (!owner || !repo) {
+						return this.createFallbackPR(event, payload, prNumber);
+					}
 
-					pullRequests.push({
-						id: fullPR.id,
-						number: fullPR.number,
-						title: fullPR.title,
-						state: fullPR.merged_at ? "merged" : fullPR.state === "open" ? "open" : "closed",
-						action: payload.action ?? "unknown",
-						url: fullPR.html_url,
-						repo: event.repo.name,
-						created_at: fullPR.created_at,
-						merged_at: fullPR.merged_at ?? undefined,
-						head_ref: fullPR.head.ref,
-						base_ref: fullPR.base.ref,
-					});
-				} catch (error) {
-					console.log(`[GitHubProvider.fetch] Failed to fetch PR #${prNumber} from ${event.repo.name}:`, error);
-					// Fall back to minimal info from event
-					const pr = payload.pull_request;
-					pullRequests.push({
-						id: pr?.id ?? 0,
-						number: prNumber,
-						title: `PR #${prNumber}`, // Better fallback than "Untitled PR"
-						state: pr?.merged_at ? "merged" : "closed",
-						action: payload.action ?? "unknown",
-						url: `https://github.com/${event.repo.name}/pull/${prNumber}`,
-						repo: event.repo.name,
-						created_at: event.created_at ?? new Date().toISOString(),
-						merged_at: pr?.merged_at ?? undefined,
-						head_ref: pr?.head?.ref ?? "unknown",
-						base_ref: pr?.base?.ref ?? "unknown",
-					});
-				}
-			}
+					try {
+						// Fetch full PR details
+						const { data: fullPR } = await octokit.rest.pulls.get({
+							owner,
+							repo,
+							pull_number: prNumber,
+						});
 
-			console.log("[GitHubProvider.fetch] Pull requests extracted:", pullRequests.length);
+						// Fetch commits for this PR
+						let commitShas: string[] = [];
+						try {
+							const { data: prCommits } = await octokit.rest.pulls.listCommits({
+								owner,
+								repo,
+								pull_number: prNumber,
+								per_page: 100,
+							});
+							commitShas = prCommits.map(c => c.sha);
+							console.log(`[GitHubProvider.fetch] PR #${prNumber}: ${commitShas.length} commits`);
+						} catch (e) {
+							console.log(`[GitHubProvider.fetch] Failed to fetch commits for PR #${prNumber}`);
+						}
+
+						return {
+							id: fullPR.id,
+							number: fullPR.number,
+							title: fullPR.title,
+							state: fullPR.merged_at ? "merged" : fullPR.state === "open" ? "open" : "closed",
+							action: payload.action ?? "unknown",
+							url: fullPR.html_url,
+							repo: event.repo.name,
+							created_at: fullPR.created_at,
+							merged_at: fullPR.merged_at ?? undefined,
+							head_ref: fullPR.head.ref,
+							base_ref: fullPR.base.ref,
+							commit_shas: commitShas,
+							merge_commit_sha: fullPR.merge_commit_sha ?? undefined,
+						};
+					} catch (error) {
+						console.log(`[GitHubProvider.fetch] Failed to fetch PR #${prNumber} from ${event.repo.name}:`, error);
+						return this.createFallbackPR(event, payload, prNumber);
+					}
+				},
+				3 // concurrency limit
+			);
+
+			console.log("[GitHubProvider.fetch] Pull requests fetched:", pullRequests.length);
+			console.log("[GitHubProvider.fetch] PRs with commits:", pullRequests.filter(pr => (pr.commit_shas?.length ?? 0) > 0).length);
 
 			// Transform events for legacy compatibility
 			const transformedEvents = events.map(event => ({
@@ -211,6 +230,39 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 			console.log("[GitHubProvider.fetch] Error occurred:", error);
 			return err(this.mapError(error));
 		}
+	}
+
+	private createFallbackPR(
+		event: { repo: { name: string }; created_at?: string | null },
+		payload: {
+			action?: string;
+			number?: number;
+			pull_request?: {
+				id?: number;
+				number?: number;
+				merged_at?: string | null;
+				head?: { ref?: string };
+				base?: { ref?: string };
+			};
+		},
+		prNumber: number
+	): GitHubPullRequest {
+		const pr = payload.pull_request;
+		return {
+			id: pr?.id ?? 0,
+			number: prNumber,
+			title: `PR #${prNumber}`,
+			state: pr?.merged_at ? "merged" : "closed",
+			action: payload.action ?? "unknown",
+			url: `https://github.com/${event.repo.name}/pull/${prNumber}`,
+			repo: event.repo.name,
+			created_at: event.created_at ?? new Date().toISOString(),
+			merged_at: pr?.merged_at ?? undefined,
+			head_ref: pr?.head?.ref ?? "unknown",
+			base_ref: pr?.base?.ref ?? "unknown",
+			commit_shas: [], // No commits for fallback
+			merge_commit_sha: undefined,
+		};
 	}
 
 	private mapError(error: unknown): ProviderError {
@@ -341,7 +393,7 @@ export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] => {
 		}
 
 		for (const pr of prMap.values()) {
-			const payload: PullRequestPayload = {
+			const payload: PullRequestPayload & { commit_shas?: string[]; merge_commit_sha?: string } = {
 				type: "pull_request",
 				repo: pr.repo,
 				number: pr.number,
@@ -350,6 +402,8 @@ export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] => {
 				action: pr.action,
 				head_ref: pr.head_ref,
 				base_ref: pr.base_ref,
+				commit_shas: pr.commit_shas,
+				merge_commit_sha: pr.merge_commit_sha,
 			};
 
 			items.push({
