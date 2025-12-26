@@ -17,9 +17,9 @@ const isCommitItem = (item: TimelineItem): item is CommitItem => item.type === "
 
 const isPRItem = (item: TimelineItem): item is PRItem => item.type === "pull_request" && item.payload.type === "pull_request";
 
-const makeGroupKey = (repo: string, date: string): string => `${repo}:${date}`;
+const makeGroupKey = (repo: string, branch: string, date: string): string => `${repo}:${branch}:${date}`;
 
-const buildCommitGroup = (repo: string, date: string, commits: CommitItem[]): CommitGroup => {
+const buildCommitGroup = (repo: string, branch: string, date: string, commits: CommitItem[]): CommitGroup => {
 	const sorted = [...commits].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
 	const totals = commits.reduce(
@@ -34,6 +34,7 @@ const buildCommitGroup = (repo: string, date: string, commits: CommitItem[]): Co
 	return {
 		type: "commit_group",
 		repo,
+		branch,
 		date,
 		commits: sorted,
 		total_additions: totals.additions,
@@ -47,7 +48,7 @@ const buildCommitGroup = (repo: string, date: string, commits: CommitItem[]): Co
 type PRCommitInfo = {
 	sha: string;
 	message: string;
-	url?: string;
+	url: string;
 };
 
 type DeduplicationResult = {
@@ -171,20 +172,23 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 	console.log("[groupCommits] After dedup - enriched PRs:", enrichedPRs.length);
 	console.log("[groupCommits] After dedup - other items:", otherItems.length);
 
-	// Step 2: Group only orphan commits by repo/date
-	const groupedByRepoDate = orphanCommits.reduce<Map<string, CommitItem[]>>((acc, commit) => {
+	// Step 2: Group only orphan commits by repo/branch/date
+	const groupedByRepoBranchDate = orphanCommits.reduce<Map<string, CommitItem[]>>((acc, commit) => {
 		const date = extractDateKey(commit.timestamp);
-		const key = makeGroupKey(commit.payload.repo, date);
+		const key = makeGroupKey(commit.payload.repo, commit.payload.branch, date);
 		const existing = acc.get(key) ?? [];
 		acc.set(key, [...existing, commit]);
 		return acc;
 	}, new Map());
 
-	console.log("[groupCommits] Unique repo:date groups:", groupedByRepoDate.size);
+	console.log("[groupCommits] Unique repo:branch:date groups:", groupedByRepoBranchDate.size);
 
-	const commitGroups = Array.from(groupedByRepoDate.entries()).map(([key, groupCommits]) => {
-		const [repo, date] = key.split(":") as [string, string];
-		return buildCommitGroup(repo, date, groupCommits);
+	const commitGroups = Array.from(groupedByRepoBranchDate.entries()).map(([key, groupCommits]) => {
+		const parts = key.split(":");
+		const repo = parts[0] as string;
+		const branch = parts[1] as string;
+		const date = parts[2] as string;
+		return buildCommitGroup(repo, branch, date, groupCommits);
 	});
 
 	console.log("[groupCommits] Commit groups created:", commitGroups.length);

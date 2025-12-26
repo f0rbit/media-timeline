@@ -60,38 +60,54 @@ export class GitHubProvider implements Provider<GitHubRaw> {
 
 			// Get unique repos from push events (repos user has recently pushed to)
 			const pushEvents = events.filter(e => e.type === "PushEvent");
-			const repoNames = [...new Set(pushEvents.map(e => e.repo.name))];
-			console.log("[GitHubProvider.fetch] Repos with recent pushes:", repoNames.slice(0, 10));
 
-			// Fetch commits from each repo (limit to 5 repos to avoid rate limits)
+			// Build repo -> branches map from push events
+			const repoBranches = new Map<string, Set<string>>();
+			for (const event of pushEvents) {
+				const payload = event.payload as { ref?: string };
+				const ref = payload.ref;
+				const branch = ref?.startsWith("refs/heads/") ? ref.replace("refs/heads/", "") : undefined;
+				if (branch) {
+					const existing = repoBranches.get(event.repo.name) ?? new Set();
+					existing.add(branch);
+					repoBranches.set(event.repo.name, existing);
+				}
+			}
+			console.log("[GitHubProvider.fetch] Repos with recent pushes:", [...repoBranches.keys()].slice(0, 10));
+
+			// Fetch commits from each repo per branch (limit to 5 repos to avoid rate limits)
 			const commits: GitHubExtendedCommit[] = [];
-			const reposToFetch = repoNames.slice(0, 5);
+			const reposToFetch = [...repoBranches.entries()].slice(0, 5);
 
-			for (const repoFullName of reposToFetch) {
+			for (const [repoFullName, branches] of reposToFetch) {
 				const [owner, repo] = repoFullName.split("/");
 				if (!owner || !repo) continue;
 
-				try {
-					console.log(`[GitHubProvider.fetch] Fetching commits for ${repoFullName}...`);
-					const { data: repoCommits } = await octokit.rest.repos.listCommits({
-						owner,
-						repo,
-						author: username,
-						per_page: 30, // Last 30 commits per repo
-					});
-
-					for (const commit of repoCommits) {
-						commits.push({
-							sha: commit.sha,
-							message: commit.commit.message,
-							date: commit.commit.author?.date ?? commit.commit.committer?.date ?? new Date().toISOString(),
-							url: commit.html_url,
-							repo: repoFullName,
+				for (const branch of branches) {
+					try {
+						console.log(`[GitHubProvider.fetch] Fetching commits for ${repoFullName}@${branch}...`);
+						const { data: repoCommits } = await octokit.rest.repos.listCommits({
+							owner,
+							repo,
+							author: username,
+							sha: branch,
+							per_page: 30,
 						});
+
+						for (const commit of repoCommits) {
+							commits.push({
+								sha: commit.sha,
+								message: commit.commit.message,
+								date: commit.commit.author?.date ?? commit.commit.committer?.date ?? new Date().toISOString(),
+								url: commit.html_url,
+								repo: repoFullName,
+								branch,
+							});
+						}
+						console.log(`[GitHubProvider.fetch] Got ${repoCommits.length} commits from ${repoFullName}@${branch}`);
+					} catch (error) {
+						console.log(`[GitHubProvider.fetch] Failed to fetch commits for ${repoFullName}@${branch}:`, error);
 					}
-					console.log(`[GitHubProvider.fetch] Got ${repoCommits.length} commits from ${repoFullName}`);
-				} catch (error) {
-					console.log(`[GitHubProvider.fetch] Failed to fetch commits for ${repoFullName}:`, error);
 				}
 			}
 
@@ -306,79 +322,37 @@ const truncateMessage = (message: string): string => {
 	return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
 };
 
-// Type guard for legacy PushEvent with commits embedded
-type LegacyPushEvent = {
-	id: string;
-	type: "PushEvent";
-	created_at: string;
-	repo: { id: number; name: string; url: string };
-	payload: { ref?: string; commits: Array<{ sha: string; message: string }> };
-};
-
-const isLegacyPushEvent = (event: GitHubEvent): event is LegacyPushEvent => {
-	if (event.type !== "PushEvent") return false;
-	const payload = event.payload as { commits?: unknown[] };
-	return Array.isArray(payload.commits) && payload.commits.length > 0;
-};
-
 export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] => {
 	console.log("[normalizeGitHub] Input data structure keys:", Object.keys(raw));
 
 	const items: TimelineItem[] = [];
 
-	// NEW FORMAT: Process commits array (from Commits API)
-	const commits = raw.commits ?? [];
-	if (commits.length > 0) {
-		console.log("[normalizeGitHub] Processing extended commits array:", commits.length);
+	// Process commits array (from Commits API)
+	const commits = raw.commits;
+	console.log("[normalizeGitHub] Processing commits array:", commits.length);
 
-		for (const commit of commits) {
-			const payload: CommitPayload = {
-				type: "commit",
-				repo: commit.repo,
-				sha: commit.sha,
-				message: commit.message,
-			};
+	for (const commit of commits) {
+		const payload: CommitPayload = {
+			type: "commit",
+			repo: commit.repo,
+			sha: commit.sha,
+			message: commit.message,
+			branch: commit.branch,
+		};
 
-			items.push({
-				id: makeCommitId(commit.repo, commit.sha),
-				platform: "github",
-				type: "commit",
-				timestamp: commit.date,
-				title: truncateMessage(commit.message),
-				url: commit.url,
-				payload,
-			});
-		}
-	}
-	// LEGACY FORMAT: Extract commits from PushEvents (for tests and backward compatibility)
-	else if (raw.events && Array.isArray(raw.events)) {
-		const pushEvents = raw.events.filter(isLegacyPushEvent);
-		console.log("[normalizeGitHub] Processing legacy PushEvents:", pushEvents.length);
-
-		for (const event of pushEvents) {
-			for (const commit of event.payload.commits) {
-				const payload: CommitPayload = {
-					type: "commit",
-					repo: event.repo.name,
-					sha: commit.sha,
-					message: commit.message,
-				};
-
-				items.push({
-					id: makeCommitId(event.repo.name, commit.sha),
-					platform: "github",
-					type: "commit",
-					timestamp: event.created_at,
-					title: truncateMessage(commit.message),
-					url: makeCommitUrl(event.repo.name, commit.sha),
-					payload,
-				});
-			}
-		}
+		items.push({
+			id: makeCommitId(commit.repo, commit.sha),
+			platform: "github",
+			type: "commit",
+			timestamp: commit.date,
+			title: truncateMessage(commit.message),
+			url: commit.url,
+			payload,
+		});
 	}
 
 	// Process pull requests
-	const pullRequests = raw.pull_requests ?? [];
+	const pullRequests = raw.pull_requests;
 	if (pullRequests.length > 0) {
 		console.log("[normalizeGitHub] Processing pull requests:", pullRequests.length);
 
@@ -402,6 +376,7 @@ export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] => {
 				action: pr.action,
 				head_ref: pr.head_ref,
 				base_ref: pr.base_ref,
+				commits: [],
 				commit_shas: pr.commit_shas,
 				merge_commit_sha: pr.merge_commit_sha,
 			};
@@ -442,6 +417,8 @@ export class GitHubMemoryProvider implements Provider<GitHubRaw>, MemoryProvider
 	async fetch(_token: string): Promise<FetchResult<GitHubRaw>> {
 		return simulateErrors(this.state, () => ({
 			events: this.config.events ?? [],
+			commits: this.config.commits ?? [],
+			pull_requests: this.config.pullRequests ?? [],
 			fetched_at: new Date().toISOString(),
 		}));
 	}
@@ -462,5 +439,9 @@ export class GitHubMemoryProvider implements Provider<GitHubRaw>, MemoryProvider
 
 	setEvents(events: GitHubEvent[]): void {
 		this.config.events = events;
+	}
+
+	setCommits(commits: GitHubExtendedCommit[]): void {
+		this.config.commits = commits;
 	}
 }
