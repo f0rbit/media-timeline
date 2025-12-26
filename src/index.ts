@@ -16,7 +16,15 @@ type Variables = {
 
 const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-app.use("*", cors());
+app.use(
+	"*",
+	cors({
+		origin: ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools"],
+		allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+		allowHeaders: ["Content-Type", "Authorization"],
+		credentials: true,
+	})
+);
 
 app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
