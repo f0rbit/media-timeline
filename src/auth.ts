@@ -2,13 +2,18 @@ import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import type { Bindings } from "./bindings";
-import { createDb } from "./db";
+import type { AppContext } from "./infrastructure";
 import { apiKeys } from "./schema";
 import { hashApiKey } from "./utils";
 
 export type AuthContext = {
 	user_id: string;
 	key_id: string;
+};
+
+type Variables = {
+	auth: AuthContext;
+	appContext: AppContext;
 };
 
 declare module "hono" {
@@ -29,7 +34,15 @@ export const getAuth = (c: Context): AuthContext => {
 	return auth;
 };
 
-export const authMiddleware = createMiddleware<{ Bindings: Bindings }>(async (c, next) => {
+const getContext = (c: Context<{ Bindings: Bindings; Variables: Variables }>): AppContext => {
+	const ctx = c.get("appContext");
+	if (!ctx) {
+		throw new Error("AppContext not set. Ensure context middleware runs before authMiddleware.");
+	}
+	return ctx;
+};
+
+export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables }>(async (c, next) => {
 	const authHeader = c.req.header("Authorization");
 	if (!authHeader?.startsWith("Bearer ")) {
 		return c.json({ error: "Unauthorized", message: "Missing or invalid Authorization header" }, 401);
@@ -40,16 +53,16 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings }>(async (c,
 		return c.json({ error: "Unauthorized", message: "API key required" }, 401);
 	}
 
+	const ctx = getContext(c);
 	const keyHash = await hashApiKey(apiKey);
-	const db = createDb(c.env.DB);
 
-	const result = await db.select({ id: apiKeys.id, user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
+	const result = await ctx.db.select({ id: apiKeys.id, user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
 
 	if (!result) {
 		return c.json({ error: "Unauthorized", message: "Invalid API key" }, 401);
 	}
 
-	await db.update(apiKeys).set({ last_used_at: new Date().toISOString() }).where(eq(apiKeys.id, result.id));
+	await ctx.db.update(apiKeys).set({ last_used_at: new Date().toISOString() }).where(eq(apiKeys.id, result.id));
 
 	c.set("auth", {
 		user_id: result.user_id,

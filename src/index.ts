@@ -3,15 +3,27 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware } from "./auth";
-import type { Bindings } from "./bindings";
-import { handleCron } from "./cron";
+import { createContextFromBindings, type Bindings } from "./bindings";
+import { defaultProviderFactory, handleCron } from "./cron";
+import type { AppContext } from "./infrastructure";
 import { connectionRoutes, timelineRoutes } from "./routes";
 
-const app = new Hono<{ Bindings: Bindings }>();
+type Variables = {
+	auth: { user_id: string; key_id: string };
+	appContext: AppContext;
+};
+
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 app.use("*", cors());
 
 app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+
+app.use("/api/*", async (c, next) => {
+	const ctx = createContextFromBindings(c.env, defaultProviderFactory);
+	c.set("appContext", ctx);
+	await next();
+});
 
 app.use("/api/*", authMiddleware);
 app.route("/api/v1/timeline", timelineRoutes);
@@ -26,7 +38,8 @@ app.onError((err, c) => {
 
 export default {
 	fetch: app.fetch,
-	async scheduled(_event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
-		ctx.waitUntil(handleCron(env));
+	async scheduled(_event: ScheduledEvent, env: Bindings, executionCtx: ExecutionContext) {
+		const appCtx = createContextFromBindings(env, defaultProviderFactory);
+		executionCtx.waitUntil(handleCron(appCtx));
 	},
 };

@@ -1,6 +1,5 @@
-import { create_cloudflare_backend, create_corpus, define_store, json_codec, type Store } from "@f0rbit/corpus/cloudflare";
+import { create_corpus, define_store, json_codec, type Backend, type Store } from "@f0rbit/corpus";
 import { z } from "zod";
-import type { Bindings } from "./bindings";
 import { BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, TimelineSchema, YouTubeRawSchema } from "./schema";
 import { err, ok, type Result } from "./utils";
 
@@ -19,28 +18,13 @@ export const TimelineDataSchema = TimelineSchema;
 export type RawData = z.infer<typeof RawDataSchema>;
 export type TimelineData = z.infer<typeof TimelineDataSchema>;
 
-type CorpusBackend = {
-	d1: { prepare: (sql: string) => unknown };
-	r2: {
-		get: (key: string) => Promise<{ body: ReadableStream<Uint8Array>; arrayBuffer: () => Promise<ArrayBuffer> } | null>;
-		put: (key: string, data: ReadableStream<Uint8Array> | Uint8Array) => Promise<void>;
-		delete: (key: string) => Promise<void>;
-		head: (key: string) => Promise<{ key: string } | null>;
-	};
-};
-
-const toCorpusBackend = (env: Bindings): CorpusBackend => ({
-	d1: env.DB as unknown as CorpusBackend["d1"],
-	r2: env.BUCKET as unknown as CorpusBackend["r2"],
-});
-
 export type RawStore = { store: Store<RawData>; id: RawStoreId };
 export type TimelineStore = { store: Store<TimelineData>; id: TimelineStoreId };
 
-export function createRawStore(platform: string, accountId: string, env: Bindings): Result<RawStore, CorpusError> {
+export function createRawStore(backend: Backend, platform: string, accountId: string): Result<RawStore, CorpusError> {
 	const id = rawStoreId(platform, accountId);
 	const corpus = create_corpus()
-		.with_backend(create_cloudflare_backend(toCorpusBackend(env)))
+		.with_backend(backend)
 		.with_store(define_store(id, json_codec(RawDataSchema)))
 		.build();
 	const store = corpus.stores[id];
@@ -48,10 +32,10 @@ export function createRawStore(platform: string, accountId: string, env: Binding
 	return ok({ store, id });
 }
 
-export function createTimelineStore(userId: string, env: Bindings): Result<TimelineStore, CorpusError> {
+export function createTimelineStore(backend: Backend, userId: string): Result<TimelineStore, CorpusError> {
 	const id = timelineStoreId(userId);
 	const corpus = create_corpus()
-		.with_backend(create_cloudflare_backend(toCorpusBackend(env)))
+		.with_backend(backend)
 		.with_store(define_store(id, json_codec(TimelineDataSchema)))
 		.build();
 	const store = corpus.stores[id];

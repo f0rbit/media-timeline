@@ -1,12 +1,24 @@
 import { and, eq } from "drizzle-orm";
+import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getAuth } from "./auth";
 import type { Bindings } from "./bindings";
-import { createDb } from "./db";
+import type { AppContext } from "./infrastructure";
 import { accountMembers, accounts, DateGroupSchema } from "./schema";
 import { createRawStore, createTimelineStore, RawDataSchema, type CorpusError } from "./storage";
 import { encrypt, err, match, ok, pipe, type Result } from "./utils";
+
+type Variables = {
+	auth: { user_id: string; key_id: string };
+	appContext: AppContext;
+};
+
+const getContext = (c: Context<{ Bindings: Bindings; Variables: Variables }>): AppContext => {
+	const ctx = c.get("appContext");
+	if (!ctx) throw new Error("AppContext not set");
+	return ctx;
+};
 
 const TimelineDataSchema = z.object({
 	groups: z.array(DateGroupSchema),
@@ -14,8 +26,8 @@ const TimelineDataSchema = z.object({
 
 const SnapshotMetaSchema = z
 	.object({
-		version: z.number(),
-		created_at: z.string(),
+		version: z.union([z.string(), z.number()]),
+		created_at: z.union([z.string(), z.date()]),
 	})
 	.passthrough();
 
@@ -48,11 +60,12 @@ const AddMemberBodySchema = z.object({
 	user_id: z.string().min(1),
 });
 
-export const timelineRoutes = new Hono<{ Bindings: Bindings }>();
+export const timelineRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 timelineRoutes.get("/:user_id", async c => {
 	const userId = c.req.param("user_id");
 	const auth = getAuth(c);
+	const ctx = getContext(c);
 
 	if (auth.user_id !== userId) {
 		return c.json({ error: "Forbidden", message: "Cannot access other user timelines" }, 403);
@@ -61,7 +74,7 @@ timelineRoutes.get("/:user_id", async c => {
 	const from = c.req.query("from");
 	const to = c.req.query("to");
 
-	const result = await pipe(createTimelineStore(userId, c.env))
+	const result = await pipe(createTimelineStore(ctx.backend, userId))
 		.mapErr((e): TimelineRouteError => e)
 		.map(({ store }) => store)
 		.flatMap(async (store): Promise<Result<unknown, TimelineRouteError>> => {
@@ -101,6 +114,7 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 	const userId = c.req.param("user_id");
 	const platform = c.req.param("platform");
 	const auth = getAuth(c);
+	const ctx = getContext(c);
 
 	if (auth.user_id !== userId) {
 		return c.json({ error: "Forbidden", message: "Cannot access other user data" }, 403);
@@ -111,7 +125,7 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 		return c.json({ error: "Bad request", message: "account_id query parameter required" }, 400);
 	}
 
-	const result = await pipe(createRawStore(platform, accountId, c.env))
+	const result = await pipe(createRawStore(ctx.backend, platform, accountId))
 		.mapErr((e): RawRouteError => e)
 		.map(({ store }) => store)
 		.flatMap(async (store): Promise<Result<unknown, RawRouteError>> => {
@@ -140,13 +154,13 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 	);
 });
 
-export const connectionRoutes = new Hono<{ Bindings: Bindings }>();
+export const connectionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 connectionRoutes.get("/", async c => {
 	const auth = getAuth(c);
-	const db = createDb(c.env.DB);
+	const ctx = getContext(c);
 
-	const results = await db
+	const results = await ctx.db
 		.select({
 			account_id: accounts.id,
 			platform: accounts.platform,
@@ -165,6 +179,7 @@ connectionRoutes.get("/", async c => {
 
 connectionRoutes.post("/", async c => {
 	const auth = getAuth(c);
+	const ctx = getContext(c);
 	const parseResult = CreateConnectionBodySchema.safeParse(await c.req.json());
 	if (!parseResult.success) {
 		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
@@ -175,19 +190,17 @@ connectionRoutes.post("/", async c => {
 	const accountId = crypto.randomUUID();
 	const memberId = crypto.randomUUID();
 
-	const db = createDb(c.env.DB);
-
-	const result = await pipe(encrypt(body.access_token, c.env.EncryptionKey))
+	const result = await pipe(encrypt(body.access_token, ctx.encryptionKey))
 		.flatMap(encryptedAccessToken =>
 			body.refresh_token
-				? pipe(encrypt(body.refresh_token, c.env.EncryptionKey))
+				? pipe(encrypt(body.refresh_token, ctx.encryptionKey))
 						.map(encryptedRefreshToken => ({ encryptedAccessToken, encryptedRefreshToken: encryptedRefreshToken as string | null }))
 						.result()
 				: Promise.resolve(ok({ encryptedAccessToken, encryptedRefreshToken: null as string | null }))
 		)
 		.tap(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
-			await db.batch([
-				db.insert(accounts).values({
+			await ctx.db.batch([
+				ctx.db.insert(accounts).values({
 					id: accountId,
 					platform: body.platform,
 					platform_user_id: body.platform_user_id ?? null,
@@ -199,7 +212,7 @@ connectionRoutes.post("/", async c => {
 					created_at: now,
 					updated_at: now,
 				}),
-				db.insert(accountMembers).values({
+				ctx.db.insert(accountMembers).values({
 					id: memberId,
 					user_id: auth.user_id,
 					account_id: accountId,
@@ -219,10 +232,10 @@ connectionRoutes.post("/", async c => {
 
 connectionRoutes.delete("/:account_id", async c => {
 	const auth = getAuth(c);
+	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
-	const db = createDb(c.env.DB);
 
-	const membership = await db
+	const membership = await ctx.db
 		.select({ role: accountMembers.role })
 		.from(accountMembers)
 		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
@@ -237,22 +250,22 @@ connectionRoutes.delete("/:account_id", async c => {
 	}
 
 	const now = new Date().toISOString();
-	await db.update(accounts).set({ is_active: false, updated_at: now }).where(eq(accounts.id, accountId));
+	await ctx.db.update(accounts).set({ is_active: false, updated_at: now }).where(eq(accounts.id, accountId));
 
 	return c.json({ deleted: true });
 });
 
 connectionRoutes.post("/:account_id/members", async c => {
 	const auth = getAuth(c);
+	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 	const parseResult = AddMemberBodySchema.safeParse(await c.req.json());
 	if (!parseResult.success) {
 		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
 	}
 	const body = parseResult.data;
-	const db = createDb(c.env.DB);
 
-	const membership = await db
+	const membership = await ctx.db
 		.select({ role: accountMembers.role })
 		.from(accountMembers)
 		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
@@ -266,7 +279,7 @@ connectionRoutes.post("/:account_id/members", async c => {
 		return c.json({ error: "Forbidden", message: "Only owners can add members" }, 403);
 	}
 
-	const existingMember = await db
+	const existingMember = await ctx.db
 		.select({ id: accountMembers.id })
 		.from(accountMembers)
 		.where(and(eq(accountMembers.user_id, body.user_id), eq(accountMembers.account_id, accountId)))
@@ -279,7 +292,7 @@ connectionRoutes.post("/:account_id/members", async c => {
 	const memberId = crypto.randomUUID();
 	const now = new Date().toISOString();
 
-	await db.insert(accountMembers).values({
+	await ctx.db.insert(accountMembers).values({
 		id: memberId,
 		user_id: body.user_id,
 		account_id: accountId,

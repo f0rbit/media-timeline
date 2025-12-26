@@ -1,6 +1,7 @@
+import type { Backend } from "@f0rbit/corpus";
 import { eq, sql } from "drizzle-orm";
-import type { Bindings } from "./bindings";
-import { createDb } from "./db";
+import type { Database } from "./db";
+import type { AppContext } from "./infrastructure";
 import { normalizeBluesky, normalizeDevpad, normalizeGitHub, normalizeYouTube } from "./platforms";
 import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
 import { createRawStore, createTimelineStore, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
@@ -58,7 +59,7 @@ const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
 	circuit_open_until: parseDate(row?.circuit_open_until ?? null),
 });
 
-const defaultProviderFactory: ProviderFactory = {
+export const defaultProviderFactory: ProviderFactory = {
 	async create(platform, token) {
 		switch (platform) {
 			case "github":
@@ -75,7 +76,7 @@ const defaultProviderFactory: ProviderFactory = {
 	},
 };
 
-export async function handleCron(env: Bindings, providerFactory: ProviderFactory = defaultProviderFactory): Promise<CronResult> {
+export async function handleCron(ctx: AppContext): Promise<CronResult> {
 	const result: CronResult = {
 		processed_accounts: 0,
 		updated_users: [],
@@ -83,9 +84,7 @@ export async function handleCron(env: Bindings, providerFactory: ProviderFactory
 		timelines_generated: 0,
 	};
 
-	const db = createDb(env.DB);
-
-	const accountsWithUsers = await db
+	const accountsWithUsers = await ctx.db
 		.select({
 			id: accounts.id,
 			platform: accounts.platform,
@@ -107,11 +106,11 @@ export async function handleCron(env: Bindings, providerFactory: ProviderFactory
 
 	const updatedUsers = new Set<string>();
 
-	for (const [userId, accounts] of userAccounts) {
+	for (const [userId, userAccountsList] of userAccounts) {
 		const results = await Promise.allSettled(
-			accounts.map(async account => {
+			userAccountsList.map(async account => {
 				result.processed_accounts++;
-				const snapshot = await processAccount(env, account, providerFactory);
+				const snapshot = await processAccount(ctx, account);
 				if (snapshot) {
 					updatedUsers.add(userId);
 					return snapshot;
@@ -128,9 +127,9 @@ export async function handleCron(env: Bindings, providerFactory: ProviderFactory
 	}
 
 	for (const userId of updatedUsers) {
-		const accounts = userAccounts.get(userId) ?? [];
-		const snapshots = await gatherLatestSnapshots(env, accounts);
-		await combineUserTimeline(env, userId, snapshots);
+		const userAccountsList = userAccounts.get(userId) ?? [];
+		const snapshots = await gatherLatestSnapshots(ctx.backend, userAccountsList);
+		await combineUserTimeline(ctx.backend, userId, snapshots);
 		result.timelines_generated++;
 	}
 
@@ -149,9 +148,8 @@ const formatFetchError = (e: FetchError): string => {
 	}
 };
 
-const recordFailure = async (env: Bindings, accountId: string): Promise<void> => {
+const recordFailure = async (db: Database, accountId: string): Promise<void> => {
 	const now = new Date().toISOString();
-	const db = createDb(env.DB);
 	await db
 		.insert(rateLimits)
 		.values({
@@ -171,9 +169,8 @@ const recordFailure = async (env: Bindings, accountId: string): Promise<void> =>
 		});
 };
 
-const recordSuccess = async (env: Bindings, accountId: string): Promise<void> => {
+const recordSuccess = async (db: Database, accountId: string): Promise<void> => {
 	const now = new Date().toISOString();
-	const db = createDb(env.DB);
 	await db
 		.insert(rateLimits)
 		.values({
@@ -217,9 +214,8 @@ const toProcessError = (e: FetchError): ProcessError => ({
 	status: e.kind === "api_error" ? e.status : undefined,
 });
 
-const processAccount = async (env: Bindings, account: AccountWithUser, providerFactory: ProviderFactory): Promise<RawSnapshot | null> => {
-	const db = createDb(env.DB);
-	const rateLimitRow = await db
+const processAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	const rateLimitRow = await ctx.db
 		.select({
 			remaining: rateLimits.remaining,
 			reset_at: rateLimits.reset_at,
@@ -234,16 +230,16 @@ const processAccount = async (env: Bindings, account: AccountWithUser, providerF
 		return null;
 	}
 
-	return pipe(decrypt(account.access_token_encrypted, env.EncryptionKey))
+	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
 		.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
 		.flatMap(token =>
-			pipe(providerFactory.create(account.platform, token))
+			pipe(ctx.providerFactory.create(account.platform, token))
 				.mapErr(toProcessError)
-				.tapErr(() => recordFailure(env, account.id))
+				.tapErr(() => recordFailure(ctx.db, account.id))
 				.result()
 		)
 		.flatMap(rawData =>
-			pipe(createRawStore(account.platform, account.id, env))
+			pipe(createRawStore(ctx.backend, account.platform, account.id))
 				.mapErr((e): ProcessError => ({ kind: "store_failed", store_id: e.store_id }))
 				.map(({ store }) => ({ rawData, store }))
 				.result()
@@ -255,7 +251,7 @@ const processAccount = async (env: Bindings, account: AccountWithUser, providerF
 				.result()
 		)
 		.tapErr(logProcessError(account.id))
-		.tap(() => recordSuccess(env, account.id))
+		.tap(() => recordSuccess(ctx.db, account.id))
 		.map(
 			(result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => ({
 				account_id: account.id,
@@ -306,9 +302,9 @@ const fetchDevpad = (token: string): Promise<Result<Record<string, unknown>, Fet
 		.map(({ tasks }) => ({ tasks, fetched_at: new Date().toISOString() }))
 		.result();
 
-const getLatestSnapshot = (env: Bindings, account: AccountWithUser): Promise<RawSnapshot | null> =>
+const getLatestSnapshot = (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> =>
 	match(
-		createRawStore(account.platform, account.id, env),
+		createRawStore(backend, account.platform, account.id),
 		async ({ store }) =>
 			match(
 				(await store.get_latest()) as Result<{ meta: { version: string }; data: unknown }, unknown>,
@@ -323,10 +319,10 @@ const getLatestSnapshot = (env: Bindings, account: AccountWithUser): Promise<Raw
 		() => Promise.resolve(null)
 	);
 
-const gatherLatestSnapshots = (env: Bindings, accounts: AccountWithUser[]): Promise<RawSnapshot[]> =>
-	Promise.all(accounts.map(account => getLatestSnapshot(env, account))).then(results => results.filter((s): s is RawSnapshot => s !== null));
+const gatherLatestSnapshots = (backend: Backend, accounts: AccountWithUser[]): Promise<RawSnapshot[]> =>
+	Promise.all(accounts.map(account => getLatestSnapshot(backend, account))).then(results => results.filter((s): s is RawSnapshot => s !== null));
 
-const combineUserTimeline = async (env: Bindings, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
+const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
 	if (snapshots.length === 0) return;
 
 	const items = snapshots.flatMap(normalizeSnapshot);
@@ -345,7 +341,7 @@ const combineUserTimeline = async (env: Bindings, userId: string, snapshots: Raw
 		role: "source" as const,
 	}));
 
-	await pipe(createTimelineStore(userId, env))
+	await pipe(createTimelineStore(backend, userId))
 		.tapErr(() => console.error(`Failed to create timeline store for user ${userId}`))
 		.tap(({ store }) => store.put(timeline, { parents }).then(() => {}))
 		.result();

@@ -1,9 +1,19 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
-import { create_corpus, create_memory_backend, define_store, json_codec, type Store } from "@f0rbit/corpus";
+import { create_corpus, create_memory_backend, define_store, json_codec, type Backend, type Store } from "@f0rbit/corpus";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { Hono } from "hono";
+import { authMiddleware } from "../../src/auth";
+import type { AppContext } from "../../src/infrastructure";
+import type { ProviderFactory } from "../../src/cron";
 import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
+import { timelineRoutes, connectionRoutes } from "../../src/routes";
 import type { Platform } from "../../src/schema";
-import { encrypt, hashApiKey, unwrap, unwrapErr, uuid } from "../../src/utils";
+import * as schema from "../../src/schema/database";
+import { encrypt, err, hashApiKey, ok, unwrap, unwrapErr, uuid } from "../../src/utils";
 import { z } from "zod";
+import { ACCOUNTS } from "./fixtures";
+
+// Note: apiKeys used by seedApiKey comes from schema via the drizzle instance
 
 export { hashApiKey };
 export type { Platform };
@@ -79,7 +89,7 @@ export type TestEnv = {
 };
 
 export type TestCorpus = {
-	backend: ReturnType<typeof create_memory_backend>;
+	backend: Backend;
 	createRawStore(platform: Platform, accountId: string): Store<Record<string, unknown>>;
 	createTimelineStore(userId: string): Store<Record<string, unknown>>;
 };
@@ -91,6 +101,7 @@ export type TestContext = {
 	providers: TestProviders;
 	env: TestEnv;
 	corpus: TestCorpus;
+	appContext: AppContext;
 	cleanup(): void;
 };
 
@@ -341,6 +352,12 @@ export const createTestCorpus = (): TestCorpus => {
 	return { backend, createRawStore, createTimelineStore };
 };
 
+const defaultTestProviderFactory: ProviderFactory = {
+	async create(platform, _token) {
+		return err({ kind: "unknown_platform", platform });
+	},
+};
+
 export const createTestContext = (): TestContext => {
 	const db = new Database(":memory:");
 	db.exec(SCHEMA);
@@ -357,6 +374,24 @@ export const createTestContext = (): TestContext => {
 		ENVIRONMENT: "test",
 	};
 
+	const drizzleDb = drizzle(db, { schema });
+
+	const dbWithBatch = Object.assign(drizzleDb, {
+		batch: async <T extends readonly unknown[]>(queries: T): Promise<T> => {
+			for (const query of queries) {
+				await query;
+			}
+			return queries;
+		},
+	});
+
+	const appContext: AppContext = {
+		db: dbWithBatch as unknown as AppContext["db"],
+		backend: corpus.backend as unknown as AppContext["backend"],
+		providerFactory: defaultTestProviderFactory,
+		encryptionKey: ENCRYPTION_KEY,
+	};
+
 	const cleanup = () => {
 		db.close();
 		providers.github.reset();
@@ -365,7 +400,87 @@ export const createTestContext = (): TestContext => {
 		providers.devpad.reset();
 	};
 
-	return { db, d1, r2, providers, env, corpus, cleanup };
+	return { db, d1, r2, providers, env, corpus, appContext, cleanup };
+};
+
+type TestVariables = {
+	auth: { user_id: string; key_id: string };
+	appContext: AppContext;
+};
+
+export const createTestApp = (ctx: TestContext) => {
+	const app = new Hono<{ Variables: TestVariables }>();
+
+	app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+
+	app.use("/api/*", async (c, next) => {
+		c.set("appContext", ctx.appContext);
+		await next();
+	});
+
+	// Use real auth middleware - it reads from appContext.db
+	app.use("/api/*", authMiddleware);
+
+	app.route("/api/v1/timeline", timelineRoutes);
+	app.route("/api/v1/connections", connectionRoutes);
+
+	app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
+
+	return app;
+};
+
+type ProviderDataMap = Record<string, Record<string, unknown>>;
+
+export const createAppContextWithProviders = (ctx: TestContext, providerData: ProviderDataMap): AppContext => ({
+	...ctx.appContext,
+	providerFactory: {
+		async create(platform, _token) {
+			const data = Object.entries(providerData).find(([_accountId, _]) => true)?.[1];
+			if (data) return ok(data);
+			return err({ kind: "unknown_platform" as const, platform });
+		},
+	},
+});
+
+export const createProviderFactoryFromData = (providerData: ProviderDataMap): ProviderFactory => ({
+	async create(_platform, _token) {
+		const data = Object.values(providerData)[0];
+		if (data) return ok(data);
+		return err({ kind: "unknown_platform" as const, platform: _platform });
+	},
+});
+
+export const createProviderFactoryByAccountId =
+	(providerData: ProviderDataMap): ((accountId: string) => ProviderFactory) =>
+	(accountId: string) => ({
+		async create(platform, _token) {
+			const data = providerData[accountId];
+			if (data) return ok(data);
+			return err({ kind: "unknown_platform" as const, platform });
+		},
+	});
+
+export type ProviderDataByToken = Record<string, Record<string, unknown>>;
+
+export const createProviderFactoryByToken = (dataByToken: ProviderDataByToken): ProviderFactory => ({
+	async create(_platform, token) {
+		const data = dataByToken[token];
+		if (data) return ok(data);
+		return err({ kind: "api_error" as const, status: 404, message: `No mock data for token: ${token.slice(0, 10)}...` });
+	},
+});
+
+export const createProviderFactoryFromAccounts = (dataByAccountId: Record<string, Record<string, unknown>>, accountFixtures: Record<string, { id: string; access_token: string }> = ACCOUNTS): ProviderFactory => {
+	const dataByToken: ProviderDataByToken = {};
+
+	for (const [accountId, data] of Object.entries(dataByAccountId)) {
+		const account = Object.values(accountFixtures).find(a => a.id === accountId);
+		if (account) {
+			dataByToken[account.access_token] = data;
+		}
+	}
+
+	return createProviderFactoryByToken(dataByToken);
 };
 
 const now = () => new Date().toISOString();
