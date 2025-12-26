@@ -1,5 +1,6 @@
 ---
 import AppLayout from "../layouts/AppLayout.astro";
+import TimelineList from "../components/solid/TimelineList";
 ---
 
 <AppLayout title="Timeline | Media Timeline">
@@ -7,8 +8,5 @@ import AppLayout from "../layouts/AppLayout.astro";
     <h3>Timeline</h3>
     <p class="description">Your aggregated activity across all connected platforms.</p>
   </section>
-  <div class="empty-state">
-    <p>No timeline data yet. Connect some platforms to get started.</p>
-    <a href="/connections">Add Connection</a>
-  </div>
+  <TimelineList client:load />
 </AppLayout>
