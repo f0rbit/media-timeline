@@ -1,9 +1,11 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { create_memory_backend } from "@f0rbit/corpus";
+import { create_file_backend } from "@f0rbit/corpus";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { mkdirSync } from "fs";
 import { authMiddleware } from "../src/auth";
 import { connectionRoutes, timelineRoutes } from "../src/routes";
 import * as schema from "../src/schema/database";
@@ -115,9 +117,11 @@ type Variables = {
 };
 
 async function startDevServer() {
-	console.log("\n🚀 Starting Media Timeline Dev Server (in-memory)\n");
+	console.log("\n🚀 Starting Media Timeline Dev Server (file-based)\n");
 
-	const sqliteDb = new Database(":memory:");
+	mkdirSync("local/corpus", { recursive: true });
+
+	const sqliteDb = new Database("local/dev.db");
 	sqliteDb.exec(SCHEMA);
 
 	const db = drizzle(sqliteDb, { schema });
@@ -130,7 +134,7 @@ async function startDevServer() {
 		},
 	});
 
-	const backend = create_memory_backend();
+	const backend = create_file_backend({ base_path: "./local/corpus" });
 
 	const appContext: AppContext = {
 		db: dbWithBatch as unknown as AppContext["db"],
@@ -139,28 +143,39 @@ async function startDevServer() {
 		encryptionKey: ENCRYPTION_KEY,
 	};
 
-	const now = new Date().toISOString();
+	const existingUser = db.select().from(schema.users).where(eq(schema.users.id, MOCK_USER_ID)).get();
+	if (!existingUser) {
+		const now = new Date().toISOString();
 
-	db.insert(schema.users)
-		.values({
-			id: MOCK_USER_ID,
-			email: "dev@localhost",
-			name: "Dev User",
-			created_at: now,
-			updated_at: now,
-		})
-		.run();
+		db.insert(schema.users)
+			.values({
+				id: MOCK_USER_ID,
+				email: "dev@localhost",
+				name: "Dev User",
+				created_at: now,
+				updated_at: now,
+			})
+			.run();
 
-	const keyHash = await hashApiKey(MOCK_API_KEY);
-	db.insert(schema.apiKeys)
-		.values({
-			id: crypto.randomUUID(),
-			user_id: MOCK_USER_ID,
-			key_hash: keyHash,
-			name: "dev-key",
-			created_at: now,
-		})
-		.run();
+		const keyHash = await hashApiKey(MOCK_API_KEY);
+		db.insert(schema.apiKeys)
+			.values({
+				id: crypto.randomUUID(),
+				user_id: MOCK_USER_ID,
+				key_hash: keyHash,
+				name: "dev-key",
+				created_at: now,
+			})
+			.run();
+
+		console.log("👤 Mock user created:");
+		console.log(`   User ID:  ${MOCK_USER_ID}`);
+		console.log(`   API Key:  ${MOCK_API_KEY}`);
+	} else {
+		console.log("👤 Using existing dev user:");
+		console.log(`   User ID:  ${MOCK_USER_ID}`);
+		console.log(`   API Key:  ${MOCK_API_KEY}`);
+	}
 
 	const app = new Hono<{ Variables: Variables }>();
 
@@ -194,12 +209,9 @@ async function startDevServer() {
 
 	const port = 8787;
 
-	console.log("📦 In-memory SQLite database initialized");
-	console.log("📦 In-memory corpus backend initialized");
 	console.log("");
-	console.log("👤 Mock user created:");
-	console.log(`   User ID:  ${MOCK_USER_ID}`);
-	console.log(`   API Key:  ${MOCK_API_KEY}`);
+	console.log("📦 SQLite database at local/dev.db");
+	console.log("📦 Corpus storage at local/corpus/");
 	console.log("");
 	console.log(`🌐 Server running at http://localhost:${port}`);
 	console.log(`   Health:   http://localhost:${port}/health`);

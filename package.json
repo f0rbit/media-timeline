@@ -7,7 +7,9 @@
 	],
 	"scripts": {
 		"dev": "bun run --filter @media-timeline/website dev",
+		"dev:app": "bun run --cwd apps/website dev",
 		"dev:api": "bun run scripts/dev-server.ts",
+		"dev:all": "concurrently -n api,app -c blue,green \"bun dev:api\" \"bun dev:app\"",
 		"dev:sst": "sst dev",
 		"build": "bun run --filter @media-timeline/website build",
 		"test": "bun test",
@@ -25,6 +27,7 @@
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20251205.0",
 		"@types/bun": "latest",
+		"concurrently": "^9.2.1",
 		"typescript": "^5.9.3",
 		"wrangler": "^3.114.15"
 	}
