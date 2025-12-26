@@ -1,5 +1,6 @@
 ---
 import AppLayout from "../../layouts/AppLayout.astro";
+import ConnectionForm from "../../components/solid/ConnectionForm";
 ---
 
 <AppLayout title="New Connection | Media Timeline">
@@ -8,7 +9,14 @@ import AppLayout from "../../layouts/AppLayout.astro";
     <h3>Add Connection</h3>
     <p class="description">Connect a new platform to your timeline.</p>
   </section>
-  <div id="connection-form-root">
-    <p class="description">Loading form...</p>
-  </div>
+  <ConnectionForm client:load />
 </AppLayout>
+
+<script>
+  // Redirect to connections list on success after a delay
+  document.addEventListener("connection-added", () => {
+    setTimeout(() => {
+      window.location.href = "/connections";
+    }, 1500);
+  });
+</script>
