@@ -19,7 +19,12 @@ const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 app.use(
 	"*",
 	cors({
-		origin: ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools"],
+		origin: origin => {
+			const allowed = ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools"];
+			if (!origin || allowed.includes(origin)) return origin;
+			if (origin.endsWith(".workers.dev")) return origin;
+			return null;
+		},
 		allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 		allowHeaders: ["Content-Type", "Authorization"],
 		credentials: true,
