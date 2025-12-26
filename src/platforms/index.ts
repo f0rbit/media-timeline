@@ -6,6 +6,8 @@ export { DevpadProvider, normalizeDevpad, DevpadMemoryProvider } from "./devpad"
 
 // Re-export types
 export * from "./types";
+export type { MemoryProviderControls, MemoryProviderState, SimulationConfig } from "./memory-base";
+export { createMemoryProviderState, simulateErrors, createMemoryProviderControlMethods } from "./memory-base";
 
 // Factory function for creating providers
 import type { Provider } from "./types";

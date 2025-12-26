@@ -1,6 +1,7 @@
 import { type BlueskyFeedItem, type BlueskyRaw, BlueskyRawSchema, type PostPayload, type TimelineItem } from "../schema";
-import { err, ok, tryCatchAsync } from "../utils";
+import { tryCatchAsync } from "../utils";
 import { toProviderError, type FetchResult, type Provider, type ProviderError } from "./types";
+import { createMemoryProviderState, simulateErrors, type MemoryProviderState, type MemoryProviderControls } from "./memory-base";
 
 // === PROVIDER (real API) ===
 
@@ -109,42 +110,6 @@ export const normalizeBluesky = (raw: BlueskyRaw): TimelineItem[] =>
 	});
 
 // === MEMORY PROVIDER (for tests) ===
-
-type MemoryProviderState = {
-	call_count: number;
-	simulate_rate_limit: boolean;
-	simulate_auth_expired: boolean;
-};
-
-const createMemoryProviderState = (): MemoryProviderState => ({
-	call_count: 0,
-	simulate_rate_limit: false,
-	simulate_auth_expired: false,
-});
-
-type SimulationConfig = {
-	rate_limit_retry_after?: number;
-};
-
-const simulateErrors = <T>(state: MemoryProviderState, getData: () => T, config: SimulationConfig = {}): FetchResult<T> => {
-	state.call_count++;
-
-	if (state.simulate_rate_limit) {
-		return err({ kind: "rate_limited", retry_after: config.rate_limit_retry_after ?? 60 });
-	}
-	if (state.simulate_auth_expired) {
-		return err({ kind: "auth_expired", message: "Simulated auth expiry" });
-	}
-
-	return ok(getData());
-};
-
-export interface MemoryProviderControls {
-	getCallCount(): number;
-	reset(): void;
-	setSimulateRateLimit(value: boolean): void;
-	setSimulateAuthExpired(value: boolean): void;
-}
 
 export type BlueskyMemoryConfig = {
 	feed?: BlueskyFeedItem[];

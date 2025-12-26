@@ -1,7 +1,6 @@
-export type Result<T, E> = { ok: true; value: T } | { ok: false; error: E };
+export { ok, err, type Result } from "@f0rbit/corpus";
 
-export const ok = <T>(value: T): Result<T, never> => ({ ok: true, value });
-export const err = <E>(error: E): Result<never, E> => ({ ok: false, error });
+import { ok, err, type Result } from "@f0rbit/corpus";
 
 export const match = <T, E, R>(result: Result<T, E>, onOk: (value: T) => R, onErr: (error: E) => R): R => {
 	if (result.ok) return onOk(result.value);

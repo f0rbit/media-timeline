@@ -1,6 +1,7 @@
 import { GitHubRawSchema, type GitHubRaw, type GitHubEvent, type GitHubPushEvent, type TimelineItem, type CommitPayload } from "../schema";
 import { ok, err, type Result } from "../utils";
 import { toProviderError, type Provider, type ProviderError, type FetchResult } from "./types";
+import { createMemoryProviderState, simulateErrors, type MemoryProviderState, type MemoryProviderControls } from "./memory-base";
 
 // === TYPES ===
 
@@ -10,12 +11,6 @@ export type GitHubProviderConfig = {
 
 export type GitHubMemoryConfig = {
 	events?: GitHubEvent[];
-};
-
-type MemoryProviderState = {
-	call_count: number;
-	simulate_rate_limit: boolean;
-	simulate_auth_expired: boolean;
 };
 
 // === HELPERS ===
@@ -120,32 +115,6 @@ export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] =>
 	);
 
 // === MEMORY PROVIDER (for tests) ===
-
-const createMemoryProviderState = (): MemoryProviderState => ({
-	call_count: 0,
-	simulate_rate_limit: false,
-	simulate_auth_expired: false,
-});
-
-const simulateErrors = <T>(state: MemoryProviderState, getData: () => T): FetchResult<T> => {
-	state.call_count++;
-
-	if (state.simulate_rate_limit) {
-		return err({ kind: "rate_limited", retry_after: 60 });
-	}
-	if (state.simulate_auth_expired) {
-		return err({ kind: "auth_expired", message: "Simulated auth expiry" });
-	}
-
-	return ok(getData());
-};
-
-export interface MemoryProviderControls {
-	getCallCount(): number;
-	reset(): void;
-	setSimulateRateLimit(value: boolean): void;
-	setSimulateAuthExpired(value: boolean): void;
-}
 
 export class GitHubMemoryProvider implements Provider<GitHubRaw>, MemoryProviderControls {
 	readonly platform = "github";
