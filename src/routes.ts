@@ -58,7 +58,7 @@ type TimelineRouteError = CorpusError | LibCorpusError | { kind: "validation_err
 type RawRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; message: string };
 
 const CreateConnectionBodySchema = z.object({
-	platform: z.enum(["github", "bluesky", "youtube", "devpad", "reddit"]),
+	platform: z.enum(["github", "bluesky", "youtube", "devpad", "reddit", "twitter"]),
 	access_token: z.string().min(1),
 	refresh_token: z.string().optional(),
 	platform_user_id: z.string().optional(),

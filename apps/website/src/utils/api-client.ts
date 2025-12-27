@@ -103,7 +103,7 @@ export const api = {
 	delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
-export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit";
+export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
 export type TimelineType = "commit" | "post" | "video" | "task" | "pull_request" | "comment";
 
@@ -231,7 +231,7 @@ export const connections = {
 	list: () => api.get<ConnectionsResponse>("/connections"),
 	listWithSettings: () => api.get<ConnectionsWithSettingsResponse>("/connections?include_settings=true"),
 	create: (data: { platform: string; access_token: string; platform_username?: string }) => api.post<{ account_id: string }>("/connections", data),
-	update: (accountId: string, data: { is_active?: boolean }) => api.patch<{ updated: boolean }>(`/connections/${accountId}`, data),
+	update: (accountId: string, data: { is_active?: boolean }) => api.patch<{ success: boolean; connection: Connection }>(`/connections/${accountId}`, data),
 	delete: (accountId: string) => api.delete<{ success: boolean }>(`/connections/${accountId}`),
 	refresh: (accountId: string) => api.post<{ status: string }>(`/connections/${accountId}/refresh`),
 	refreshAll: () => api.post<{ status: string; succeeded: number; failed: number }>("/connections/refresh-all"),

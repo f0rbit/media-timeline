@@ -12,48 +12,69 @@ export default function ConnectionActions(props: Props) {
 	const [refreshing, setRefreshing] = createSignal(false);
 	const [toggling, setToggling] = createSignal(false);
 	const [deleting, setDeleting] = createSignal(false);
+	const [error, setError] = createSignal<string | null>(null);
 
 	const handleRefresh = async () => {
 		setRefreshing(true);
-		await connections.refresh(props.accountId);
+		setError(null);
+		const result = await connections.refresh(props.accountId);
 		setRefreshing(false);
+		if (!result.ok) {
+			setError(result.error.message);
+			return;
+		}
 		props.onAction();
 	};
 
 	const handleToggle = async () => {
 		setToggling(true);
-		await connections.update(props.accountId, { is_active: !props.isActive });
+		setError(null);
+		const result = await connections.update(props.accountId, { is_active: !props.isActive });
 		setToggling(false);
+		if (!result.ok) {
+			setError(result.error.message);
+			return;
+		}
 		props.onAction();
 	};
 
 	const handleDelete = async () => {
 		if (!confirm("Remove this connection? This cannot be undone.")) return;
 		setDeleting(true);
-		await connections.delete(props.accountId);
+		setError(null);
+		const result = await connections.delete(props.accountId);
 		setDeleting(false);
+		if (!result.ok) {
+			setError(result.error.message);
+			return;
+		}
 		props.onAction();
 	};
 
 	return (
-		<div class="flex-row icons">
-			<Show when={props.state === "active"}>
-				<button class="icon-btn" onClick={handleRefresh} disabled={refreshing()} title="Refresh data">
-					<RefreshIcon spinning={refreshing()} />
+		<>
+			<div class="flex-row icons">
+				<Show when={props.state === "active"}>
+					<button class="icon-btn" onClick={handleRefresh} disabled={refreshing()} title="Refresh data">
+						<RefreshIcon spinning={refreshing()} />
+					</button>
+					<button class="icon-btn" onClick={handleToggle} disabled={toggling()} title="Pause syncing">
+						<PauseIcon />
+					</button>
+				</Show>
+				<Show when={props.state === "inactive"}>
+					<button class="icon-btn" onClick={handleToggle} disabled={toggling()} title="Resume syncing">
+						<PlayIcon />
+					</button>
+				</Show>
+				<button class="icon-btn" onClick={handleDelete} disabled={deleting()} title="Remove connection">
+					<TrashIcon />
 				</button>
-				<button class="icon-btn" onClick={handleToggle} disabled={toggling()} title="Pause syncing">
-					<PauseIcon />
-				</button>
+			</div>
+			<Show when={error()}>
+				<small class="error-text">{error()}</small>
 			</Show>
-			<Show when={props.state === "inactive"}>
-				<button class="icon-btn" onClick={handleToggle} disabled={toggling()} title="Resume syncing">
-					<PlayIcon />
-				</button>
-			</Show>
-			<button class="icon-btn" onClick={handleDelete} disabled={deleting()} title="Remove connection">
-				<TrashIcon />
-			</button>
-		</div>
+		</>
 	);
 }
 
