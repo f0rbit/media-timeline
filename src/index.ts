@@ -25,7 +25,7 @@ app.use(
 			if (origin.endsWith(".workers.dev")) return origin;
 			return null;
 		},
-		allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+		allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
 		allowHeaders: ["Content-Type", "Authorization"],
 		credentials: true,
 	})
