@@ -92,47 +92,40 @@ timelineRoutes.get("/:user_id", async c => {
 
 	const githubUsernames = githubAccounts.map(a => a.platform_username).filter((u): u is string => u !== null);
 
-	const result = await pipe(createTimelineStore(ctx.backend, userId))
-		.mapErr((e): TimelineRouteError => e)
-		.map(({ store }) => store)
-		.flatMap(async (store): Promise<Result<unknown, TimelineRouteError>> => {
-			const latest = await store.get_latest();
-			if (!latest.ok) return err(latest.error);
-			return ok(latest.value);
-		})
-		.flatMap((raw): Result<TimelineSnapshot, TimelineRouteError> => {
-			const parsed = TimelineSnapshotSchema.safeParse(raw);
-			return parsed.success ? ok(parsed.data) : err({ kind: "validation_error", message: parsed.error.message });
-		})
-		.map(snapshot => {
-			const filteredGroups = snapshot.data.groups.filter(group => {
-				if (from && group.date < from) return false;
-				if (to && group.date > to) return false;
-				return true;
-			});
-			return {
-				meta: { ...snapshot.meta, github_usernames: githubUsernames },
-				data: { ...snapshot.data, groups: filteredGroups },
-			};
-		})
-		.result();
+	const storeResult = createTimelineStore(ctx.backend, userId);
 
-	return match(
-		result,
-		data => c.json(data) as Response,
-		error => {
-			if (error.kind === "store_not_found") {
-				return c.json({ error: "Internal error", message: "Failed to create timeline store" }, 500) as Response;
-			}
-			if (error.kind === "validation_error") {
-				return c.json({ error: "Internal error", message: "Invalid timeline data format" }, 500) as Response;
-			}
-			if (error.kind === "not_found") {
-				return c.json({ error: "Not found", message: "No timeline data available" }, 404) as Response;
-			}
-			return c.json({ error: "Internal error", message: "Unexpected error" }, 500) as Response;
+	if (!storeResult.ok) {
+		return c.json({ error: "Internal error", message: "Failed to create timeline store" }, 500);
+	}
+
+	const store = storeResult.value.store;
+	const latestResult = await store.get_latest();
+
+	if (!latestResult.ok) {
+		if (latestResult.error.kind === "not_found") {
+			return c.json({ error: "Not found", message: "No timeline data available" }, 404);
 		}
-	);
+		return c.json({ error: "Internal error", message: "Unexpected error" }, 500);
+	}
+
+	const parsed = TimelineSnapshotSchema.safeParse(latestResult.value);
+
+	if (!parsed.success) {
+		return c.json({ error: "Internal error", message: "Invalid timeline data format" }, 500);
+	}
+
+	const filteredGroups = parsed.data.data.groups.filter(group => {
+		if (from && group.date < from) return false;
+		if (to && group.date > to) return false;
+		return true;
+	});
+
+	const result = {
+		meta: { ...parsed.data.meta, github_usernames: githubUsernames },
+		data: { ...parsed.data.data, groups: filteredGroups },
+	};
+
+	return c.json(result);
 });
 
 timelineRoutes.get("/:user_id/raw/:platform", async c => {
