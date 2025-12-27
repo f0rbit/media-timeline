@@ -177,25 +177,30 @@ button.underlined:hover {
 }
 
 h1 {
-	font-size: x-large;
+	font-size: 1.5rem;
+	line-height: calc(2 / 1.5);
 	font-weight: bold;
 }
 
 h2 {
-	font-size: x-large;
+	font-size: 1.25rem;
+	line-height: calc(1.75 / 1.25);
 }
 
 h3,
 h4 {
-	font-size: large;
+	font-size: 1.125rem;
+	line-height: calc(1.75 / 1.125);
 }
 
 h5 {
-	font-size: medium;
+	font-size: 1rem;
+	line-height: 1.5;
 }
 
 h6 {
-	font-size: 1em;
+	font-size: 0.875rem;
+	line-height: calc(1.25 / 0.875);
 	color: var(--text-secondary);
 }
 
@@ -764,7 +769,8 @@ article {
 	}
 
 	h2 {
-		font-size: large;
+		font-size: 1.125rem;
+		line-height: calc(1.75 / 1.125);
 		font-weight: bold;
 	}
 
