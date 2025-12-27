@@ -1,9 +1,9 @@
-import { createResource, createSignal, createContext, useContext, For, Show, Match, Switch } from "solid-js";
-import GitCommit from "lucide-solid/icons/git-commit-horizontal";
-import GitPullRequest from "lucide-solid/icons/git-pull-request";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import ChevronRight from "lucide-solid/icons/chevron-right";
-import { timeline, initMockAuth, getMockUserId, type ApiResult, type TimelineResponse, type TimelineGroup, type TimelineItem, type CommitGroup, type PullRequestPayload, type PRCommit } from "@/utils/api-client";
+import GitCommit from "lucide-solid/icons/git-commit-horizontal";
+import GitPullRequest from "lucide-solid/icons/git-pull-request";
+import { createContext, createResource, createSignal, For, Match, Show, Switch, useContext } from "solid-js";
+import { type ApiResult, type CommitGroup, getMockUserId, initMockAuth, type PRCommit, type PullRequestPayload, type TimelineGroup, type TimelineItem, type TimelineResponse, timeline } from "@/utils/api-client";
 import { formatRelativeTime } from "@/utils/formatters";
 
 const GithubUsernamesContext = createContext<string[]>([]);

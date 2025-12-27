@@ -1,9 +1,9 @@
 import { createResource, For, Show } from "solid-js";
-import { connections, initMockAuth, type ConnectionWithSettings } from "@/utils/api-client";
+import { type ConnectionWithSettings, connections, initMockAuth } from "@/utils/api-client";
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";
 
-const PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad"];
+const PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad", "reddit"];
 
 export default function ConnectionList() {
 	initMockAuth();

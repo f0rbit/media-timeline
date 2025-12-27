@@ -1,6 +1,6 @@
 import type { Backend } from "@f0rbit/corpus";
-import { createRedditPostsStore, createRedditCommentsStore } from "./storage";
-import type { RedditPost, RedditComment, TimelineItem } from "./schema";
+import type { RedditComment, RedditPost, TimelineItem } from "./schema";
+import { createRedditCommentsStore, createRedditPostsStore } from "./storage";
 
 export type RedditTimelineData = {
 	posts: RedditPost[];

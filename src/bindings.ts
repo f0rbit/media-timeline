@@ -1,10 +1,10 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { drizzle } from "drizzle-orm/d1";
 import { create_cloudflare_backend } from "@f0rbit/corpus/cloudflare";
-import * as schema from "./schema/database";
+import { drizzle } from "drizzle-orm/d1";
 import type { AppContext } from "./infrastructure";
 import type { ProviderFactory } from "./platforms/types";
+import * as schema from "./schema/database";
 
 export type Bindings = {
 	DB: D1Database;

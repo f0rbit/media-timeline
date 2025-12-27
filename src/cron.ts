@@ -1,17 +1,17 @@
 import type { Backend } from "@f0rbit/corpus";
 import { eq, sql } from "drizzle-orm";
-import { processGitHubAccount, type GitHubProcessResult } from "./cron-github";
+import { type GitHubProcessResult, processGitHubAccount } from "./cron-github";
 import { processRedditAccount } from "./cron-reddit";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube, type ProviderError, type ProviderFactory } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
-import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
-import { createRawStore, createTimelineStore, githubCommitsStoreId, githubPRsStoreId, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
+import { accountMembers, accounts, BlueskyRawSchema, type CommitGroup, DevpadRawSchema, type Platform, rateLimits, type TimelineItem, YouTubeRawSchema } from "./schema";
+import { createRawStore, createTimelineStore, githubCommitsStoreId, githubPRsStoreId, type RateLimitState, type RawData, rawStoreId, shouldFetch } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
 import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
-import { decrypt, pipe, to_nullable, tryCatch, type Result } from "./utils";
+import { decrypt, pipe, type Result, to_nullable, tryCatch } from "./utils";
 
 export { processAccount, gatherLatestSnapshots, combineUserTimeline };
 export type { ProviderFactory };
@@ -618,27 +618,30 @@ const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], Normal
 					console.log("[normalizeSnapshot] Case: reddit - skipping (handled via multi-store)");
 					result = [];
 					break;
-				case "bluesky":
+				case "bluesky": {
 					console.log("[normalizeSnapshot] Case: bluesky - parsing with BlueskyRawSchema");
 					const blueskyParsed = BlueskyRawSchema.parse(snapshot.data);
 					console.log("[normalizeSnapshot] Bluesky parsed successfully");
 					result = normalizeBluesky(blueskyParsed);
 					console.log("[normalizeSnapshot] Bluesky normalized, items count:", result.length);
 					break;
-				case "youtube":
+				}
+				case "youtube": {
 					console.log("[normalizeSnapshot] Case: youtube - parsing with YouTubeRawSchema");
 					const youtubeParsed = YouTubeRawSchema.parse(snapshot.data);
 					console.log("[normalizeSnapshot] YouTube parsed successfully");
 					result = normalizeYouTube(youtubeParsed);
 					console.log("[normalizeSnapshot] YouTube normalized, items count:", result.length);
 					break;
-				case "devpad":
+				}
+				case "devpad": {
 					console.log("[normalizeSnapshot] Case: devpad - parsing with DevpadRawSchema");
 					const devpadParsed = DevpadRawSchema.parse(snapshot.data);
 					console.log("[normalizeSnapshot] Devpad parsed successfully");
 					result = normalizeDevpad(devpadParsed);
 					console.log("[normalizeSnapshot] Devpad normalized, items count:", result.length);
 					break;
+				}
 				default:
 					console.log("[normalizeSnapshot] Case: default (unknown platform), returning empty array");
 					result = [];

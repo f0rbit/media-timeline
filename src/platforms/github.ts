@@ -1,7 +1,7 @@
 import { Octokit } from "octokit";
-import type { GitHubRepoMeta, GitHubMetaStore, GitHubRepoCommitsStore, GitHubRepoCommit, GitHubRepoPRsStore, GitHubRepoPR } from "../schema";
-import { ok, err, type Result } from "../utils";
-import { toProviderError, type ProviderError } from "./types";
+import type { GitHubMetaStore, GitHubRepoCommit, GitHubRepoCommitsStore, GitHubRepoMeta, GitHubRepoPR, GitHubRepoPRsStore } from "../schema";
+import { err, ok, type Result } from "../utils";
+import { type ProviderError, toProviderError } from "./types";
 
 export type GitHubProviderConfig = {
 	maxRepos: number;
@@ -329,9 +329,7 @@ export class GitHubProvider {
 						files_changed: commit.files?.length,
 					});
 				}
-			} catch {
-				continue;
-			}
+			} catch {}
 		}
 
 		return {

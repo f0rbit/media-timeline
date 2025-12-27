@@ -2,22 +2,18 @@
 import Layout from "./Layout.astro";
 
 interface Props {
-  title?: string;
+	title?: string;
 }
 
 const { title = "Media Timeline" } = Astro.props;
 
 const pages = [
-  { name: "timeline", href: "/" },
-  { name: "connections", href: "/connections" },
+	{ name: "timeline", href: "/" },
+	{ name: "connections", href: "/connections" },
 ];
 
 const currentPath = Astro.url.pathname;
-const active = pages.find(p => 
-  p.href === "/" 
-    ? currentPath === "/" 
-    : currentPath.startsWith(p.href)
-)?.name ?? "timeline";
+const active = pages.find(p => (p.href === "/" ? currentPath === "/" : currentPath.startsWith(p.href)))?.name ?? "timeline";
 ---
 
 <Layout title={title}>

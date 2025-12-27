@@ -1,4 +1,4 @@
-import { type CorpusError as LibCorpusError } from "@f0rbit/corpus";
+import type { CorpusError as LibCorpusError } from "@f0rbit/corpus";
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
@@ -9,8 +9,8 @@ import { deleteConnection } from "./connection-delete";
 import { processRedditAccount } from "./cron-reddit";
 import type { AppContext } from "./infrastructure";
 import { RedditProvider } from "./platforms/reddit";
-import { accountMembers, accounts, accountSettings, DateGroupSchema } from "./schema";
-import { createRawStore, createTimelineStore, createGitHubMetaStore, createRedditMetaStore, RawDataSchema, type CorpusError } from "./storage";
+import { accountMembers, accountSettings, accounts, DateGroupSchema } from "./schema";
+import { type CorpusError, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore, RawDataSchema } from "./storage";
 import { decrypt, encrypt, err, match, ok, pipe, type Result } from "./utils";
 
 type Variables = {
@@ -207,14 +207,46 @@ export const refreshRedditToken = async (refreshToken: string, clientId: string,
 };
 
 // GET /auth/reddit - Initiate Reddit OAuth
+// This route requires authentication via query param (for browser redirect flow)
 authRoutes.get("/reddit", async c => {
+	console.log(`[reddit-oauth] ROUTE HIT - /auth/reddit`);
+	console.log(`[reddit-oauth] Full URL: ${c.req.url}`);
+	console.log(`[reddit-oauth] Path: ${c.req.path}`);
+	console.log(`[reddit-oauth] Query params:`, c.req.query());
+
+	const ctx = getContext(c);
+
+	// Get API key from query param (since this is a browser redirect, not an API call)
+	const apiKey = c.req.query("key");
+	console.log(`[reddit-oauth] API key from query: ${apiKey ? "present" : "MISSING"}`);
+	if (!apiKey) {
+		console.log(`[reddit-oauth] Redirecting - no auth key`);
+		return c.redirect("/connections?error=reddit_no_auth");
+	}
+
+	// Validate the API key
+	const { hashApiKey } = await import("./utils");
+	const { apiKeys } = await import("./schema");
+	const keyHash = await hashApiKey(apiKey);
+	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
+
+	if (!keyResult) {
+		return c.redirect("/connections?error=reddit_invalid_auth");
+	}
+
 	const clientId = c.env.REDDIT_CLIENT_ID;
 	if (!clientId) {
 		return c.json({ error: "Reddit OAuth not configured" }, 500);
 	}
 
-	const redirectUri = `${c.env.APP_URL || "http://localhost:3000"}/api/auth/reddit/callback`;
-	const state = crypto.randomUUID();
+	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/reddit/callback`;
+
+	// Encode user_id in state (base64 encoded JSON with nonce for security)
+	const stateData = {
+		user_id: keyResult.user_id,
+		nonce: crypto.randomUUID(),
+	};
+	const state = btoa(JSON.stringify(stateData));
 
 	const scope = "identity,history,read";
 	const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
@@ -230,11 +262,11 @@ authRoutes.get("/reddit", async c => {
 
 // GET /auth/reddit/callback - Handle Reddit OAuth callback
 authRoutes.get("/reddit/callback", async c => {
-	const auth = getAuth(c);
 	const ctx = getContext(c);
 	const db = ctx.db;
 
 	const code = c.req.query("code");
+	const state = c.req.query("state");
 	const error = c.req.query("error");
 
 	if (error) {
@@ -246,9 +278,24 @@ authRoutes.get("/reddit/callback", async c => {
 		return c.redirect("/connections?error=reddit_no_code");
 	}
 
+	if (!state) {
+		return c.redirect("/connections?error=reddit_no_state");
+	}
+
+	// Decode user_id from state
+	let userId: string;
+	try {
+		const stateData = JSON.parse(atob(state)) as { user_id: string; nonce: string };
+		userId = stateData.user_id;
+		if (!userId) throw new Error("No user_id in state");
+	} catch {
+		console.error("[reddit-oauth] Invalid state parameter");
+		return c.redirect("/connections?error=reddit_invalid_state");
+	}
+
 	const clientId = c.env.REDDIT_CLIENT_ID;
 	const clientSecret = c.env.REDDIT_CLIENT_SECRET;
-	const redirectUri = `${c.env.APP_URL || "http://localhost:3000"}/api/auth/reddit/callback`;
+	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/reddit/callback`;
 
 	if (!clientId || !clientSecret) {
 		return c.redirect("/connections?error=reddit_not_configured");
@@ -328,7 +375,7 @@ authRoutes.get("/reddit/callback", async c => {
 			const existingMembership = await db
 				.select()
 				.from(accountMembers)
-				.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, existing.id)))
+				.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, existing.id)))
 				.get();
 
 			// Update existing connection
@@ -347,7 +394,7 @@ authRoutes.get("/reddit/callback", async c => {
 			if (!existingMembership) {
 				await db.insert(accountMembers).values({
 					id: crypto.randomUUID(),
-					user_id: auth.user_id,
+					user_id: userId,
 					account_id: existing.id,
 					role: "member",
 					created_at: now,
@@ -373,7 +420,7 @@ authRoutes.get("/reddit/callback", async c => {
 				}),
 				db.insert(accountMembers).values({
 					id: memberId,
-					user_id: auth.user_id,
+					user_id: userId,
 					account_id: accountId,
 					role: "owner",
 					created_at: now,

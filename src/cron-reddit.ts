@@ -1,9 +1,9 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { RedditFetchResult } from "./platforms/reddit";
-import { createRedditMetaStore, createRedditPostsStore, createRedditCommentsStore } from "./storage";
-import { ok, err, to_nullable, type Result } from "./utils";
-import type { RedditPostsStore, RedditCommentsStore } from "./schema";
 import type { ProviderError } from "./platforms/types";
+import type { RedditCommentsStore, RedditPostsStore } from "./schema";
+import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "./storage";
+import { err, ok, type Result, to_nullable } from "./utils";
 
 export type RedditProcessResult = {
 	account_id: string;

@@ -1,7 +1,7 @@
+import type { RedditComment, RedditCommentsStore, RedditMetaStore, RedditPost, RedditPostsStore } from "../schema";
 import type { Result } from "../utils";
-import { ok, err } from "../utils";
+import { err, ok } from "../utils";
 import type { ProviderError } from "./types";
-import type { RedditMetaStore, RedditPostsStore, RedditCommentsStore, RedditPost, RedditComment } from "../schema";
 
 export type RedditProviderConfig = {
 	maxPosts: number;

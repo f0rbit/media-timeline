@@ -1,21 +1,45 @@
 import { Match, Show, Switch } from "solid-js";
 import type { ConnectionWithSettings, PlatformSettings } from "@/utils/api-client";
+import { getApiKey } from "@/utils/api-client";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
-import StatusBadge, { type ConnectionState } from "./StatusBadge";
-import PlatformIcon from "./PlatformIcon";
-import PlatformSetupForm, { type Platform } from "./PlatformSetupForm";
 import ConnectionActions from "./ConnectionActions";
-import GitHubSettings from "./PlatformSettings/GitHubSettings";
+import PlatformIcon from "./PlatformIcon";
 import BlueskySettings from "./PlatformSettings/BlueskySettings";
-import YouTubeSettings from "./PlatformSettings/YouTubeSettings";
 import DevpadSettings from "./PlatformSettings/DevpadSettings";
+import GitHubSettings from "./PlatformSettings/GitHubSettings";
 import RedditSettings from "./PlatformSettings/RedditSettings";
+import YouTubeSettings from "./PlatformSettings/YouTubeSettings";
+import PlatformSetupForm, { type Platform } from "./PlatformSetupForm";
+import StatusBadge, { type ConnectionState } from "./StatusBadge";
 
 type Props = {
 	platform: Platform;
 	connection: ConnectionWithSettings | null;
 	onConnectionChange: () => void;
 };
+
+function RedditOAuthButton() {
+	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
+
+	const handleConnect = () => {
+		const apiKey = getApiKey();
+		if (!apiKey) {
+			console.error("No API key available for Reddit OAuth");
+			return;
+		}
+		// Pass API key as query param since this is a browser redirect
+		window.location.href = `${apiUrl}/api/auth/reddit?key=${encodeURIComponent(apiKey)}`;
+	};
+
+	return (
+		<div class="oauth-setup">
+			<p class="muted text-sm">Connect your Reddit account to sync your posts and comments.</p>
+			<button type="button" onClick={handleConnect} class="oauth-button">
+				Connect with Reddit
+			</button>
+		</div>
+	);
+}
 
 export default function PlatformCard(props: Props) {
 	const state = (): ConnectionState => {
@@ -56,6 +80,9 @@ export default function PlatformCard(props: Props) {
 			</div>
 
 			<Switch>
+				<Match when={state() === "not_configured" && props.platform === "reddit"}>
+					<RedditOAuthButton />
+				</Match>
 				<Match when={state() === "not_configured"}>
 					<PlatformSetupForm platform={props.platform} onSuccess={props.onConnectionChange} />
 				</Match>

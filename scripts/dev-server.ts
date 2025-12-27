@@ -1,18 +1,18 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
+import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
+import { drizzle } from "drizzle-orm/bun-sqlite";
+import { mkdirSync } from "fs";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { mkdirSync } from "fs";
 import { authMiddleware } from "../src/auth";
-import { connectionRoutes, timelineRoutes } from "../src/routes";
+import type { Database as DrizzleDB } from "../src/db";
+import { defaultProviderFactory, type ProviderFactory } from "../src/platforms";
+import { authRoutes, connectionRoutes, timelineRoutes } from "../src/routes";
 import * as schema from "../src/schema/database";
 import { hashApiKey } from "../src/utils";
-import type { Database as DrizzleDB } from "../src/db";
-import type { Backend } from "@f0rbit/corpus";
-import { defaultProviderFactory, type ProviderFactory } from "../src/platforms";
 
 type AppContext = {
 	db: DrizzleDB;
@@ -191,12 +191,31 @@ async function startDevServer() {
 
 	app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
+	// Set up mock env bindings for routes that need them (like OAuth)
 	app.use("/api/*", async (c, next) => {
+		// biome-ignore lint: env bindings for dev server
+		(c as any).env = {
+			REDDIT_CLIENT_ID: process.env.REDDIT_CLIENT_ID || "",
+			REDDIT_CLIENT_SECRET: process.env.REDDIT_CLIENT_SECRET || "",
+			APP_URL: "http://localhost:8787",
+			EncryptionKey: ENCRYPTION_KEY,
+		};
 		c.set("appContext", appContext);
 		await next();
 	});
 
-	app.use("/api/*", authMiddleware);
+	// Auth middleware - skip for /api/auth/* (OAuth routes handle their own auth)
+	app.use("/api/*", async (c, next) => {
+		if (c.req.path.startsWith("/api/auth")) {
+			console.log(`[dev-server] Skipping auth for OAuth route: ${c.req.path}`);
+			return next();
+		}
+		// biome-ignore lint: type cast needed for dev server compatibility
+		return authMiddleware(c as any, next);
+	});
+
+	// Routes
+	app.route("/api/auth", authRoutes);
 	app.route("/api/v1/timeline", timelineRoutes);
 	app.route("/api/v1/connections", connectionRoutes);
 

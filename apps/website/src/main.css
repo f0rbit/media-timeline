@@ -616,6 +616,9 @@ form section label {
 .platform-devpad {
 	--platform-color: oklch(55% 0.1 150);
 }
+.platform-reddit {
+	--platform-color: oklch(55% 0.2 25);
+}
 
 .status-active {
 	color: oklch(from var(--item-green) 0.85 0.1 h);
@@ -1228,4 +1231,29 @@ hr {
 	width: 16px;
 	height: 16px;
 	cursor: pointer;
+}
+
+.oauth-setup {
+	display: flex;
+	flex-direction: column;
+	gap: 12px;
+	margin-top: 12px;
+	padding-top: 12px;
+	border-top: 1px solid var(--input-border);
+}
+
+.oauth-button {
+	background: var(--text-link);
+	color: var(--bg-primary);
+	border: none;
+	border-radius: 4px;
+	padding: 10px 16px;
+	cursor: pointer;
+	font-size: 0.875rem;
+	font-weight: 500;
+	width: fit-content;
+}
+
+.oauth-button:hover {
+	filter: var(--hover-filter);
 }

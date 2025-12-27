@@ -1,3 +1,4 @@
+import type { GitHubFetchResult } from "../../src/platforms/github";
 import type {
 	BlueskyAuthor,
 	BlueskyFeedItem,
@@ -7,18 +8,17 @@ import type {
 	DevpadTask,
 	GitHubEvent,
 	GitHubExtendedCommit,
-	GitHubRaw,
 	GitHubMetaStore,
+	GitHubRaw,
 	GitHubRepoCommitsStore,
-	GitHubRepoPRsStore,
 	GitHubRepoMeta,
-	RedditPost,
+	GitHubRepoPRsStore,
 	RedditComment,
+	RedditPost,
 	YouTubeRaw,
 	YouTubeVideo,
 } from "../../src/schema";
-import type { GitHubFetchResult } from "../../src/platforms/github";
-import { daysAgo, type DeepPartial, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
+import { type DeepPartial, daysAgo, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
 
 export type GitHubExtendedCommitInput = {
 	sha?: string;

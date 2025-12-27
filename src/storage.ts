@@ -1,23 +1,23 @@
-import { create_corpus, define_store, json_codec, type Backend, type Store } from "@f0rbit/corpus";
+import { type Backend, create_corpus, define_store, json_codec, type Store } from "@f0rbit/corpus";
 import { z } from "zod";
 import {
 	BlueskyRawSchema,
 	DevpadRawSchema,
-	GitHubRawSchema,
+	type GitHubMetaStore,
 	GitHubMetaStoreSchema,
+	GitHubRawSchema,
+	type GitHubRepoCommitsStore,
 	GitHubRepoCommitsStoreSchema,
+	type GitHubRepoPRsStore,
 	GitHubRepoPRsStoreSchema,
-	RedditMetaStoreSchema,
-	RedditPostsStoreSchema,
+	type RedditCommentsStore,
 	RedditCommentsStoreSchema,
+	type RedditMetaStore,
+	RedditMetaStoreSchema,
+	type RedditPostsStore,
+	RedditPostsStoreSchema,
 	TimelineSchema,
 	YouTubeRawSchema,
-	type GitHubMetaStore,
-	type GitHubRepoCommitsStore,
-	type GitHubRepoPRsStore,
-	type RedditMetaStore,
-	type RedditPostsStore,
-	type RedditCommentsStore,
 } from "./schema";
 import { err, ok, type Result } from "./utils";
 

@@ -1,6 +1,6 @@
 import type { Backend } from "@f0rbit/corpus";
-import { listGitHubCommitStores, listGitHubPRStores, createGitHubCommitsStore, createGitHubPRsStore } from "./storage";
-import type { GitHubRepoCommit, GitHubRepoPR, GitHubRaw, TimelineItem } from "./schema";
+import type { GitHubRaw, GitHubRepoCommit, GitHubRepoPR, TimelineItem } from "./schema";
+import { createGitHubCommitsStore, createGitHubPRsStore, listGitHubCommitStores, listGitHubPRStores } from "./storage";
 
 type CommitWithRepo = GitHubRepoCommit & { _repo: string };
 type PRWithRepo = GitHubRepoPR & { _repo: string };

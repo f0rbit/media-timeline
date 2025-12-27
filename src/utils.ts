@@ -1,6 +1,6 @@
-export { ok, err, type Result } from "@f0rbit/corpus";
+export { err, ok, type Result } from "@f0rbit/corpus";
 
-import { ok, err, type Result } from "@f0rbit/corpus";
+import { err, ok, type Result } from "@f0rbit/corpus";
 
 export const to_nullable = <T, E>(result: Result<T, E>): T | null => (result.ok ? result.value : null);
 export const to_fallback = <T, E>(result: Result<T, E>, fallback: T): T => (result.ok ? result.value : fallback);

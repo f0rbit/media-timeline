@@ -1,16 +1,16 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
-import { create_corpus, create_memory_backend, define_store, json_codec, type Backend, type Store } from "@f0rbit/corpus";
+import { type Backend, create_corpus, create_memory_backend, define_store, json_codec, type Store } from "@f0rbit/corpus";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Hono } from "hono";
+import { z } from "zod";
 import { authMiddleware } from "../../src/auth";
-import type { AppContext } from "../../src/infrastructure";
 import type { ProviderFactory } from "../../src/cron";
+import type { AppContext } from "../../src/infrastructure";
 import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
-import { timelineRoutes, connectionRoutes } from "../../src/routes";
+import { connectionRoutes, timelineRoutes } from "../../src/routes";
 import type { Platform } from "../../src/schema";
 import * as schema from "../../src/schema/database";
 import { encrypt, err, hashApiKey, ok, unwrap, unwrapErr, uuid } from "../../src/utils";
-import { z } from "zod";
 import { ACCOUNTS } from "./fixtures";
 
 // Note: apiKeys used by seedApiKey comes from schema via the drizzle instance
@@ -517,10 +517,10 @@ export const createProviderFactoryFromAccounts = (dataByAccountId: Record<string
 	return createProviderFactoryByToken(dataByToken);
 };
 
-import type { GitHubFetchResult } from "../../src/platforms/github";
 import type { GitHubProviderLike } from "../../src/infrastructure";
-import { GITHUB_V2_FIXTURES, makeGitHubFetchResult } from "./fixtures";
+import type { GitHubFetchResult } from "../../src/platforms/github";
 import type { GitHubRaw as LegacyGitHubRaw } from "../../src/schema";
+import { GITHUB_V2_FIXTURES, makeGitHubFetchResult } from "./fixtures";
 
 type GitHubV2DataByAccountId = Record<string, GitHubFetchResult>;
 type LegacyGitHubDataByAccountId = Record<string, LegacyGitHubRaw>;

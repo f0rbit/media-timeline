@@ -1,28 +1,27 @@
 // Re-export providers, normalizers, and memory providers
-export { GitHubProvider, type GitHubFetchResult, type GitHubProviderConfig } from "./github";
-export { GitHubMemoryProvider, type GitHubMemoryConfig } from "./github-memory";
-export { BlueskyProvider, normalizeBluesky, BlueskyMemoryProvider, type BlueskyProviderConfig } from "./bluesky";
-export { YouTubeProvider, normalizeYouTube, YouTubeMemoryProvider, type YouTubeProviderConfig } from "./youtube";
-export { DevpadProvider, normalizeDevpad, DevpadMemoryProvider } from "./devpad";
-export * from "./reddit";
-export * from "./reddit-memory";
-
-// Re-export types
-export * from "./types";
-export type { MemoryProviderControls, MemoryProviderState, SimulationConfig } from "./memory-base";
-export { createMemoryProviderState, simulateErrors, createMemoryProviderControlMethods } from "./memory-base";
 
 // Re-export GitHub normalizers
 // normalizeGitHubLegacy is for the old GitHubRaw format (tests, legacy snapshots)
 // cron.ts uses normalizeGitHub from timeline-github for new multi-store format
 export { normalizeGitHubLegacy as normalizeGitHub } from "../timeline-github";
+export { BlueskyMemoryProvider, BlueskyProvider, type BlueskyProviderConfig, normalizeBluesky } from "./bluesky";
+export { DevpadMemoryProvider, DevpadProvider, normalizeDevpad } from "./devpad";
+export { type GitHubFetchResult, GitHubProvider, type GitHubProviderConfig } from "./github";
+export { type GitHubMemoryConfig, GitHubMemoryProvider } from "./github-memory";
+export type { MemoryProviderControls, MemoryProviderState, SimulationConfig } from "./memory-base";
+export { createMemoryProviderControlMethods, createMemoryProviderState, simulateErrors } from "./memory-base";
+export * from "./reddit";
+export * from "./reddit-memory";
+// Re-export types
+export * from "./types";
+export { normalizeYouTube, YouTubeMemoryProvider, YouTubeProvider, type YouTubeProviderConfig } from "./youtube";
 
 // Factory function for creating providers (non-GitHub only)
 import { err, type Result } from "../utils";
-import type { Provider, ProviderError, ProviderFactory } from "./types";
 import { BlueskyProvider } from "./bluesky";
-import { YouTubeProvider } from "./youtube";
 import { DevpadProvider } from "./devpad";
+import type { Provider, ProviderError, ProviderFactory } from "./types";
+import { YouTubeProvider } from "./youtube";
 
 export const defaultProviderFactory: ProviderFactory = {
 	async create(platform, platformUserId, token) {

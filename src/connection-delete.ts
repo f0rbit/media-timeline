@@ -1,24 +1,24 @@
 import type { Backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
 import type { Database } from "./db";
-import { accountMembers, accounts, accountSettings, rateLimits } from "./schema/database";
 import type { Platform } from "./schema";
+import { accountMembers, accountSettings, accounts, rateLimits } from "./schema/database";
 import {
-	createGitHubMetaStore,
 	createGitHubCommitsStore,
+	createGitHubMetaStore,
 	createGitHubPRsStore,
-	listGitHubCommitStores,
-	listGitHubPRStores,
 	createRawStore,
-	githubMetaStoreId,
+	createRedditCommentsStore,
 	createRedditMetaStore,
 	createRedditPostsStore,
-	createRedditCommentsStore,
+	githubMetaStoreId,
+	listGitHubCommitStores,
+	listGitHubPRStores,
+	redditCommentsStoreId,
 	redditMetaStoreId,
 	redditPostsStoreId,
-	redditCommentsStoreId,
 } from "./storage";
-import { ok, err, type Result } from "./utils";
+import { err, ok, type Result } from "./utils";
 
 export type DeleteConnectionResult = {
 	account_id: string;

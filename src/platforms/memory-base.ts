@@ -1,4 +1,4 @@
-import { ok, err } from "../utils";
+import { err, ok } from "../utils";
 import type { FetchResult } from "./types";
 
 export type MemoryProviderState = {
