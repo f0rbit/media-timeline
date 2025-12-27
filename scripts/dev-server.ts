@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "fs";
+import { mkdirSync } from "node:fs";
 import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
@@ -23,7 +23,7 @@ type AppContext = {
 
 const ENCRYPTION_KEY = "dev-encryption-key-32-bytes-ok!";
 const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = "mt_dev_" + Buffer.from(MOCK_USER_ID).toString("base64").slice(0, 24);
+const MOCK_API_KEY = `mt_dev_${Buffer.from(MOCK_USER_ID).toString("base64").slice(0, 24)}`;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (

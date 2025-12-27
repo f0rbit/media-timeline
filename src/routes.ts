@@ -215,10 +215,10 @@ export const refreshRedditToken = async (refreshToken: string, clientId: string,
 // GET /auth/reddit - Initiate Reddit OAuth
 // This route requires authentication via query param (for browser redirect flow)
 authRoutes.get("/reddit", async c => {
-	console.log(`[reddit-oauth] ROUTE HIT - /auth/reddit`);
+	console.log("[reddit-oauth] ROUTE HIT - /auth/reddit");
 	console.log(`[reddit-oauth] Full URL: ${c.req.url}`);
 	console.log(`[reddit-oauth] Path: ${c.req.path}`);
-	console.log(`[reddit-oauth] Query params:`, c.req.query());
+	console.log("[reddit-oauth] Query params:", c.req.query());
 
 	const ctx = getContext(c);
 
@@ -226,7 +226,7 @@ authRoutes.get("/reddit", async c => {
 	const apiKey = c.req.query("key");
 	console.log(`[reddit-oauth] API key from query: ${apiKey ? "present" : "MISSING"}`);
 	if (!apiKey) {
-		console.log(`[reddit-oauth] Redirecting - no auth key`);
+		console.log("[reddit-oauth] Redirecting - no auth key");
 		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_no_auth`);
 	}
 
@@ -487,7 +487,7 @@ export const refreshTwitterToken = async (refreshToken: string, clientId: string
 
 // GET /auth/twitter - Initiate Twitter OAuth with PKCE
 authRoutes.get("/twitter", async c => {
-	console.log(`[twitter-oauth] ROUTE HIT - /auth/twitter`);
+	console.log("[twitter-oauth] ROUTE HIT - /auth/twitter");
 	const ctx = getContext(c);
 
 	const apiKey = c.req.query("key");

@@ -51,24 +51,24 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	console.log(`[authMiddleware] Authorization header: ${authHeader ? "present" : "MISSING"}`);
 
 	if (!authHeader?.startsWith("Bearer ")) {
-		console.log(`[authMiddleware] REJECTING - No Bearer token`);
+		console.log("[authMiddleware] REJECTING - No Bearer token");
 		return c.json({ error: "Unauthorized", message: "Missing or invalid Authorization header" }, 401);
 	}
 
 	const apiKey = authHeader.slice(7);
 	if (!apiKey) {
-		console.log(`[authMiddleware] REJECTING - Empty API key`);
+		console.log("[authMiddleware] REJECTING - Empty API key");
 		return c.json({ error: "Unauthorized", message: "API key required" }, 401);
 	}
 
-	console.log(`[authMiddleware] API key provided, validating...`);
+	console.log("[authMiddleware] API key provided, validating...");
 	const ctx = getContext(c);
 	const keyHash = await hashApiKey(apiKey);
 
 	const result = await ctx.db.select({ id: apiKeys.id, user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
 
 	if (!result) {
-		console.log(`[authMiddleware] REJECTING - Invalid API key`);
+		console.log("[authMiddleware] REJECTING - Invalid API key");
 		return c.json({ error: "Unauthorized", message: "Invalid API key" }, 401);
 	}
 

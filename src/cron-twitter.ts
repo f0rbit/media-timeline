@@ -99,7 +99,7 @@ export async function processTwitterAccount(backend: Backend, accountId: string,
 		console.log(`[processTwitterAccount] Tweets: ${newCount} new, ${merged.total_tweets} total`);
 	}
 
-	console.log(`[processTwitterAccount] Completed:`, {
+	console.log("[processTwitterAccount] Completed:", {
 		tweets: totalTweets,
 		newTweets,
 	});

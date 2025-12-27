@@ -150,7 +150,7 @@ export async function processGitHubAccount(backend: Backend, accountId: string, 
 		}
 	}
 
-	console.log(`[processGitHubAccount] Completed:`, {
+	console.log("[processGitHubAccount] Completed:", {
 		repos: repos.size,
 		commitStores: commitStores.length,
 		prStores: prStores.length,

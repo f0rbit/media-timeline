@@ -37,7 +37,7 @@ app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString
 app.use("*", async (c, next) => {
 	console.log(`[REQUEST] ${c.req.method} ${c.req.path}`);
 	console.log(`[REQUEST] Full URL: ${c.req.url}`);
-	console.log(`[REQUEST] Headers:`, Object.fromEntries(c.req.raw.headers.entries()));
+	console.log("[REQUEST] Headers:", Object.fromEntries(c.req.raw.headers.entries()));
 	await next();
 });
 
@@ -54,10 +54,10 @@ app.use("/api/*", async (c, next) => {
 	console.log(`[AUTH MW] Path: ${c.req.path}`);
 	console.log(`[AUTH MW] Checking if starts with /api/auth: ${c.req.path.startsWith("/api/auth")}`);
 	if (c.req.path.startsWith("/api/auth")) {
-		console.log(`[AUTH MW] SKIPPING auth for OAuth route`);
+		console.log("[AUTH MW] SKIPPING auth for OAuth route");
 		return next();
 	}
-	console.log(`[AUTH MW] APPLYING auth middleware`);
+	console.log("[AUTH MW] APPLYING auth middleware");
 	return authMiddleware(c, next);
 });
 

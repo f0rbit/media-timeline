@@ -21,7 +21,7 @@ export function getApiKey(): string | null {
 }
 
 const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = "mt_dev_" + btoa(MOCK_USER_ID).slice(0, 24);
+const MOCK_API_KEY = `mt_dev_${btoa(MOCK_USER_ID).slice(0, 24)}`;
 
 export function getMockApiKey(): string {
 	return MOCK_API_KEY;
@@ -59,7 +59,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<A
 	};
 
 	if (config.apiKey) {
-		requestHeaders["Authorization"] = `Bearer ${config.apiKey}`;
+		requestHeaders.Authorization = `Bearer ${config.apiKey}`;
 	}
 
 	const url = `${config.baseUrl}/api/v1${path}`;

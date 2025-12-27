@@ -136,7 +136,7 @@ export async function processRedditAccount(backend: Backend, accountId: string, 
 		console.log(`[processRedditAccount] Comments: ${newCount} new, ${merged.total_comments} total`);
 	}
 
-	console.log(`[processRedditAccount] Completed:`, {
+	console.log("[processRedditAccount] Completed:", {
 		posts: totalPosts,
 		comments: totalComments,
 		newPosts,
