@@ -1,13 +1,16 @@
 import type { Backend } from "@f0rbit/corpus";
 import { eq, sql } from "drizzle-orm";
 import { processGitHubAccount, type GitHubProcessResult } from "./cron-github";
+import { processRedditAccount } from "./cron-reddit";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube, type ProviderError, type ProviderFactory } from "./platforms";
+import { RedditProvider } from "./platforms/reddit";
 import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
 import { createRawStore, createTimelineStore, githubCommitsStoreId, githubPRsStoreId, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
+import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
 import { decrypt, pipe, to_nullable, tryCatch, type Result } from "./utils";
 
 export { processAccount, gatherLatestSnapshots, combineUserTimeline };
@@ -239,6 +242,37 @@ const processGitHubAccountFlow = async (ctx: AppContext, account: AccountWithUse
 	};
 };
 
+const processRedditAccountFlow = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	console.log("[processRedditAccountFlow] Starting for account:", account.id);
+
+	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
+	if (!decryptResult.ok) {
+		console.error("[processRedditAccountFlow] Decryption failed:", decryptResult.error.message);
+		return null;
+	}
+
+	const provider = new RedditProvider();
+	const result = await processRedditAccount(ctx.backend, account.id, decryptResult.value, provider);
+
+	if (!result.ok) {
+		console.error("[processRedditAccountFlow] Reddit processing failed:", result.error);
+		await recordFailure(ctx.db, account.id);
+		return null;
+	}
+
+	await recordSuccess(ctx.db, account.id);
+
+	return {
+		account_id: account.id,
+		platform: "reddit",
+		version: result.value.meta_version,
+		data: {
+			type: "reddit_multi_store" as const,
+			...result.value.stats,
+		},
+	};
+};
+
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	console.log("[processGenericAccount] Starting for account:", { id: account.id, platform: account.platform, user_id: account.user_id, platform_user_id: account.platform_user_id });
 
@@ -332,6 +366,10 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		return processGitHubAccountFlow(ctx, account);
 	}
 
+	if (account.platform === "reddit") {
+		return processRedditAccountFlow(ctx, account);
+	}
+
 	return processGenericAccount(ctx, account);
 };
 
@@ -355,6 +393,26 @@ const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Pr
 			platform: "github",
 			version: new Date().toISOString(),
 			data: { type: "github_multi_store" },
+		};
+	}
+
+	// Reddit uses multi-store format - check if there's data in Reddit stores
+	if (account.platform === "reddit") {
+		const redditData = await loadRedditDataForAccount(backend, account.id);
+		if (redditData.posts.length === 0 && redditData.comments.length === 0) {
+			console.log("[getLatestSnapshot] No Reddit data found for account:", account.id);
+			return null;
+		}
+		console.log("[getLatestSnapshot] Reddit data loaded:", {
+			posts: redditData.posts.length,
+			comments: redditData.comments.length,
+		});
+		// Return a marker snapshot - the actual data will be loaded in combineUserTimeline
+		return {
+			account_id: account.id,
+			platform: "reddit",
+			version: new Date().toISOString(),
+			data: { type: "reddit_multi_store" },
 		};
 	}
 
@@ -447,9 +505,10 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 		console.log(`[combineUserTimeline] Snapshot ${snapshot.platform} data preview:`, JSON.stringify(snapshot.data).slice(0, 200));
 	}
 
-	// Separate GitHub snapshots (handled via multi-store) from other platforms
+	// Separate multi-store platforms from other platforms
 	const githubSnapshots = snapshots.filter(s => s.platform === "github");
-	const otherSnapshots = snapshots.filter(s => s.platform !== "github");
+	const redditSnapshots = snapshots.filter(s => s.platform === "reddit");
+	const otherSnapshots = snapshots.filter(s => s.platform !== "github" && s.platform !== "reddit");
 
 	// Load GitHub data from multi-stores
 	const githubItems: TimelineItem[] = [];
@@ -461,7 +520,17 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 		githubItems.push(...normalized);
 	}
 
-	console.log("[combineUserTimeline] Normalizing non-GitHub snapshots...");
+	// Load Reddit data from multi-stores
+	const redditItems: TimelineItem[] = [];
+	for (const snapshot of redditSnapshots) {
+		console.log(`[combineUserTimeline] Loading Reddit data for account: ${snapshot.account_id}`);
+		const data = await loadRedditDataForAccount(backend, snapshot.account_id);
+		const normalized = normalizeReddit(data, "");
+		console.log(`[combineUserTimeline] Reddit normalized: ${normalized.length} items`);
+		redditItems.push(...normalized);
+	}
+
+	console.log("[combineUserTimeline] Normalizing other platform snapshots...");
 	const normalizeResults = otherSnapshots.map((snapshot, index) => {
 		console.log(`[combineUserTimeline] Normalizing snapshot ${index + 1}/${otherSnapshots.length} (${snapshot.platform})...`);
 		const result = normalizeSnapshot(snapshot);
@@ -476,7 +545,7 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 	}
 
 	const otherItems = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
-	const items = [...githubItems, ...otherItems];
+	const items = [...githubItems, ...redditItems, ...otherItems];
 	console.log("[combineUserTimeline] Items after filtering successful results:", items.length);
 	console.log(
 		"[combineUserTimeline] Items preview:",
@@ -542,6 +611,11 @@ const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], Normal
 				case "github":
 					// GitHub is handled separately via multi-store in combineUserTimeline
 					console.log("[normalizeSnapshot] Case: github - skipping (handled via multi-store)");
+					result = [];
+					break;
+				case "reddit":
+					// Reddit is handled separately via multi-store in combineUserTimeline
+					console.log("[normalizeSnapshot] Case: reddit - skipping (handled via multi-store)");
 					result = [];
 					break;
 				case "bluesky":

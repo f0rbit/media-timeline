@@ -3,7 +3,21 @@ import { eq } from "drizzle-orm";
 import type { Database } from "./db";
 import { accountMembers, accounts, accountSettings, rateLimits } from "./schema/database";
 import type { Platform } from "./schema";
-import { createGitHubMetaStore, createGitHubCommitsStore, createGitHubPRsStore, listGitHubCommitStores, listGitHubPRStores, createRawStore, githubMetaStoreId } from "./storage";
+import {
+	createGitHubMetaStore,
+	createGitHubCommitsStore,
+	createGitHubPRsStore,
+	listGitHubCommitStores,
+	listGitHubPRStores,
+	createRawStore,
+	githubMetaStoreId,
+	createRedditMetaStore,
+	createRedditPostsStore,
+	createRedditCommentsStore,
+	redditMetaStoreId,
+	redditPostsStoreId,
+	redditCommentsStoreId,
+} from "./storage";
 import { ok, err, type Result } from "./utils";
 
 export type DeleteConnectionResult = {
@@ -29,28 +43,38 @@ const log = (step: string, message: string, data?: Record<string, unknown>) => {
 	console.log(`[delete-connection:${step}]`, message, data ? JSON.stringify(data) : "");
 };
 
+const resolveStoreFromId = (backend: Backend, storeId: string) => {
+	if (storeId.startsWith("github/") && storeId.endsWith("/meta")) {
+		return createGitHubMetaStore(backend, storeId.split("/")[1]!);
+	}
+	if (storeId.includes("/commits/")) {
+		const parts = storeId.split("/");
+		return createGitHubCommitsStore(backend, parts[1]!, parts[3]!, parts[4]!);
+	}
+	if (storeId.includes("/prs/")) {
+		const parts = storeId.split("/");
+		return createGitHubPRsStore(backend, parts[1]!, parts[3]!, parts[4]!);
+	}
+	if (storeId.startsWith("reddit/") && storeId.endsWith("/meta")) {
+		return createRedditMetaStore(backend, storeId.split("/")[1]!);
+	}
+	if (storeId.startsWith("reddit/") && storeId.endsWith("/posts")) {
+		return createRedditPostsStore(backend, storeId.split("/")[1]!);
+	}
+	if (storeId.startsWith("reddit/") && storeId.endsWith("/comments")) {
+		return createRedditCommentsStore(backend, storeId.split("/")[1]!);
+	}
+	if (storeId.startsWith("raw/")) {
+		const parts = storeId.split("/");
+		return createRawStore(backend, parts[1]!, parts[2]!);
+	}
+	return null;
+};
+
 const deleteStoreSnapshots = async (backend: Backend, storeId: string): Promise<boolean> => {
 	log("store", `Deleting snapshots for store: ${storeId}`);
 
-	const storeResult =
-		storeId.startsWith("github/") && storeId.endsWith("/meta")
-			? createGitHubMetaStore(backend, storeId.split("/")[1]!)
-			: storeId.includes("/commits/")
-				? (() => {
-						const parts = storeId.split("/");
-						return createGitHubCommitsStore(backend, parts[1]!, parts[3]!, parts[4]!);
-					})()
-				: storeId.includes("/prs/")
-					? (() => {
-							const parts = storeId.split("/");
-							return createGitHubPRsStore(backend, parts[1]!, parts[3]!, parts[4]!);
-						})()
-					: storeId.startsWith("raw/")
-						? (() => {
-								const parts = storeId.split("/");
-								return createRawStore(backend, parts[1]!, parts[2]!);
-							})()
-						: null;
+	const storeResult = resolveStoreFromId(backend, storeId);
 
 	if (!storeResult || !storeResult.ok) {
 		log("store", `Store not found: ${storeId}`);
@@ -102,6 +126,27 @@ const deleteGitHubStores = async (backend: Backend, accountId: string): Promise<
 	return deletedStores;
 };
 
+const deleteRedditStores = async (backend: Backend, accountId: string): Promise<string[]> => {
+	const deletedStores: string[] = [];
+
+	const metaStoreId = redditMetaStoreId(accountId);
+	log("reddit", "Deleting meta store", { storeId: metaStoreId });
+	const metaDeleted = await deleteStoreSnapshots(backend, metaStoreId);
+	if (metaDeleted) deletedStores.push(metaStoreId);
+
+	const postsStoreId = redditPostsStoreId(accountId);
+	log("reddit", "Deleting posts store", { storeId: postsStoreId });
+	const postsDeleted = await deleteStoreSnapshots(backend, postsStoreId);
+	if (postsDeleted) deletedStores.push(postsStoreId);
+
+	const commentsStoreId = redditCommentsStoreId(accountId);
+	log("reddit", "Deleting comments store", { storeId: commentsStoreId });
+	const commentsDeleted = await deleteStoreSnapshots(backend, commentsStoreId);
+	if (commentsDeleted) deletedStores.push(commentsStoreId);
+
+	return deletedStores;
+};
+
 const deleteRawStore = async (backend: Backend, platform: string, accountId: string): Promise<string[]> => {
 	const storeId = `raw/${platform}/${accountId}`;
 	log("raw", "Deleting raw store", { storeId });
@@ -114,6 +159,10 @@ const deleteCorpusStores = async (backend: Backend, account: AccountInfo): Promi
 
 	if (account.platform === "github") {
 		return deleteGitHubStores(backend, account.id);
+	}
+
+	if (account.platform === "reddit") {
+		return deleteRedditStores(backend, account.id);
 	}
 
 	return deleteRawStore(backend, account.platform, account.id);

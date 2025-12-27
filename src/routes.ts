@@ -6,10 +6,12 @@ import { z } from "zod";
 import { getAuth } from "./auth";
 import type { Bindings } from "./bindings";
 import { deleteConnection } from "./connection-delete";
+import { processRedditAccount } from "./cron-reddit";
 import type { AppContext } from "./infrastructure";
+import { RedditProvider } from "./platforms/reddit";
 import { accountMembers, accounts, accountSettings, DateGroupSchema } from "./schema";
-import { createRawStore, createTimelineStore, createGitHubMetaStore, RawDataSchema, type CorpusError } from "./storage";
-import { encrypt, err, match, ok, pipe, type Result } from "./utils";
+import { createRawStore, createTimelineStore, createGitHubMetaStore, createRedditMetaStore, RawDataSchema, type CorpusError } from "./storage";
+import { decrypt, encrypt, err, match, ok, pipe, type Result } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -50,7 +52,7 @@ type TimelineRouteError = CorpusError | LibCorpusError | { kind: "validation_err
 type RawRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; message: string };
 
 const CreateConnectionBodySchema = z.object({
-	platform: z.enum(["github", "bluesky", "youtube", "devpad"]),
+	platform: z.enum(["github", "bluesky", "youtube", "devpad", "reddit"]),
 	access_token: z.string().min(1),
 	refresh_token: z.string().optional(),
 	platform_user_id: z.string().optional(),
@@ -479,6 +481,58 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 		return c.json({ status: "processing", message: "GitHub sync started in background" });
 	}
 
+	if (accountWithUser.platform === "reddit") {
+		console.log("[refresh] Starting Reddit background sync for account:", accountId);
+
+		const backgroundTask = (async () => {
+			try {
+				console.log("[refresh:bg] Reddit background task started for:", accountId);
+				const decryptResult = await decrypt(accountWithUser.access_token_encrypted, ctx.encryptionKey);
+				if (!decryptResult.ok) {
+					console.error("[refresh:bg] Reddit token decryption failed");
+					return;
+				}
+
+				const provider = new RedditProvider();
+				const result = await processRedditAccount(ctx.backend, accountId, decryptResult.value, provider);
+
+				if (result.ok) {
+					console.log("[refresh:bg] Reddit refresh completed:", result.value.stats);
+					console.log("[refresh:bg] Generating timeline for user:", auth.user_id);
+					const allUserAccounts = await ctx.db
+						.select({
+							id: accounts.id,
+							platform: accounts.platform,
+							platform_user_id: accounts.platform_user_id,
+							access_token_encrypted: accounts.access_token_encrypted,
+							refresh_token_encrypted: accounts.refresh_token_encrypted,
+							user_id: accountMembers.user_id,
+						})
+						.from(accounts)
+						.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+						.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
+
+					const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
+					console.log("[refresh:bg] Gathered snapshots:", snapshots.length);
+					await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
+					console.log("[refresh:bg] Timeline generation complete");
+				} else {
+					console.error("[refresh:bg] Reddit refresh failed:", result.error);
+				}
+			} catch (error) {
+				console.error("[refresh:bg] Reddit background task failed:", error);
+			}
+		})();
+
+		try {
+			c.executionCtx.waitUntil(backgroundTask);
+		} catch {
+			console.log("[refresh] No ExecutionContext available (dev mode), task running in background");
+		}
+
+		return c.json({ status: "processing", message: "Reddit sync started in background" });
+	}
+
 	console.log("[refresh] Before calling processAccount (sync)");
 	const snapshot = await processAccount(ctx, accountWithUser);
 
@@ -546,7 +600,8 @@ connectionRoutes.post("/refresh-all", async c => {
 	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	const githubAccounts = userAccounts.filter(a => a.platform === "github");
-	const nonGithubAccounts = userAccounts.filter(a => a.platform !== "github");
+	const redditAccounts = userAccounts.filter(a => a.platform === "reddit");
+	const otherAccounts = userAccounts.filter(a => a.platform !== "github" && a.platform !== "reddit");
 
 	if (githubAccounts.length > 0) {
 		console.log("[refresh-all] Starting background sync for", githubAccounts.length, "GitHub account(s)");
@@ -586,10 +641,56 @@ connectionRoutes.post("/refresh-all", async c => {
 		}
 	}
 
+	if (redditAccounts.length > 0) {
+		console.log("[refresh-all] Starting background sync for", redditAccounts.length, "Reddit account(s)");
+
+		const redditBackgroundTask = (async () => {
+			let bgSucceeded = 0;
+			let bgFailed = 0;
+
+			for (const account of redditAccounts) {
+				console.log("[refresh-all:bg] Processing Reddit account:", { id: account.id });
+				try {
+					const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
+					if (!decryptResult.ok) {
+						console.error("[refresh-all:bg] Reddit token decryption failed for account:", account.id);
+						bgFailed++;
+						continue;
+					}
+
+					const provider = new RedditProvider();
+					const result = await processRedditAccount(ctx.backend, account.id, decryptResult.value, provider);
+					console.log("[refresh-all:bg] Reddit account result:", { id: account.id, success: result.ok });
+					if (result.ok) bgSucceeded++;
+					else bgFailed++;
+				} catch (e) {
+					console.error(`[refresh-all:bg] Failed to refresh Reddit account ${account.id}:`, e);
+					bgFailed++;
+				}
+			}
+
+			if (bgSucceeded > 0) {
+				console.log("[refresh-all:bg] Generating timeline for user:", auth.user_id);
+				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+				console.log("[refresh-all:bg] Gathered snapshots:", snapshots.length);
+				await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
+				console.log("[refresh-all:bg] Timeline generation complete");
+			}
+
+			console.log("[refresh-all:bg] Reddit sync complete:", { succeeded: bgSucceeded, failed: bgFailed });
+		})();
+
+		try {
+			c.executionCtx.waitUntil(redditBackgroundTask);
+		} catch {
+			console.log("[refresh-all] No ExecutionContext available (dev mode), task running in background");
+		}
+	}
+
 	let succeeded = 0;
 	let failed = 0;
 
-	for (const account of nonGithubAccounts) {
+	for (const account of otherAccounts) {
 		console.log("[refresh-all] Processing account:", { id: account.id, platform: account.platform });
 		try {
 			const snapshot = await processAccount(ctx, account);
@@ -605,22 +706,23 @@ connectionRoutes.post("/refresh-all", async c => {
 
 	if (succeeded > 0) {
 		console.log("[refresh-all] Generating timeline for user:", auth.user_id);
-		const snapshots = await gatherLatestSnapshots(ctx.backend, nonGithubAccounts);
+		const snapshots = await gatherLatestSnapshots(ctx.backend, otherAccounts);
 		console.log("[refresh-all] Gathered snapshots:", snapshots.length);
 		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
 		console.log("[refresh-all] Timeline generated");
 	}
 
-	const hasGithub = githubAccounts.length > 0;
-	console.log("[refresh-all] Final result:", { succeeded, failed, total: nonGithubAccounts.length, github_processing: hasGithub });
+	const hasBackgroundTasks = githubAccounts.length > 0 || redditAccounts.length > 0;
+	console.log("[refresh-all] Final result:", { succeeded, failed, total: otherAccounts.length, background_processing: hasBackgroundTasks });
 
 	return c.json({
-		status: hasGithub ? "processing" : "completed",
-		message: hasGithub ? "GitHub accounts syncing in background" : undefined,
+		status: hasBackgroundTasks ? "processing" : "completed",
+		message: hasBackgroundTasks ? "GitHub/Reddit accounts syncing in background" : undefined,
 		succeeded,
 		failed,
 		total: userAccounts.length,
 		github_accounts: githubAccounts.length,
+		reddit_accounts: redditAccounts.length,
 	});
 });
 
@@ -789,4 +891,43 @@ connectionRoutes.get("/:account_id/repos", async c => {
 	}));
 
 	return c.json({ repos });
+});
+
+connectionRoutes.get("/:account_id/subreddits", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const accountId = c.req.param("account_id");
+
+	const account = await ctx.db
+		.select({
+			id: accounts.id,
+			platform: accounts.platform,
+		})
+		.from(accounts)
+		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
+		.get();
+
+	if (!account) {
+		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	}
+
+	if (account.platform !== "reddit") {
+		return c.json({ error: "Bad request", message: "Not a Reddit account" }, 400);
+	}
+
+	const metaStoreResult = createRedditMetaStore(ctx.backend, accountId);
+	if (!metaStoreResult.ok) {
+		return c.json({ subreddits: [] });
+	}
+
+	const latest = await metaStoreResult.value.store.get_latest();
+	if (!latest.ok || !latest.value) {
+		return c.json({ subreddits: [] });
+	}
+
+	return c.json({
+		subreddits: latest.value.data.subreddits_active,
+		username: latest.value.data.username,
+	});
 });

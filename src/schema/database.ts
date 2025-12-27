@@ -1,6 +1,6 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
-export type Platform = "github" | "bluesky" | "youtube" | "devpad";
+export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit";
 
 export const users = sqliteTable("users", {
 	id: text("id").primaryKey(),
