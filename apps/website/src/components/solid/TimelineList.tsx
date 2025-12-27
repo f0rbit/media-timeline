@@ -40,10 +40,12 @@ export default function TimelineList() {
 				<p class="error-icon">Failed to load timeline: {data.error.message}</p>
 			</Show>
 
-			<Show when={data()}>
-				<GithubUsernamesContext.Provider value={githubUsernames()}>
-					<TimelineGroups groups={data()!.data.groups} />
-				</GithubUsernamesContext.Provider>
+			<Show when={data()} keyed>
+				{response => (
+					<GithubUsernamesContext.Provider value={response.meta.github_usernames ?? []}>
+						<TimelineGroups groups={response.data.groups} />
+					</GithubUsernamesContext.Provider>
+				)}
 			</Show>
 		</div>
 	);

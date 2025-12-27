@@ -231,6 +231,32 @@ export const mergeDeep = <T extends Record<string, unknown>>(base: T, overrides:
 	return result;
 };
 
+// Array access utilities
+export const at = <T>(array: readonly T[], index: number): Result<T, { kind: "index_out_of_bounds"; index: number; length: number }> => {
+	if (index < 0 || index >= array.length) {
+		return err({ kind: "index_out_of_bounds", index, length: array.length });
+	}
+	const element = array[index];
+	if (element === undefined) {
+		return err({ kind: "index_out_of_bounds", index, length: array.length });
+	}
+	return ok(element);
+};
+
+export const first = <T>(array: readonly T[]): Result<T, { kind: "empty_array" }> => {
+	if (array.length === 0) {
+		return err({ kind: "empty_array" });
+	}
+	return ok(array[0] as T);
+};
+
+export const last = <T>(array: readonly T[]): Result<T, { kind: "empty_array" }> => {
+	if (array.length === 0) {
+		return err({ kind: "empty_array" });
+	}
+	return ok(array[array.length - 1] as T);
+};
+
 // Other utilities
 export const uuid = (): string => crypto.randomUUID();
 export const randomSha = (): string => Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");

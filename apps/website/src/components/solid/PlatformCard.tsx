@@ -63,6 +63,37 @@ function TwitterOAuthButton() {
 	);
 }
 
+type ActiveConnectionSettingsProps = {
+	platform: Platform;
+	connection: ConnectionWithSettings;
+	onUpdate: () => void;
+};
+
+function ActiveConnectionSettings(props: ActiveConnectionSettingsProps) {
+	return (
+		<Switch>
+			<Match when={props.platform === "github"}>
+				<GitHubSettings accountId={props.connection.account_id} settings={props.connection.settings as { hidden_repos?: string[] } | null} onUpdate={props.onUpdate} />
+			</Match>
+			<Match when={props.platform === "bluesky"}>
+				<BlueskySettings accountId={props.connection.account_id} settings={props.connection.settings as { include_replies?: boolean; include_reposts?: boolean } | null} onUpdate={props.onUpdate} />
+			</Match>
+			<Match when={props.platform === "youtube"}>
+				<YouTubeSettings accountId={props.connection.account_id} settings={props.connection.settings as { include_watch_history?: boolean; include_liked?: boolean; channel_name?: string } | null} onUpdate={props.onUpdate} />
+			</Match>
+			<Match when={props.platform === "devpad"}>
+				<DevpadSettings accountId={props.connection.account_id} settings={props.connection.settings as { hidden_projects?: string[]; all_projects?: boolean } | null} onUpdate={props.onUpdate} />
+			</Match>
+			<Match when={props.platform === "reddit"}>
+				<RedditSettings accountId={props.connection.account_id} settings={props.connection.settings as { include_posts?: boolean; include_comments?: boolean; hidden_subreddits?: string[] } | null} onUpdate={props.onUpdate} />
+			</Match>
+			<Match when={props.platform === "twitter"}>
+				<TwitterSettings accountId={props.connection.account_id} settings={props.connection.settings as { include_retweets?: boolean; include_replies?: boolean; hide_sensitive?: boolean } | null} onUpdate={props.onUpdate} />
+			</Match>
+		</Switch>
+	);
+}
+
 export default function PlatformCard(props: Props) {
 	const state = (): ConnectionState => {
 		if (!props.connection) return "not_configured";
@@ -83,20 +114,26 @@ export default function PlatformCard(props: Props) {
 					<PlatformIcon platform={props.platform} size={24} />
 					<div class="flex-row" style={{ "margin-bottom": state() === "inactive" ? "-0.15rem" : "" }}>
 						<h6 class="secondary font-medium">{formatPlatformName(props.platform)}</h6>
-						<Show when={props.connection}>
-							<span class="tertiary text-sm">{"·"}</span>
-							<span class="tertiary text-sm">
-								{props.connection!.platform_username ?? "Connected"}
-								<Show when={state() === "inactive"}> · Paused</Show>
-								<Show when={state() === "active" && props.connection!.last_fetched_at}> · Last synced: {formatRelativeTime(props.connection!.last_fetched_at!)}</Show>
-							</span>
+						<Show when={props.connection} keyed>
+							{connection => (
+								<>
+									<span class="tertiary text-sm">{"·"}</span>
+									<span class="tertiary text-sm">
+										{connection.platform_username ?? "Connected"}
+										<Show when={state() === "inactive"}> · Paused</Show>
+										<Show when={state() === "active" && connection.last_fetched_at} keyed>
+											{lastFetched => <> · Last synced: {formatRelativeTime(lastFetched)}</>}
+										</Show>
+									</span>
+								</>
+							)}
 						</Show>
 					</div>
 				</div>
 				<div class="flex-row items-center" style={{ gap: "8px" }}>
 					<StatusBadge state={state()} />
-					<Show when={props.connection}>
-						<ConnectionActions accountId={props.connection!.account_id} isActive={props.connection!.is_active} state={state() as "active" | "inactive"} onAction={props.onConnectionChange} />
+					<Show when={props.connection} keyed>
+						{connection => <ConnectionActions accountId={connection.account_id} isActive={connection.is_active} state={state() as "active" | "inactive"} onAction={props.onConnectionChange} />}
 					</Show>
 				</div>
 			</div>
@@ -111,41 +148,12 @@ export default function PlatformCard(props: Props) {
 				<Match when={state() === "not_configured"}>
 					<PlatformSetupForm platform={props.platform} onSuccess={props.onConnectionChange} />
 				</Match>
-				<Match when={state() === "active"}>
-					<div class="platform-settings">
-						<Switch>
-							<Match when={props.platform === "github"}>
-								<GitHubSettings accountId={props.connection!.account_id} settings={props.connection?.settings as { hidden_repos?: string[] } | null} onUpdate={props.onConnectionChange} />
-							</Match>
-							<Match when={props.platform === "bluesky"}>
-								<BlueskySettings accountId={props.connection!.account_id} settings={props.connection?.settings as { include_replies?: boolean; include_reposts?: boolean } | null} onUpdate={props.onConnectionChange} />
-							</Match>
-							<Match when={props.platform === "youtube"}>
-								<YouTubeSettings
-									accountId={props.connection!.account_id}
-									settings={props.connection?.settings as { include_watch_history?: boolean; include_liked?: boolean; channel_name?: string } | null}
-									onUpdate={props.onConnectionChange}
-								/>
-							</Match>
-							<Match when={props.platform === "devpad"}>
-								<DevpadSettings accountId={props.connection!.account_id} settings={props.connection?.settings as { hidden_projects?: string[]; all_projects?: boolean } | null} onUpdate={props.onConnectionChange} />
-							</Match>
-							<Match when={props.platform === "reddit"}>
-								<RedditSettings
-									accountId={props.connection!.account_id}
-									settings={props.connection?.settings as { include_posts?: boolean; include_comments?: boolean; hidden_subreddits?: string[] } | null}
-									onUpdate={props.onConnectionChange}
-								/>
-							</Match>
-							<Match when={props.platform === "twitter"}>
-								<TwitterSettings
-									accountId={props.connection!.account_id}
-									settings={props.connection?.settings as { include_retweets?: boolean; include_replies?: boolean; hide_sensitive?: boolean } | null}
-									onUpdate={props.onConnectionChange}
-								/>
-							</Match>
-						</Switch>
-					</div>
+				<Match when={state() === "active" && props.connection} keyed>
+					{connection => (
+						<div class="platform-settings">
+							<ActiveConnectionSettings platform={props.platform} connection={connection} onUpdate={props.onConnectionChange} />
+						</div>
+					)}
 				</Match>
 			</Switch>
 		</div>

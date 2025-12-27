@@ -23,7 +23,7 @@
 		"enabled": true,
 		"rules": {
 			"style": {
-				"noNonNullAssertion": "off"
+				"noNonNullAssertion": "error"
 			},
 			"a11y": {
 				"noSvgWithoutTitle": "off",

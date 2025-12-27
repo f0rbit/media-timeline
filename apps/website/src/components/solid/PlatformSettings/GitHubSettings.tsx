@@ -50,10 +50,12 @@ export default function GitHubSettings(props: Props) {
 			<button type="button" class="settings-header" onClick={toggleExpanded}>
 				<ChevronIcon expanded={expanded()} />
 				<h6 class="settings-title tertiary text-sm font-medium">Repository Visibility</h6>
-				<Show when={repos() && repos()!.length > 0}>
-					<span class="muted text-xs">
-						({visibleCount()}/{repos()!.length} visible)
-					</span>
+				<Show when={repos()?.length} keyed>
+					{count => (
+						<span class="muted text-xs">
+							({visibleCount()}/{count} visible)
+						</span>
+					)}
 				</Show>
 			</button>
 
@@ -65,30 +67,31 @@ export default function GitHubSettings(props: Props) {
 					<Show when={repos.error}>
 						<p class="error-icon text-sm">Failed to load repositories</p>
 					</Show>
-					<Show when={repos() && repos()!.length > 0}>
-						<div class="repo-list">
-							<For each={repos()}>
-								{repo => {
-									const isHidden = () => hiddenRepos().has(repo.full_name);
-									const isUpdating = () => updating() === repo.full_name;
-									return (
-										<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
-											<input type="checkbox" checked={!isHidden()} onChange={() => toggleRepo(repo.full_name)} disabled={isUpdating()} />
-											<span class="repo-name mono text-sm">{repo.full_name}</span>
-											<Show when={repo.is_private}>
-												<span class="repo-private muted text-xs">(private)</span>
-											</Show>
-											<Show when={isHidden()}>
-												<span class="muted text-xs">(hidden)</span>
-											</Show>
-										</label>
-									);
-								}}
-							</For>
-						</div>
-					</Show>
-					<Show when={repos() && repos()!.length === 0}>
-						<p class="muted text-sm">No repositories found yet. Refresh to fetch data.</p>
+					<Show when={repos()} keyed>
+						{repoList => (
+							<Show when={repoList.length > 0} fallback={<p class="muted text-sm">No repositories found yet. Refresh to fetch data.</p>}>
+								<div class="repo-list">
+									<For each={repoList}>
+										{repo => {
+											const isHidden = () => hiddenRepos().has(repo.full_name);
+											const isUpdating = () => updating() === repo.full_name;
+											return (
+												<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
+													<input type="checkbox" checked={!isHidden()} onChange={() => toggleRepo(repo.full_name)} disabled={isUpdating()} />
+													<span class="repo-name mono text-sm">{repo.full_name}</span>
+													<Show when={repo.is_private}>
+														<span class="repo-private muted text-xs">(private)</span>
+													</Show>
+													<Show when={isHidden()}>
+														<span class="muted text-xs">(hidden)</span>
+													</Show>
+												</label>
+											);
+										}}
+									</For>
+								</div>
+							</Show>
+						)}
 					</Show>
 				</div>
 			</Show>

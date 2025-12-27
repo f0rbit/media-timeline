@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { normalizeBluesky, normalizeGitHub } from "../../src/platforms";
 import type { CommitGroup, TimelineItem } from "../../src/schema";
 import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "../../src/timeline";
+import { first, unwrap } from "../../src/utils";
 import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
 import { type TestContext, createTestContext, seedAccount, seedUser } from "./setup";
 
@@ -46,7 +47,7 @@ describe("timeline consistency", () => {
 			const grouped = groupCommits(items);
 			expect(grouped).toHaveLength(1);
 
-			const group = grouped[0]!;
+			const group = unwrap(first(grouped));
 			expect(isCommitGroup(group)).toBe(true);
 			if (isCommitGroup(group)) {
 				expect(group.repo).toBe("user/repo");

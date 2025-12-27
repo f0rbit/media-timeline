@@ -65,10 +65,12 @@ export default function RedditSettings(props: Props) {
 			<button type="button" class="settings-header" onClick={toggleExpanded}>
 				<ChevronIcon expanded={expanded()} />
 				<h6 class="settings-title tertiary text-sm font-medium">Reddit Settings</h6>
-				<Show when={subreddits() && subreddits()!.length > 0}>
-					<span class="muted text-xs">
-						({visibleCount()}/{subreddits()!.length} subreddits visible)
-					</span>
+				<Show when={subreddits()?.length} keyed>
+					{count => (
+						<span class="muted text-xs">
+							({visibleCount()}/{count} subreddits visible)
+						</span>
+					)}
 				</Show>
 			</button>
 
@@ -97,27 +99,28 @@ export default function RedditSettings(props: Props) {
 						<Show when={subreddits.error}>
 							<p class="error-icon text-sm">Failed to load subreddits</p>
 						</Show>
-						<Show when={subreddits() && subreddits()!.length > 0}>
-							<div class="repo-list">
-								<For each={subreddits()}>
-									{subreddit => {
-										const isHidden = () => hiddenSubreddits().has(subreddit);
-										const isUpdating = () => updating() === subreddit;
-										return (
-											<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
-												<input type="checkbox" checked={!isHidden()} onChange={() => toggleSubreddit(subreddit)} disabled={isUpdating()} />
-												<span class="repo-name mono text-sm">r/{subreddit}</span>
-												<Show when={isHidden()}>
-													<span class="muted text-xs">(hidden)</span>
-												</Show>
-											</label>
-										);
-									}}
-								</For>
-							</div>
-						</Show>
-						<Show when={subreddits() && subreddits()!.length === 0}>
-							<p class="muted text-sm">No subreddits found yet. Refresh to fetch data.</p>
+						<Show when={subreddits()} keyed>
+							{subredditList => (
+								<Show when={subredditList.length > 0} fallback={<p class="muted text-sm">No subreddits found yet. Refresh to fetch data.</p>}>
+									<div class="repo-list">
+										<For each={subredditList}>
+											{subreddit => {
+												const isHidden = () => hiddenSubreddits().has(subreddit);
+												const isUpdating = () => updating() === subreddit;
+												return (
+													<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
+														<input type="checkbox" checked={!isHidden()} onChange={() => toggleSubreddit(subreddit)} disabled={isUpdating()} />
+														<span class="repo-name mono text-sm">r/{subreddit}</span>
+														<Show when={isHidden()}>
+															<span class="muted text-xs">(hidden)</span>
+														</Show>
+													</label>
+												);
+											}}
+										</For>
+									</div>
+								</Show>
+							)}
 						</Show>
 					</div>
 				</div>

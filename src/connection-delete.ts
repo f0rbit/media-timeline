@@ -11,9 +11,12 @@ import {
 	createRedditCommentsStore,
 	createRedditMetaStore,
 	createRedditPostsStore,
+	createTwitterMetaStore,
+	createTwitterTweetsStore,
 	githubMetaStoreId,
 	listGitHubCommitStores,
 	listGitHubPRStores,
+	parseStoreId,
 	redditCommentsStoreId,
 	redditMetaStoreId,
 	redditPostsStoreId,
@@ -44,31 +47,29 @@ const log = (step: string, message: string, data?: Record<string, unknown>) => {
 };
 
 const resolveStoreFromId = (backend: Backend, storeId: string) => {
-	if (storeId.startsWith("github/") && storeId.endsWith("/meta")) {
-		return createGitHubMetaStore(backend, storeId.split("/")[1]!);
+	const parsed = parseStoreId(storeId);
+	if (!parsed.ok) return null;
+
+	switch (parsed.value.type) {
+		case "github_meta":
+			return createGitHubMetaStore(backend, parsed.value.accountId);
+		case "github_commits":
+			return createGitHubCommitsStore(backend, parsed.value.accountId, parsed.value.owner, parsed.value.repo);
+		case "github_prs":
+			return createGitHubPRsStore(backend, parsed.value.accountId, parsed.value.owner, parsed.value.repo);
+		case "reddit_meta":
+			return createRedditMetaStore(backend, parsed.value.accountId);
+		case "reddit_posts":
+			return createRedditPostsStore(backend, parsed.value.accountId);
+		case "reddit_comments":
+			return createRedditCommentsStore(backend, parsed.value.accountId);
+		case "twitter_meta":
+			return createTwitterMetaStore(backend, parsed.value.accountId);
+		case "twitter_tweets":
+			return createTwitterTweetsStore(backend, parsed.value.accountId);
+		case "raw":
+			return createRawStore(backend, parsed.value.platform, parsed.value.accountId);
 	}
-	if (storeId.includes("/commits/")) {
-		const parts = storeId.split("/");
-		return createGitHubCommitsStore(backend, parts[1]!, parts[3]!, parts[4]!);
-	}
-	if (storeId.includes("/prs/")) {
-		const parts = storeId.split("/");
-		return createGitHubPRsStore(backend, parts[1]!, parts[3]!, parts[4]!);
-	}
-	if (storeId.startsWith("reddit/") && storeId.endsWith("/meta")) {
-		return createRedditMetaStore(backend, storeId.split("/")[1]!);
-	}
-	if (storeId.startsWith("reddit/") && storeId.endsWith("/posts")) {
-		return createRedditPostsStore(backend, storeId.split("/")[1]!);
-	}
-	if (storeId.startsWith("reddit/") && storeId.endsWith("/comments")) {
-		return createRedditCommentsStore(backend, storeId.split("/")[1]!);
-	}
-	if (storeId.startsWith("raw/")) {
-		const parts = storeId.split("/");
-		return createRawStore(backend, parts[1]!, parts[2]!);
-	}
-	return null;
 };
 
 const deleteStoreSnapshots = async (backend: Backend, storeId: string): Promise<boolean> => {

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { processRedditAccount } from "../../src/cron-reddit";
 import { RedditMemoryProvider } from "../../src/platforms/reddit-memory";
 import { loadRedditDataForAccount, normalizeReddit } from "../../src/timeline-reddit";
+import { at, first, unwrap } from "../../src/utils";
 import { ACCOUNTS, REDDIT_FIXTURES, USERS, makeRedditComment, makeRedditPost } from "./fixtures";
 import { type TestContext, createTestContext, seedAccount, seedUser } from "./setup";
 
@@ -172,10 +173,10 @@ describe("Reddit Integration", () => {
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
 			expect(items.length).toBe(2);
-			const first = items[0]!;
-			expect(first.platform).toBe("reddit");
-			expect(first.type).toBe("post");
-			expect(first.payload.type).toBe("post");
+			const firstItem = unwrap(first(items));
+			expect(firstItem.platform).toBe("reddit");
+			expect(firstItem.type).toBe("post");
+			expect(firstItem.payload.type).toBe("post");
 		});
 
 		it("should normalize comments to timeline items", () => {
@@ -183,20 +184,20 @@ describe("Reddit Integration", () => {
 			const items = normalizeReddit({ posts: [], comments }, "testuser");
 
 			expect(items.length).toBe(2);
-			const first = items[0]!;
-			expect(first.platform).toBe("reddit");
-			expect(first.type).toBe("comment");
-			expect(first.payload.type).toBe("comment");
+			const firstItem = unwrap(first(items));
+			expect(firstItem.platform).toBe("reddit");
+			expect(firstItem.type).toBe("comment");
+			expect(firstItem.payload.type).toBe("comment");
 		});
 
 		it("should include subreddit info in comment payload", () => {
 			const comments = [makeRedditComment({ subreddit: "programming" })];
 			const items = normalizeReddit({ posts: [], comments }, "testuser");
 
-			const first = items[0]!;
-			expect(first.payload.type).toBe("comment");
-			if (first.payload.type === "comment") {
-				expect(first.payload.subreddit).toBe("programming");
+			const firstItem = unwrap(first(items));
+			expect(firstItem.payload.type).toBe("comment");
+			if (firstItem.payload.type === "comment") {
+				expect(firstItem.payload.subreddit).toBe("programming");
 			}
 		});
 
@@ -204,14 +205,14 @@ describe("Reddit Integration", () => {
 			const posts = [makeRedditPost({ permalink: "/r/test/comments/abc123/my_post/" })];
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
-			expect(items[0]!.url).toBe("https://reddit.com/r/test/comments/abc123/my_post/");
+			expect(unwrap(first(items)).url).toBe("https://reddit.com/r/test/comments/abc123/my_post/");
 		});
 
 		it("should set correct URLs for comments", () => {
 			const comments = [makeRedditComment({ permalink: "/r/test/comments/abc123/post/xyz789/" })];
 			const items = normalizeReddit({ posts: [], comments }, "testuser");
 
-			expect(items[0]!.url).toBe("https://reddit.com/r/test/comments/abc123/post/xyz789/");
+			expect(unwrap(first(items)).url).toBe("https://reddit.com/r/test/comments/abc123/post/xyz789/");
 		});
 
 		it("should convert unix timestamps to ISO strings", () => {
@@ -220,7 +221,7 @@ describe("Reddit Integration", () => {
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
 			const expectedDate = new Date(timestamp * 1000).toISOString();
-			expect(items[0]!.timestamp).toBe(expectedDate);
+			expect(unwrap(first(items)).timestamp).toBe(expectedDate);
 		});
 
 		it("should handle self posts (text posts)", () => {
@@ -233,10 +234,10 @@ describe("Reddit Integration", () => {
 			];
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
-			const first = items[0]!;
-			expect(first.payload.type).toBe("post");
-			if (first.payload.type === "post") {
-				expect(first.payload.content).toContain("This is the post content");
+			const firstItem = unwrap(first(items));
+			expect(firstItem.payload.type).toBe("post");
+			if (firstItem.payload.type === "post") {
+				expect(firstItem.payload.content).toContain("This is the post content");
 			}
 		});
 
@@ -250,10 +251,10 @@ describe("Reddit Integration", () => {
 			];
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
-			const first = items[0]!;
-			expect(first.payload.type).toBe("post");
-			if (first.payload.type === "post") {
-				expect(first.payload.content).toContain("https://example.com/external-link");
+			const firstItem = unwrap(first(items));
+			expect(firstItem.payload.type).toBe("post");
+			if (firstItem.payload.type === "post") {
+				expect(firstItem.payload.content).toContain("https://example.com/external-link");
 			}
 		});
 
@@ -266,10 +267,10 @@ describe("Reddit Integration", () => {
 			];
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
-			const first = items[0]!;
-			expect(first.payload.type).toBe("post");
-			if (first.payload.type === "post") {
-				expect(first.payload.has_media).toBe(true);
+			const firstItem = unwrap(first(items));
+			expect(firstItem.payload.type).toBe("post");
+			if (firstItem.payload.type === "post") {
+				expect(firstItem.payload.has_media).toBe(true);
 			}
 		});
 
@@ -277,9 +278,9 @@ describe("Reddit Integration", () => {
 			const posts = [makeRedditPost({ score: 1234 })];
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
-			const first = items[0]!;
-			if (first.payload.type === "post") {
-				expect(first.payload.like_count).toBe(1234);
+			const firstItem = unwrap(first(items));
+			if (firstItem.payload.type === "post") {
+				expect(firstItem.payload.like_count).toBe(1234);
 			}
 		});
 
@@ -287,9 +288,9 @@ describe("Reddit Integration", () => {
 			const posts = [makeRedditPost({ num_comments: 42 })];
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
-			const first = items[0]!;
-			if (first.payload.type === "post") {
-				expect(first.payload.reply_count).toBe(42);
+			const firstItem = unwrap(first(items));
+			if (firstItem.payload.type === "post") {
+				expect(firstItem.payload.reply_count).toBe(42);
 			}
 		});
 
@@ -297,9 +298,9 @@ describe("Reddit Integration", () => {
 			const comments = [makeRedditComment({ score: 567 })];
 			const items = normalizeReddit({ posts: [], comments }, "testuser");
 
-			const first = items[0]!;
-			if (first.payload.type === "comment") {
-				expect(first.payload.score).toBe(567);
+			const firstItem = unwrap(first(items));
+			if (firstItem.payload.type === "comment") {
+				expect(firstItem.payload.score).toBe(567);
 			}
 		});
 
@@ -307,9 +308,9 @@ describe("Reddit Integration", () => {
 			const comments = [makeRedditComment({ is_submitter: true })];
 			const items = normalizeReddit({ posts: [], comments }, "testuser");
 
-			const first = items[0]!;
-			if (first.payload.type === "comment") {
-				expect(first.payload.is_op).toBe(true);
+			const firstItem = unwrap(first(items));
+			if (firstItem.payload.type === "comment") {
+				expect(firstItem.payload.is_op).toBe(true);
 			}
 		});
 
@@ -322,10 +323,10 @@ describe("Reddit Integration", () => {
 			];
 			const items = normalizeReddit({ posts: [], comments }, "testuser");
 
-			const first = items[0]!;
-			if (first.payload.type === "comment") {
-				expect(first.payload.parent_title).toBe("Parent Post Title");
-				expect(first.payload.parent_url).toBe("https://reddit.com/r/test/comments/abc/parent_post/");
+			const firstItem = unwrap(first(items));
+			if (firstItem.payload.type === "comment") {
+				expect(firstItem.payload.parent_title).toBe("Parent Post Title");
+				expect(firstItem.payload.parent_url).toBe("https://reddit.com/r/test/comments/abc/parent_post/");
 			}
 		});
 
@@ -334,9 +335,9 @@ describe("Reddit Integration", () => {
 			const comments = [makeRedditComment({ body: longBody })];
 			const items = normalizeReddit({ posts: [], comments }, "testuser");
 
-			const first = items[0]!;
-			expect(first.title.length).toBeLessThanOrEqual(72);
-			expect(first.title.endsWith("...")).toBe(true);
+			const firstItem = unwrap(first(items));
+			expect(firstItem.title.length).toBeLessThanOrEqual(72);
+			expect(firstItem.title.endsWith("...")).toBe(true);
 		});
 
 		it("should combine posts and comments", () => {
@@ -368,8 +369,8 @@ describe("Reddit Integration", () => {
 			const comments = [makeRedditComment({ id: "xyz789" })];
 			const items = normalizeReddit({ posts, comments }, "testuser");
 
-			expect(items[0]!.id).toBe("reddit:post:abc123");
-			expect(items[1]!.id).toBe("reddit:comment:xyz789");
+			expect(unwrap(at(items, 0)).id).toBe("reddit:post:abc123");
+			expect(unwrap(at(items, 1)).id).toBe("reddit:comment:xyz789");
 		});
 	});
 
@@ -390,7 +391,7 @@ describe("Reddit Integration", () => {
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
 			expect(items.length).toBe(1);
-			expect(items[0]!.title).toBe("NSFW post");
+			expect(unwrap(first(items)).title).toBe("NSFW post");
 		});
 
 		it("should handle video posts", () => {
@@ -398,9 +399,9 @@ describe("Reddit Integration", () => {
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
 			expect(items.length).toBe(1);
-			const first = items[0]!;
-			if (first.payload.type === "post") {
-				expect(first.payload.has_media).toBe(true);
+			const firstItem = unwrap(first(items));
+			if (firstItem.payload.type === "post") {
+				expect(firstItem.payload.has_media).toBe(true);
 			}
 		});
 
@@ -409,9 +410,9 @@ describe("Reddit Integration", () => {
 			const items = normalizeReddit({ posts, comments: [] }, "testuser");
 
 			expect(items.length).toBe(1);
-			const first = items[0]!;
-			if (first.payload.type === "post") {
-				expect(first.payload.content).toContain("https://example.com/article");
+			const firstItem = unwrap(first(items));
+			if (firstItem.payload.type === "post") {
+				expect(firstItem.payload.content).toContain("https://example.com/article");
 			}
 		});
 	});
