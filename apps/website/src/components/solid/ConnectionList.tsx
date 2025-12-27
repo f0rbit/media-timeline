@@ -3,7 +3,9 @@ import { type ConnectionWithSettings, connections, initMockAuth } from "@/utils/
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";
 
-const PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad", "reddit", "twitter"];
+const ALL_PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad", "reddit", "twitter"];
+const HIDDEN_PLATFORMS: Platform[] = ["bluesky", "youtube", "devpad"];
+const PLATFORMS = ALL_PLATFORMS.filter(p => !HIDDEN_PLATFORMS.includes(p));
 
 export default function ConnectionList() {
 	initMockAuth();
