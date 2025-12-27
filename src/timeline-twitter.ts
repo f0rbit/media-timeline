@@ -1,5 +1,5 @@
 import type { Backend } from "@f0rbit/corpus";
-import type { TweetMedia, TimelineItem, TwitterMetaStore, TwitterTweet } from "./schema";
+import type { TimelineItem, TweetMedia, TwitterMetaStore, TwitterTweet } from "./schema";
 import { createTwitterMetaStore, createTwitterTweetsStore } from "./storage";
 
 export type TwitterTimelineData = {
