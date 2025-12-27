@@ -17,6 +17,10 @@ import {
 	type RedditPostsStore,
 	RedditPostsStoreSchema,
 	TimelineSchema,
+	type TwitterMetaStore,
+	TwitterMetaStoreSchema,
+	type TwitterTweetsStore,
+	TwitterTweetsStoreSchema,
 	YouTubeRawSchema,
 } from "./schema";
 import { err, ok, type Result } from "./utils";
@@ -34,7 +38,11 @@ export type RedditMetaStoreId = `reddit/${string}/meta`;
 export type RedditPostsStoreId = `reddit/${string}/posts`;
 export type RedditCommentsStoreId = `reddit/${string}/comments`;
 
-export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId | RedditMetaStoreId | RedditPostsStoreId | RedditCommentsStoreId;
+// Twitter store IDs
+export type TwitterMetaStoreId = `twitter/${string}/meta`;
+export type TwitterTweetsStoreId = `twitter/${string}/tweets`;
+
+export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId | RedditMetaStoreId | RedditPostsStoreId | RedditCommentsStoreId | TwitterMetaStoreId | TwitterTweetsStoreId;
 
 export const rawStoreId = (platform: string, accountId: string): RawStoreId => `raw/${platform}/${accountId}`;
 export const timelineStoreId = (userId: string): TimelineStoreId => `timeline/${userId}`;
@@ -54,6 +62,12 @@ export const redditMetaStoreId = (accountId: string): RedditMetaStoreId => `redd
 export const redditPostsStoreId = (accountId: string): RedditPostsStoreId => `reddit/${accountId}/posts`;
 
 export const redditCommentsStoreId = (accountId: string): RedditCommentsStoreId => `reddit/${accountId}/comments`;
+
+// === Twitter Store ID Helpers ===
+
+export const twitterMetaStoreId = (accountId: string): TwitterMetaStoreId => `twitter/${accountId}/meta`;
+
+export const twitterTweetsStoreId = (accountId: string): TwitterTweetsStoreId => `twitter/${accountId}/tweets`;
 
 export const RawDataSchema = z.union([GitHubRawSchema, BlueskyRawSchema, YouTubeRawSchema, DevpadRawSchema]);
 export const TimelineDataSchema = TimelineSchema;
@@ -186,6 +200,47 @@ export function createRedditCommentsStore(backend: Backend, accountId: string): 
 		return err({ kind: "store_not_found", store_id: id });
 	}
 	return ok({ store, id });
+}
+
+// === Twitter Store Types ===
+
+export type TwitterMetaStoreResult = { store: Store<TwitterMetaStore>; id: TwitterMetaStoreId };
+export type TwitterTweetsStoreResult = { store: Store<TwitterTweetsStore>; id: TwitterTweetsStoreId };
+
+// === Twitter Store Creators ===
+
+export function createTwitterMetaStore(backend: Backend, accountId: string): Result<TwitterMetaStoreResult, CorpusError> {
+	const id = twitterMetaStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(TwitterMetaStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createTwitterTweetsStore(backend: Backend, accountId: string): Result<TwitterTweetsStoreResult, CorpusError> {
+	const id = twitterTweetsStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(TwitterTweetsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+// === Twitter Store ID Listing ===
+
+export function listTwitterStoreIds(accountId: string): string[] {
+	return [twitterMetaStoreId(accountId), twitterTweetsStoreId(accountId)];
 }
 
 // === Reddit Store ID Listing ===

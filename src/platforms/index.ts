@@ -12,6 +12,8 @@ export type { MemoryProviderControls, MemoryProviderState, SimulationConfig } fr
 export { createMemoryProviderControlMethods, createMemoryProviderState, simulateErrors } from "./memory-base";
 export * from "./reddit";
 export * from "./reddit-memory";
+export * from "./twitter";
+export * from "./twitter-memory";
 // Re-export types
 export * from "./types";
 export { normalizeYouTube, YouTubeMemoryProvider, YouTubeProvider, type YouTubeProviderConfig } from "./youtube";

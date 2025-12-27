@@ -619,6 +619,9 @@ form section label {
 .platform-reddit {
 	--platform-color: oklch(55% 0.2 25);
 }
+.platform-twitter {
+	--platform-color: oklch(20% 0.01 0);
+}
 
 .status-active {
 	color: oklch(from var(--item-green) 0.85 0.1 h);

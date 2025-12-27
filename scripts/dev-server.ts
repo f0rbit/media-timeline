@@ -197,7 +197,10 @@ async function startDevServer() {
 		(c as any).env = {
 			REDDIT_CLIENT_ID: process.env.REDDIT_CLIENT_ID || "",
 			REDDIT_CLIENT_SECRET: process.env.REDDIT_CLIENT_SECRET || "",
+			TWITTER_CLIENT_ID: process.env.TWITTER_CLIENT_ID || "",
+			TWITTER_CLIENT_SECRET: process.env.TWITTER_CLIENT_SECRET || "",
 			APP_URL: "http://localhost:8787",
+			FRONTEND_URL: "http://localhost:4321",
 			EncryptionKey: ENCRYPTION_KEY,
 		};
 		c.set("appContext", appContext);

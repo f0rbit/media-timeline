@@ -13,7 +13,10 @@ export type Bindings = {
 	ENVIRONMENT: string;
 	REDDIT_CLIENT_ID?: string;
 	REDDIT_CLIENT_SECRET?: string;
+	TWITTER_CLIENT_ID?: string;
+	TWITTER_CLIENT_SECRET?: string;
 	APP_URL?: string;
+	FRONTEND_URL?: string;
 };
 
 type CorpusBackend = {

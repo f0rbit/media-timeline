@@ -6,7 +6,7 @@ import { z } from "zod";
 import { authMiddleware } from "../../src/auth";
 import type { ProviderFactory } from "../../src/cron";
 import type { AppContext } from "../../src/infrastructure";
-import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
+import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, TwitterMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
 import { connectionRoutes, timelineRoutes } from "../../src/routes";
 import type { Platform } from "../../src/schema";
 import * as schema from "../../src/schema/database";
@@ -54,6 +54,7 @@ export type TestProviders = {
 	youtube: YouTubeMemoryProvider;
 	devpad: DevpadMemoryProvider;
 	reddit: RedditMemoryProvider;
+	twitter: TwitterMemoryProvider;
 };
 
 export type D1PreparedStatement = {
@@ -327,6 +328,7 @@ const createTestProviders = (): TestProviders => ({
 	youtube: new YouTubeMemoryProvider({}),
 	devpad: new DevpadMemoryProvider({}),
 	reddit: new RedditMemoryProvider({}),
+	twitter: new TwitterMemoryProvider({}),
 });
 
 export const createTestCorpus = (): TestCorpus => {
@@ -432,6 +434,7 @@ export const createTestContext = (): TestContext => {
 		providers.youtube.reset();
 		providers.devpad.reset();
 		providers.reddit.reset();
+		providers.twitter.reset();
 	};
 
 	return { db, d1, r2, providers, env, corpus, appContext, cleanup };

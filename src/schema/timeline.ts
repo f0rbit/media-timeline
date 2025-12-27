@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const PlatformSchema = z.enum(["github", "bluesky", "youtube", "devpad", "reddit"]);
+export const PlatformSchema = z.enum(["github", "bluesky", "youtube", "devpad", "reddit", "twitter"]);
 export const TimelineTypeSchema = z.enum(["commit", "post", "video", "task", "pull_request", "comment"]);
 
 export const CommitPayloadSchema = z.object({

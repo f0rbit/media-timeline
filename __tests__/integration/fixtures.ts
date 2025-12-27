@@ -8,13 +8,13 @@ import type {
 	DevpadTask,
 	GitHubEvent,
 	GitHubExtendedCommit,
-	GitHubMetaStore,
 	GitHubRaw,
 	GitHubRepoCommitsStore,
 	GitHubRepoMeta,
 	GitHubRepoPRsStore,
 	RedditComment,
 	RedditPost,
+	TwitterTweet,
 	YouTubeRaw,
 	YouTubeVideo,
 } from "../../src/schema";
@@ -504,6 +504,14 @@ export const ACCOUNTS = {
 		access_token: "reddit_bob_token",
 		is_active: true,
 	},
+	alice_twitter: {
+		id: "acc-alice-twitter",
+		platform: "twitter" as const,
+		platform_user_id: "twitter-alice-123",
+		platform_username: "alice_tweeter",
+		access_token: "twitter_alice_token",
+		is_active: true,
+	},
 };
 
 export const API_KEYS = {
@@ -621,6 +629,69 @@ export const REDDIT_FIXTURES = {
 			selftext: "",
 			url: "https://example.com/article",
 			title: "Link post",
+		}),
+	],
+
+	empty: () => [],
+};
+
+export const makeTwitterTweet = (overrides: Partial<TwitterTweet> = {}): TwitterTweet => ({
+	id: crypto.randomUUID().slice(0, 19).replace(/-/g, ""),
+	text: "This is a test tweet",
+	created_at: new Date().toISOString(),
+	author_id: "123456789",
+	public_metrics: {
+		retweet_count: 5,
+		reply_count: 2,
+		like_count: 42,
+		quote_count: 1,
+	},
+	possibly_sensitive: false,
+	...overrides,
+});
+
+export const TWITTER_FIXTURES = {
+	singleTweet: () => [makeTwitterTweet()],
+
+	multipleTweets: (count = 3) =>
+		Array.from({ length: count }, (_, i) =>
+			makeTwitterTweet({
+				text: `Tweet ${i + 1}`,
+				public_metrics: {
+					retweet_count: i * 2,
+					reply_count: i,
+					like_count: i * 10,
+					quote_count: 0,
+				},
+				created_at: new Date(Date.now() - i * 3600000).toISOString(),
+			})
+		),
+
+	withRetweet: () => [
+		makeTwitterTweet({
+			text: "RT @other: Original tweet content",
+			referenced_tweets: [{ type: "retweeted", id: "987654321" }],
+		}),
+	],
+
+	withReply: () => [
+		makeTwitterTweet({
+			text: "@someone This is a reply",
+			in_reply_to_user_id: "111222333",
+			referenced_tweets: [{ type: "replied_to", id: "444555666" }],
+		}),
+	],
+
+	withMedia: () => [
+		makeTwitterTweet({
+			attachments: { media_keys: ["media_1"] },
+		}),
+	],
+
+	sensitive: () => [
+		makeTwitterTweet({
+			text: "Sensitive content tweet",
+			possibly_sensitive: true,
 		}),
 	],
 

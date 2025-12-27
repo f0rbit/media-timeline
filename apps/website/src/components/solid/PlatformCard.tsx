@@ -8,6 +8,7 @@ import BlueskySettings from "./PlatformSettings/BlueskySettings";
 import DevpadSettings from "./PlatformSettings/DevpadSettings";
 import GitHubSettings from "./PlatformSettings/GitHubSettings";
 import RedditSettings from "./PlatformSettings/RedditSettings";
+import TwitterSettings from "./PlatformSettings/TwitterSettings";
 import YouTubeSettings from "./PlatformSettings/YouTubeSettings";
 import PlatformSetupForm, { type Platform } from "./PlatformSetupForm";
 import StatusBadge, { type ConnectionState } from "./StatusBadge";
@@ -27,7 +28,6 @@ function RedditOAuthButton() {
 			console.error("No API key available for Reddit OAuth");
 			return;
 		}
-		// Pass API key as query param since this is a browser redirect
 		window.location.href = `${apiUrl}/api/auth/reddit?key=${encodeURIComponent(apiKey)}`;
 	};
 
@@ -36,6 +36,28 @@ function RedditOAuthButton() {
 			<p class="muted text-sm">Connect your Reddit account to sync your posts and comments.</p>
 			<button type="button" onClick={handleConnect} class="oauth-button">
 				Connect with Reddit
+			</button>
+		</div>
+	);
+}
+
+function TwitterOAuthButton() {
+	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
+
+	const handleConnect = () => {
+		const apiKey = getApiKey();
+		if (!apiKey) {
+			console.error("No API key available for Twitter OAuth");
+			return;
+		}
+		window.location.href = `${apiUrl}/api/auth/twitter?key=${encodeURIComponent(apiKey)}`;
+	};
+
+	return (
+		<div class="oauth-setup">
+			<p class="muted text-sm">Connect your Twitter/X account to sync your tweets.</p>
+			<button type="button" onClick={handleConnect} class="oauth-button">
+				Connect with Twitter/X
 			</button>
 		</div>
 	);
@@ -83,6 +105,9 @@ export default function PlatformCard(props: Props) {
 				<Match when={state() === "not_configured" && props.platform === "reddit"}>
 					<RedditOAuthButton />
 				</Match>
+				<Match when={state() === "not_configured" && props.platform === "twitter"}>
+					<TwitterOAuthButton />
+				</Match>
 				<Match when={state() === "not_configured"}>
 					<PlatformSetupForm platform={props.platform} onSuccess={props.onConnectionChange} />
 				</Match>
@@ -109,6 +134,13 @@ export default function PlatformCard(props: Props) {
 								<RedditSettings
 									accountId={props.connection!.account_id}
 									settings={props.connection?.settings as { include_posts?: boolean; include_comments?: boolean; hidden_subreddits?: string[] } | null}
+									onUpdate={props.onConnectionChange}
+								/>
+							</Match>
+							<Match when={props.platform === "twitter"}>
+								<TwitterSettings
+									accountId={props.connection!.account_id}
+									settings={props.connection?.settings as { include_retweets?: boolean; include_replies?: boolean; hide_sensitive?: boolean } | null}
 									onUpdate={props.onConnectionChange}
 								/>
 							</Match>

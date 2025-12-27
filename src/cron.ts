@@ -1,16 +1,19 @@
 import type { Backend } from "@f0rbit/corpus";
 import { eq, sql } from "drizzle-orm";
-import { type GitHubProcessResult, processGitHubAccount } from "./cron-github";
+import { processGitHubAccount } from "./cron-github";
 import { processRedditAccount } from "./cron-reddit";
+import { processTwitterAccount } from "./cron-twitter";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube, type ProviderError, type ProviderFactory } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
+import { TwitterProvider } from "./platforms/twitter";
 import { accountMembers, accounts, BlueskyRawSchema, type CommitGroup, DevpadRawSchema, type Platform, rateLimits, type TimelineItem, YouTubeRawSchema } from "./schema";
-import { createRawStore, createTimelineStore, githubCommitsStoreId, githubPRsStoreId, type RateLimitState, type RawData, rawStoreId, shouldFetch } from "./storage";
+import { createRawStore, createTimelineStore, type RateLimitState, type RawData, rawStoreId, shouldFetch } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
 import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
+import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
 import { decrypt, pipe, type Result, to_nullable, tryCatch } from "./utils";
 
 export { processAccount, gatherLatestSnapshots, combineUserTimeline };
@@ -30,6 +33,7 @@ type AccountWithUser = {
 	access_token_encrypted: string;
 	refresh_token_encrypted: string | null;
 	user_id: string;
+	last_fetched_at?: string | null;
 };
 
 type RateLimitRow = {
@@ -53,6 +57,19 @@ type ProcessError = { kind: "decryption_failed"; message: string } | { kind: "fe
 type TimelineEntry = TimelineItem | CommitGroup;
 
 const parseDate = (iso: string | null): Date | null => (iso ? new Date(iso) : null);
+
+// Twitter has a 100 posts/month cap on Free tier, so we only fetch every 3 days
+const TWITTER_FETCH_INTERVAL_DAYS = 3;
+
+const shouldFetchTwitter = (lastFetchedAt: string | null): boolean => {
+	if (!lastFetchedAt) return true; // Never fetched, should fetch
+	const lastFetch = new Date(lastFetchedAt);
+	const now = new Date();
+	const daysSinceLastFetch = (now.getTime() - lastFetch.getTime()) / (1000 * 60 * 60 * 24);
+	const shouldFetch = daysSinceLastFetch >= TWITTER_FETCH_INTERVAL_DAYS;
+	console.log(`[shouldFetchTwitter] Last fetch: ${lastFetchedAt}, days since: ${daysSinceLastFetch.toFixed(1)}, should fetch: ${shouldFetch}`);
+	return shouldFetch;
+};
 
 const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
 	remaining: row?.remaining ?? null,
@@ -79,6 +96,7 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 			access_token_encrypted: accounts.access_token_encrypted,
 			refresh_token_encrypted: accounts.refresh_token_encrypted,
 			user_id: accountMembers.user_id,
+			last_fetched_at: accounts.last_fetched_at,
 		})
 		.from(accounts)
 		.innerJoin(accountMembers, eq(accounts.id, accountMembers.account_id))
@@ -273,6 +291,37 @@ const processRedditAccountFlow = async (ctx: AppContext, account: AccountWithUse
 	};
 };
 
+const processTwitterAccountFlow = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	console.log("[processTwitterAccountFlow] Starting for account:", account.id);
+
+	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
+	if (!decryptResult.ok) {
+		console.error("[processTwitterAccountFlow] Decryption failed:", decryptResult.error.message);
+		return null;
+	}
+
+	const provider = ctx.twitterProvider ?? new TwitterProvider();
+	const result = await processTwitterAccount(ctx.backend, account.id, decryptResult.value, provider);
+
+	if (!result.ok) {
+		console.error("[processTwitterAccountFlow] Twitter processing failed:", result.error);
+		await recordFailure(ctx.db, account.id);
+		return null;
+	}
+
+	await recordSuccess(ctx.db, account.id);
+
+	return {
+		account_id: account.id,
+		platform: "twitter",
+		version: result.value.meta_version,
+		data: {
+			type: "twitter_multi_store" as const,
+			...result.value.stats,
+		},
+	};
+};
+
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	console.log("[processGenericAccount] Starting for account:", { id: account.id, platform: account.platform, user_id: account.user_id, platform_user_id: account.platform_user_id });
 
@@ -370,6 +419,15 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		return processRedditAccountFlow(ctx, account);
 	}
 
+	if (account.platform === "twitter") {
+		// Twitter has a 100 posts/month cap on Free tier, only fetch every 3 days
+		if (!shouldFetchTwitter(account.last_fetched_at ?? null)) {
+			console.log("[processAccount] Skipping Twitter fetch - not enough time since last fetch");
+			return null;
+		}
+		return processTwitterAccountFlow(ctx, account);
+	}
+
 	return processGenericAccount(ctx, account);
 };
 
@@ -413,6 +471,25 @@ const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Pr
 			platform: "reddit",
 			version: new Date().toISOString(),
 			data: { type: "reddit_multi_store" },
+		};
+	}
+
+	// Twitter uses multi-store format - check if there's data in Twitter stores
+	if (account.platform === "twitter") {
+		const twitterData = await loadTwitterDataForAccount(backend, account.id);
+		if (twitterData.tweets.length === 0) {
+			console.log("[getLatestSnapshot] No Twitter data found for account:", account.id);
+			return null;
+		}
+		console.log("[getLatestSnapshot] Twitter data loaded:", {
+			tweets: twitterData.tweets.length,
+		});
+		// Return a marker snapshot - the actual data will be loaded in combineUserTimeline
+		return {
+			account_id: account.id,
+			platform: "twitter",
+			version: new Date().toISOString(),
+			data: { type: "twitter_multi_store" },
 		};
 	}
 
@@ -508,7 +585,8 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 	// Separate multi-store platforms from other platforms
 	const githubSnapshots = snapshots.filter(s => s.platform === "github");
 	const redditSnapshots = snapshots.filter(s => s.platform === "reddit");
-	const otherSnapshots = snapshots.filter(s => s.platform !== "github" && s.platform !== "reddit");
+	const twitterSnapshots = snapshots.filter(s => s.platform === "twitter");
+	const otherSnapshots = snapshots.filter(s => s.platform !== "github" && s.platform !== "reddit" && s.platform !== "twitter");
 
 	// Load GitHub data from multi-stores
 	const githubItems: TimelineItem[] = [];
@@ -530,6 +608,16 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 		redditItems.push(...normalized);
 	}
 
+	// Load Twitter data from multi-stores
+	const twitterItems: TimelineItem[] = [];
+	for (const snapshot of twitterSnapshots) {
+		console.log(`[combineUserTimeline] Loading Twitter data for account: ${snapshot.account_id}`);
+		const data = await loadTwitterDataForAccount(backend, snapshot.account_id);
+		const normalized = normalizeTwitter(data);
+		console.log(`[combineUserTimeline] Twitter normalized: ${normalized.length} items`);
+		twitterItems.push(...normalized);
+	}
+
 	console.log("[combineUserTimeline] Normalizing other platform snapshots...");
 	const normalizeResults = otherSnapshots.map((snapshot, index) => {
 		console.log(`[combineUserTimeline] Normalizing snapshot ${index + 1}/${otherSnapshots.length} (${snapshot.platform})...`);
@@ -545,7 +633,7 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 	}
 
 	const otherItems = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
-	const items = [...githubItems, ...redditItems, ...otherItems];
+	const items = [...githubItems, ...redditItems, ...twitterItems, ...otherItems];
 	console.log("[combineUserTimeline] Items after filtering successful results:", items.length);
 	console.log(
 		"[combineUserTimeline] Items preview:",
@@ -616,6 +704,11 @@ const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], Normal
 				case "reddit":
 					// Reddit is handled separately via multi-store in combineUserTimeline
 					console.log("[normalizeSnapshot] Case: reddit - skipping (handled via multi-store)");
+					result = [];
+					break;
+				case "twitter":
+					// Twitter is handled separately via multi-store in combineUserTimeline
+					console.log("[normalizeSnapshot] Case: twitter - skipping (handled via multi-store)");
 					result = [];
 					break;
 				case "bluesky": {

@@ -2,7 +2,7 @@ import { createSignal, Show } from "solid-js";
 import { connections } from "@/utils/api-client";
 import { formatPlatformName } from "@/utils/formatters";
 
-export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit";
+export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
 type Props = {
 	platform: Platform;
@@ -52,6 +52,13 @@ const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
 		usernameLabel: "Reddit Username",
 		usernamePlaceholder: "u/your-username",
 		helpText: "Connect via Reddit OAuth or use your API credentials",
+	},
+	twitter: {
+		tokenLabel: "Access Token",
+		tokenPlaceholder: "your-twitter-token",
+		usernameLabel: "Twitter Username",
+		usernamePlaceholder: "@your-username",
+		helpText: "Connect via Twitter OAuth to sync your tweets",
 	},
 };
 

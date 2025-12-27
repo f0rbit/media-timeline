@@ -39,6 +39,7 @@ export function formatPlatformName(platform: string): string {
 		youtube: "YouTube",
 		devpad: "Devpad",
 		reddit: "Reddit",
+		twitter: "Twitter/X",
 	};
 	return names[platform] ?? platform;
 }

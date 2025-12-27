@@ -20,6 +20,7 @@
 	},
 	"dependencies": {
 		"@f0rbit/corpus": "^0.2.0",
+		"@xdevplatform/xdk": "^0.3.0",
 		"drizzle-orm": "^0.44.7",
 		"hono": "^4.10.7",
 		"octokit": "^5.0.5",
