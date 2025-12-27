@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { normalizeBluesky, normalizeGitHub } from "../../src/platforms";
 import type { CommitGroup, TimelineItem } from "../../src/schema";
-import { combineTimelines, groupByDate, groupCommits, type TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubRaw, USERS } from "./fixtures";
-import { createTestContext, seedAccount, seedUser, type TestContext } from "./setup";
+import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "../../src/timeline";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
+import { type TestContext, createTestContext, seedAccount, seedUser } from "./setup";
 
 const isCommitGroup = (entry: TimelineEntry): entry is CommitGroup => entry.type === "commit_group";
 

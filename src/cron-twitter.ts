@@ -3,7 +3,7 @@ import type { TwitterFetchResult } from "./platforms/twitter";
 import type { ProviderError } from "./platforms/types";
 import type { TwitterTweetsStore } from "./schema";
 import { createTwitterMetaStore, createTwitterTweetsStore } from "./storage";
-import { err, ok, type Result, to_nullable } from "./utils";
+import { type Result, err, ok, to_nullable } from "./utils";
 
 export type TwitterProcessResult = {
 	account_id: string;

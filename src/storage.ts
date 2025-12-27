@@ -1,4 +1,4 @@
-import { type Backend, create_corpus, define_store, json_codec, type Store } from "@f0rbit/corpus";
+import { type Backend, type Store, create_corpus, define_store, json_codec } from "@f0rbit/corpus";
 import { z } from "zod";
 import {
 	BlueskyRawSchema,
@@ -23,7 +23,7 @@ import {
 	TwitterTweetsStoreSchema,
 	YouTubeRawSchema,
 } from "./schema";
-import { err, ok, type Result } from "./utils";
+import { type Result, err, ok } from "./utils";
 
 export type CorpusError = { kind: "store_not_found"; store_id: string };
 
@@ -323,7 +323,7 @@ export const shouldFetch = (state: RateLimitState): boolean => {
 const parseHeader = (headers: Headers, name: string): number | null => {
 	const value = headers.get(name);
 	if (!value) return null;
-	const parsed = parseInt(value, 10);
+	const parsed = Number.parseInt(value, 10);
 	return Number.isNaN(parsed) ? null : parsed;
 };
 

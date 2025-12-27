@@ -19,7 +19,7 @@ export * from "./types";
 export { normalizeYouTube, YouTubeMemoryProvider, YouTubeProvider, type YouTubeProviderConfig } from "./youtube";
 
 // Factory function for creating providers (non-GitHub only)
-import { err, type Result } from "../utils";
+import { type Result, err } from "../utils";
 import { BlueskyProvider } from "./bluesky";
 import { DevpadProvider } from "./devpad";
 import type { Provider, ProviderError, ProviderFactory } from "./types";

@@ -1,5 +1,5 @@
-import { createResource, For, Show } from "solid-js";
 import { type ConnectionWithSettings, connections, initMockAuth } from "@/utils/api-client";
+import { For, Show, createResource } from "solid-js";
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";
 

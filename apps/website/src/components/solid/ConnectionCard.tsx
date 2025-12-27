@@ -1,6 +1,6 @@
-import { createSignal, Show } from "solid-js";
 import { type Connection, connections } from "@/utils/api-client";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
+import { Show, createSignal } from "solid-js";
 import PlatformIcon from "./PlatformIcon";
 
 type Props = {

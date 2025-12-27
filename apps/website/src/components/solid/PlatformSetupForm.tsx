@@ -1,6 +1,6 @@
-import { createSignal, Show } from "solid-js";
 import { connections } from "@/utils/api-client";
 import { formatPlatformName } from "@/utils/formatters";
+import { Show, createSignal } from "solid-js";
 
 export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 

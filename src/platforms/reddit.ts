@@ -224,7 +224,7 @@ export class RedditProvider {
 			return { kind: "auth_expired", message: "Reddit token expired or invalid" };
 		}
 		if (response.status === 429) {
-			const retryAfter = parseInt(response.headers.get("Retry-After") ?? "60", 10);
+			const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "60", 10);
 			return { kind: "rate_limited", retry_after: retryAfter };
 		}
 		return { kind: "api_error", status: response.status, message: response.statusText };

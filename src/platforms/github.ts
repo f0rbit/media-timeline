@@ -1,6 +1,6 @@
 import { Octokit } from "octokit";
 import type { GitHubMetaStore, GitHubRepoCommit, GitHubRepoCommitsStore, GitHubRepoMeta, GitHubRepoPR, GitHubRepoPRsStore } from "../schema";
-import { err, ok, type Result } from "../utils";
+import { type Result, err, ok } from "../utils";
 import { type ProviderError, toProviderError } from "./types";
 
 export type GitHubProviderConfig = {

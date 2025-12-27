@@ -1,6 +1,6 @@
 import type { RedditComment, RedditMetaStore, RedditPost } from "../schema";
 import type { Result } from "../utils";
-import { createMemoryProviderState, type MemoryProviderControls, type MemoryProviderState, simulateErrors } from "./memory-base";
+import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderState, simulateErrors } from "./memory-base";
 import type { RedditFetchResult } from "./reddit";
 import type { ProviderError } from "./types";
 

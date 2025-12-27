@@ -13,7 +13,7 @@ declare module "sst" {
 	}
 }
 // cloudflare
-import * as cloudflare from "@cloudflare/workers-types";
+import type * as cloudflare from "@cloudflare/workers-types";
 declare module "sst" {
 	export interface Resource {
 		Api: cloudflare.Service;

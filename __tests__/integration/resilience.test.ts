@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { initialState, isCircuitOpen, type RateLimitState, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
+import { type RateLimitState, initialState, isCircuitOpen, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
 import { ACCOUNTS, GITHUB_FIXTURES, USERS } from "./fixtures";
-import { createTestContext, getAccount, getRateLimit, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
+import { type TestContext, createTestContext, getAccount, getRateLimit, seedAccount, seedRateLimit, seedUser } from "./setup";
 
 const minutesFromNow = (minutes: number): Date => new Date(Date.now() + minutes * 60 * 1000);
 

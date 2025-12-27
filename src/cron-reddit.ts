@@ -3,7 +3,7 @@ import type { RedditFetchResult } from "./platforms/reddit";
 import type { ProviderError } from "./platforms/types";
 import type { RedditCommentsStore, RedditPostsStore } from "./schema";
 import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "./storage";
-import { err, ok, type Result, to_nullable } from "./utils";
+import { type Result, err, ok, to_nullable } from "./utils";
 
 export type RedditProcessResult = {
 	account_id: string;

@@ -1,15 +1,15 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "fs";
 import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { mkdirSync } from "fs";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware } from "../src/auth";
 import type { Database as DrizzleDB } from "../src/db";
-import { defaultProviderFactory, type ProviderFactory } from "../src/platforms";
+import { type ProviderFactory, defaultProviderFactory } from "../src/platforms";
 import { authRoutes, connectionRoutes, timelineRoutes } from "../src/routes";
 import * as schema from "../src/schema/database";
 import { hashApiKey } from "../src/utils";

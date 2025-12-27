@@ -1,6 +1,6 @@
 import { type BlueskyFeedItem, type BlueskyRaw, BlueskyRawSchema, type PostPayload, type TimelineItem } from "../schema";
 import { tryCatchAsync } from "../utils";
-import { createMemoryProviderState, type MemoryProviderControls, type MemoryProviderState, simulateErrors } from "./memory-base";
+import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderState, simulateErrors } from "./memory-base";
 import { type FetchResult, type Provider, type ProviderError, toProviderError } from "./types";
 
 // === PROVIDER (real API) ===

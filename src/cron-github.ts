@@ -3,7 +3,7 @@ import type { GitHubFetchResult } from "./platforms/github";
 import type { ProviderError } from "./platforms/types";
 import type { GitHubRepoCommitsStore, GitHubRepoPRsStore } from "./schema";
 import { createGitHubCommitsStore, createGitHubMetaStore, createGitHubPRsStore } from "./storage";
-import { err, ok, type Result, to_nullable } from "./utils";
+import { type Result, err, ok, to_nullable } from "./utils";
 
 export type GitHubProcessResult = {
 	account_id: string;

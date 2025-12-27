@@ -1,6 +1,6 @@
 import { Client, type ClientConfig } from "@xdevplatform/xdk";
 import type { TweetMedia, TwitterMetaStore, TwitterTweet, TwitterTweetsStore } from "../schema";
-import { err, ok, type Result } from "../utils";
+import { type Result, err, ok } from "../utils";
 import type { ProviderError } from "./types";
 
 export type TwitterProviderConfig = {

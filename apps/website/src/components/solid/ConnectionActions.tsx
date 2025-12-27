@@ -1,5 +1,5 @@
-import { createSignal, Show } from "solid-js";
 import { connections } from "@/utils/api-client";
+import { Show, createSignal } from "solid-js";
 
 type Props = {
 	accountId: string;

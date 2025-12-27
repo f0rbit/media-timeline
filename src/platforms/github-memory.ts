@@ -1,7 +1,7 @@
 import type { GitHubMetaStore, GitHubRepoCommitsStore, GitHubRepoMeta, GitHubRepoPRsStore } from "../schema";
 import type { Result } from "../utils";
 import type { GitHubFetchResult } from "./github";
-import { createMemoryProviderState, type MemoryProviderControls, type MemoryProviderState, simulateErrors } from "./memory-base";
+import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderState, simulateErrors } from "./memory-base";
 import type { ProviderError } from "./types";
 
 export type { GitHubFetchResult };

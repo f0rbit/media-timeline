@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { processRedditAccount } from "../../src/cron-reddit";
 import { RedditMemoryProvider } from "../../src/platforms/reddit-memory";
 import { loadRedditDataForAccount, normalizeReddit } from "../../src/timeline-reddit";
-import { ACCOUNTS, makeRedditComment, makeRedditPost, REDDIT_FIXTURES, USERS } from "./fixtures";
-import { createTestContext, seedAccount, seedUser, type TestContext } from "./setup";
+import { ACCOUNTS, REDDIT_FIXTURES, USERS, makeRedditComment, makeRedditPost } from "./fixtures";
+import { type TestContext, createTestContext, seedAccount, seedUser } from "./setup";
 
 describe("Reddit Integration", () => {
 	let ctx: TestContext;

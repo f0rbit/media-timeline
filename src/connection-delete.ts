@@ -18,7 +18,7 @@ import {
 	redditMetaStoreId,
 	redditPostsStoreId,
 } from "./storage";
-import { err, ok, type Result } from "./utils";
+import { type Result, err, ok } from "./utils";
 
 export type DeleteConnectionResult = {
 	account_id: string;

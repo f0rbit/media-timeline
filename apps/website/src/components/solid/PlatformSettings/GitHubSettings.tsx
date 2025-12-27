@@ -1,5 +1,5 @@
-import { createResource, createSignal, For, Show } from "solid-js";
-import { connections, type GitHubRepo } from "@/utils/api-client";
+import { type GitHubRepo, connections } from "@/utils/api-client";
+import { For, Show, createResource, createSignal } from "solid-js";
 
 type Props = {
 	accountId: string;

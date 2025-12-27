@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { ACCOUNTS, API_KEYS, GITHUB_FIXTURES, makeTimelineItem, USERS } from "./fixtures";
-import { addAccountMember, createTestApp, createTestContext, seedAccount, seedApiKey, seedUser, type TestContext } from "./setup";
+import { ACCOUNTS, API_KEYS, GITHUB_FIXTURES, USERS, makeTimelineItem } from "./fixtures";
+import { type TestContext, addAccountMember, createTestApp, createTestContext, seedAccount, seedApiKey, seedUser } from "./setup";
 
 type TimelineData = {
 	user_id: string;
