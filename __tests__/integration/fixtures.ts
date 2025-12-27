@@ -1,28 +1,46 @@
-import type { BlueskyAuthor, BlueskyFeedItem, BlueskyPost, BlueskyRaw, DevpadRaw, DevpadTask, GitHubCommit, GitHubEvent, GitHubPushEvent, GitHubRaw, YouTubeRaw, YouTubeVideo } from "../../src/schema";
-import { daysAgo, type DeepPartial, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
+import type { GitHubFetchResult } from "../../src/platforms/github";
+import type {
+	BlueskyAuthor,
+	BlueskyFeedItem,
+	BlueskyPost,
+	BlueskyRaw,
+	DevpadRaw,
+	DevpadTask,
+	GitHubEvent,
+	GitHubExtendedCommit,
+	GitHubRaw,
+	GitHubRepoCommitsStore,
+	GitHubRepoMeta,
+	GitHubRepoPRsStore,
+	RedditComment,
+	RedditPost,
+	TwitterTweet,
+	YouTubeRaw,
+	YouTubeVideo,
+} from "../../src/schema";
+import { type DeepPartial, daysAgo, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
 
-export const makeGitHubCommit = (overrides: DeepPartial<GitHubCommit> = {}): GitHubCommit =>
-	mergeDeep(
-		{
-			sha: randomSha(),
-			message: "feat: add new feature",
-			author: { name: "Test User", email: "test@example.com" },
-			url: "https://api.github.com/repos/test/repo/commits/abc123",
-		},
-		overrides
-	);
+export type GitHubExtendedCommitInput = {
+	sha?: string;
+	message?: string;
+	date?: string;
+	url?: string;
+	repo?: string;
+	branch?: string;
+};
 
-export const makeGitHubPushEvent = (overrides: DeepPartial<GitHubPushEvent> = {}): GitHubPushEvent =>
-	mergeDeep(
-		{
-			id: uuid(),
-			type: "PushEvent" as const,
-			created_at: new Date().toISOString(),
-			repo: { id: 12345, name: "test-user/test-repo", url: "https://api.github.com/repos/test-user/test-repo" },
-			payload: { ref: "refs/heads/main", commits: [makeGitHubCommit()] },
-		},
-		overrides
-	);
+export const makeGitHubExtendedCommit = (overrides: GitHubExtendedCommitInput = {}): GitHubExtendedCommit => {
+	const sha = overrides.sha ?? randomSha();
+	const repo = overrides.repo ?? "test-user/test-repo";
+	return {
+		sha,
+		message: overrides.message ?? "feat: add new feature",
+		date: overrides.date ?? new Date().toISOString(),
+		url: overrides.url ?? `https://github.com/${repo}/commit/${sha}`,
+		repo,
+		branch: overrides.branch ?? "main",
+	};
+};
 
 export const makeGitHubWatchEvent = (overrides: Partial<GitHubEvent> = {}): GitHubEvent => {
 	const base = {
@@ -35,8 +53,10 @@ export const makeGitHubWatchEvent = (overrides: Partial<GitHubEvent> = {}): GitH
 	return { ...base, ...overrides } as GitHubEvent;
 };
 
-export const makeGitHubRaw = (events: GitHubEvent[] = [], fetchedAt?: string): GitHubRaw => ({
+export const makeGitHubRaw = (commits: GitHubExtendedCommit[] = [], events: GitHubEvent[] = [], fetchedAt?: string): GitHubRaw => ({
 	events,
+	commits,
+	pull_requests: [],
 	fetched_at: fetchedAt ?? new Date().toISOString(),
 });
 
@@ -123,97 +143,125 @@ export const makeDevpadRaw = (tasks: DevpadTask[] = [], fetchedAt?: string): Dev
 
 export const GITHUB_FIXTURES = {
 	singleCommit: (repo = "alice/project", timestamp = hoursAgo(1)) => {
-		const sha = randomSha();
-		return makeGitHubRaw([
-			makeGitHubPushEvent({
-				created_at: timestamp,
-				repo: { id: 1, name: repo, url: `https://api.github.com/repos/${repo}` },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ sha, message: "Initial commit" })],
-				},
-			}),
-		]);
+		return makeGitHubRaw([makeGitHubExtendedCommit({ repo, date: timestamp, message: "Initial commit" })]);
 	},
 
 	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hoursAgo(2)) => {
-		const commits = [makeGitHubCommit({ sha: randomSha(), message: "feat: add feature A" }), makeGitHubCommit({ sha: randomSha(), message: "feat: add feature B" }), makeGitHubCommit({ sha: randomSha(), message: "fix: bug fix" })];
 		return makeGitHubRaw([
-			makeGitHubPushEvent({
-				created_at: baseTimestamp,
-				repo: { id: 1, name: repo, url: `https://api.github.com/repos/${repo}` },
-				payload: { ref: "refs/heads/main", commits },
-			}),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature A" }),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature B" }),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "fix: bug fix" }),
 		]);
 	},
 
 	multipleReposSameDay: (timestamp = hoursAgo(1)) => {
-		const events = [
-			makeGitHubPushEvent({
-				created_at: timestamp,
-				repo: { id: 1, name: "alice/repo-a", url: "https://api.github.com/repos/alice/repo-a" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "update repo-a" })],
-				},
-			}),
-			makeGitHubPushEvent({
-				created_at: timestamp,
-				repo: { id: 2, name: "alice/repo-b", url: "https://api.github.com/repos/alice/repo-b" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "update repo-b" })],
-				},
-			}),
-		];
-		return makeGitHubRaw(events);
+		return makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/repo-a", date: timestamp, message: "update repo-a" }), makeGitHubExtendedCommit({ repo: "alice/repo-b", date: timestamp, message: "update repo-b" })]);
 	},
 
 	acrossMultipleDays: () => {
-		const events = [
-			makeGitHubPushEvent({
-				created_at: daysAgo(0),
-				repo: { id: 1, name: "alice/project", url: "https://api.github.com/repos/alice/project" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "today commit" })],
-				},
-			}),
-			makeGitHubPushEvent({
-				created_at: daysAgo(1),
-				repo: { id: 1, name: "alice/project", url: "https://api.github.com/repos/alice/project" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "yesterday commit" })],
-				},
-			}),
-			makeGitHubPushEvent({
-				created_at: daysAgo(2),
-				repo: { id: 1, name: "alice/project", url: "https://api.github.com/repos/alice/project" },
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "two days ago commit" })],
-				},
-			}),
-		];
-		return makeGitHubRaw(events);
+		return makeGitHubRaw([
+			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(0), message: "today commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(1), message: "yesterday commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(2), message: "two days ago commit" }),
+		]);
 	},
 
 	withNonPushEvents: () => {
-		const events: GitHubEvent[] = [
-			makeGitHubPushEvent({
-				created_at: hoursAgo(1),
-				payload: {
-					ref: "refs/heads/main",
-					commits: [makeGitHubCommit({ message: "a commit" })],
-				},
-			}),
-			makeGitHubWatchEvent({ created_at: hoursAgo(2) }),
-		];
-		return makeGitHubRaw(events);
+		return makeGitHubRaw([makeGitHubExtendedCommit({ date: hoursAgo(1), message: "a commit" })], [makeGitHubWatchEvent({ created_at: hoursAgo(2) })]);
 	},
 
 	empty: () => makeGitHubRaw([]),
+};
+
+// New format fixtures for GitHubFetchResult (used by GitHubMemoryProvider)
+export const makeGitHubRepoMeta = (repo = "alice/project"): GitHubRepoMeta => {
+	const [owner, name] = repo.split("/");
+	return {
+		owner: owner ?? "alice",
+		name: name ?? "project",
+		full_name: repo,
+		default_branch: "main",
+		branches: ["main"],
+		is_private: false,
+		pushed_at: new Date().toISOString(),
+		updated_at: new Date().toISOString(),
+	};
+};
+
+export const makeGitHubRepoCommitsStore = (repo = "alice/project", commits: Array<{ sha?: string; message?: string; date?: string }> = []): GitHubRepoCommitsStore => {
+	const [owner, name] = repo.split("/");
+	const now = new Date().toISOString();
+	return {
+		owner: owner ?? "alice",
+		repo: name ?? "project",
+		branches: ["main"],
+		commits: commits.map(c => ({
+			sha: c.sha ?? randomSha(),
+			message: c.message ?? "feat: add new feature",
+			author_name: "Test User",
+			author_email: "test@example.com",
+			author_date: c.date ?? now,
+			committer_name: "Test User",
+			committer_email: "test@example.com",
+			committer_date: c.date ?? now,
+			url: `https://github.com/${repo}/commit/${c.sha ?? "abc123"}`,
+			branch: "main",
+		})),
+		total_commits: commits.length,
+		fetched_at: now,
+	};
+};
+
+export const makeGitHubRepoPRsStore = (repo = "alice/project"): GitHubRepoPRsStore => {
+	const [owner, name] = repo.split("/");
+	return {
+		owner: owner ?? "alice",
+		repo: name ?? "project",
+		pull_requests: [],
+		total_prs: 0,
+		fetched_at: new Date().toISOString(),
+	};
+};
+
+export const makeGitHubFetchResult = (repos: Array<{ repo: string; commits: Array<{ sha?: string; message?: string; date?: string }> }>): GitHubFetchResult => {
+	const repoMetas = repos.map(r => makeGitHubRepoMeta(r.repo));
+	const repoData = new Map<string, { commits: GitHubRepoCommitsStore; prs: GitHubRepoPRsStore }>();
+
+	for (const r of repos) {
+		repoData.set(r.repo, {
+			commits: makeGitHubRepoCommitsStore(r.repo, r.commits),
+			prs: makeGitHubRepoPRsStore(r.repo),
+		});
+	}
+
+	return {
+		meta: {
+			username: "test-user",
+			repositories: repoMetas,
+			total_repos_available: repos.length,
+			repos_fetched: repos.length,
+			fetched_at: new Date().toISOString(),
+		},
+		repos: repoData,
+	};
+};
+
+export const GITHUB_V2_FIXTURES = {
+	singleCommit: (repo = "alice/project", timestamp = hoursAgo(1)) => makeGitHubFetchResult([{ repo, commits: [{ message: "Initial commit", date: timestamp }] }]),
+
+	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hoursAgo(2)) =>
+		makeGitHubFetchResult([
+			{
+				repo,
+				commits: [
+					{ message: "feat: add feature A", date: baseTimestamp },
+					{ message: "feat: add feature B", date: baseTimestamp },
+					{ message: "fix: bug fix", date: baseTimestamp },
+				],
+			},
+		]),
+
+	empty: () => makeGitHubFetchResult([]),
 };
 
 export const BLUESKY_FIXTURES = {
@@ -440,6 +488,30 @@ export const ACCOUNTS = {
 		access_token: "devpad_token",
 		is_active: true,
 	},
+	alice_reddit: {
+		id: "acc-alice-reddit",
+		platform: "reddit" as const,
+		platform_user_id: "reddit-alice-123",
+		platform_username: "alice_redditor",
+		access_token: "reddit_alice_token",
+		is_active: true,
+	},
+	bob_reddit: {
+		id: "acc-bob-reddit",
+		platform: "reddit" as const,
+		platform_user_id: "reddit-bob-456",
+		platform_username: "bob_redditor",
+		access_token: "reddit_bob_token",
+		is_active: true,
+	},
+	alice_twitter: {
+		id: "acc-alice-twitter",
+		platform: "twitter" as const,
+		platform_user_id: "twitter-alice-123",
+		platform_username: "alice_tweeter",
+		access_token: "twitter_alice_token",
+		is_active: true,
+	},
 };
 
 export const API_KEYS = {
@@ -451,11 +523,11 @@ export const API_KEYS = {
 export const makeTimelineItem = (
 	overrides: Partial<{
 		id: string;
-		platform: "github" | "bluesky" | "youtube" | "devpad";
-		type: "commit" | "post" | "video" | "task";
+		platform: "github" | "bluesky" | "youtube" | "devpad" | "reddit";
+		type: "commit" | "post" | "video" | "task" | "comment";
 		timestamp: string;
 		title: string;
-		url?: string;
+		url: string;
 		payload: Record<string, unknown>;
 	}> = {}
 ) => ({
@@ -465,6 +537,163 @@ export const makeTimelineItem = (
 	timestamp: new Date().toISOString(),
 	title: "Test item",
 	url: "https://example.com",
-	payload: { type: "commit", sha: randomSha(), message: "test", repo: "test/repo" },
+	payload: { type: "commit", sha: randomSha(), message: "test", repo: "test/repo", branch: "main" },
 	...overrides,
 });
+
+// Reddit fixtures
+export const makeRedditPost = (overrides: Partial<RedditPost> = {}): RedditPost => ({
+	id: crypto.randomUUID().slice(0, 7),
+	name: `t3_${crypto.randomUUID().slice(0, 7)}`,
+	title: "Test Reddit Post",
+	selftext: "This is a test post",
+	url: "https://reddit.com/r/test/comments/abc123/test_post/",
+	permalink: "/r/test/comments/abc123/test_post/",
+	subreddit: "test",
+	subreddit_prefixed: "r/test",
+	author: "testuser",
+	created_utc: Date.now() / 1000,
+	score: 42,
+	upvote_ratio: 0.95,
+	num_comments: 5,
+	is_self: true,
+	is_video: false,
+	over_18: false,
+	spoiler: false,
+	stickied: false,
+	locked: false,
+	archived: false,
+	...overrides,
+});
+
+export const makeRedditComment = (overrides: Partial<RedditComment> = {}): RedditComment => ({
+	id: crypto.randomUUID().slice(0, 7),
+	name: `t1_${crypto.randomUUID().slice(0, 7)}`,
+	body: "This is a test comment",
+	permalink: "/r/test/comments/abc123/test_post/def456/",
+	link_id: "t3_abc123",
+	link_title: "Parent Post Title",
+	link_permalink: "/r/test/comments/abc123/test_post/",
+	subreddit: "test",
+	subreddit_prefixed: "r/test",
+	author: "testuser",
+	created_utc: Date.now() / 1000,
+	score: 10,
+	is_submitter: false,
+	stickied: false,
+	edited: false,
+	parent_id: "t3_abc123",
+	...overrides,
+});
+
+export const REDDIT_FIXTURES = {
+	singlePost: () => [makeRedditPost()],
+
+	multiplePosts: (count = 3) =>
+		Array.from({ length: count }, (_, i) =>
+			makeRedditPost({
+				title: `Post ${i + 1}`,
+				score: i * 10,
+				created_utc: Date.now() / 1000 - i * 3600,
+			})
+		),
+
+	singleComment: () => [makeRedditComment()],
+
+	multipleComments: (count = 3) =>
+		Array.from({ length: count }, (_, i) =>
+			makeRedditComment({
+				body: `Comment ${i + 1}`,
+				score: i * 5,
+			})
+		),
+
+	postsWithSubreddits: () => [makeRedditPost({ subreddit: "programming", title: "Programming post" }), makeRedditPost({ subreddit: "typescript", title: "TypeScript post" }), makeRedditPost({ subreddit: "webdev", title: "Web dev post" })],
+
+	commentsWithSubreddits: () => [makeRedditComment({ subreddit: "programming", body: "Programming comment" }), makeRedditComment({ subreddit: "typescript", body: "TypeScript comment" })],
+
+	nsfwPost: () => [makeRedditPost({ over_18: true, title: "NSFW post" })],
+
+	videoPost: () => [
+		makeRedditPost({
+			is_video: true,
+			is_self: false,
+			url: "https://v.redd.it/test123",
+			title: "Video post",
+		}),
+	],
+
+	linkPost: () => [
+		makeRedditPost({
+			is_self: false,
+			selftext: "",
+			url: "https://example.com/article",
+			title: "Link post",
+		}),
+	],
+
+	empty: () => [],
+};
+
+export const makeTwitterTweet = (overrides: Partial<TwitterTweet> = {}): TwitterTweet => ({
+	id: crypto.randomUUID().slice(0, 19).replace(/-/g, ""),
+	text: "This is a test tweet",
+	created_at: new Date().toISOString(),
+	author_id: "123456789",
+	public_metrics: {
+		retweet_count: 5,
+		reply_count: 2,
+		like_count: 42,
+		quote_count: 1,
+	},
+	possibly_sensitive: false,
+	...overrides,
+});
+
+export const TWITTER_FIXTURES = {
+	singleTweet: () => [makeTwitterTweet()],
+
+	multipleTweets: (count = 3) =>
+		Array.from({ length: count }, (_, i) =>
+			makeTwitterTweet({
+				text: `Tweet ${i + 1}`,
+				public_metrics: {
+					retweet_count: i * 2,
+					reply_count: i,
+					like_count: i * 10,
+					quote_count: 0,
+				},
+				created_at: new Date(Date.now() - i * 3600000).toISOString(),
+			})
+		),
+
+	withRetweet: () => [
+		makeTwitterTweet({
+			text: "RT @other: Original tweet content",
+			referenced_tweets: [{ type: "retweeted", id: "987654321" }],
+		}),
+	],
+
+	withReply: () => [
+		makeTwitterTweet({
+			text: "@someone This is a reply",
+			in_reply_to_user_id: "111222333",
+			referenced_tweets: [{ type: "replied_to", id: "444555666" }],
+		}),
+	],
+
+	withMedia: () => [
+		makeTwitterTweet({
+			attachments: { media_keys: ["media_1"] },
+		}),
+	],
+
+	sensitive: () => [
+		makeTwitterTweet({
+			text: "Sensitive content tweet",
+			possibly_sensitive: true,
+		}),
+	],
+
+	empty: () => [],
+};

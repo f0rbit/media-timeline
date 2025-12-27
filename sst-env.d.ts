@@ -3,24 +3,23 @@
 /* eslint-disable */
 /* deno-fmt-ignore-file */
 
-import "sst"
+import "sst";
 declare module "sst" {
-  export interface Resource {
-    "EncryptionKey": {
-      "type": "sst.sst.Secret"
-      "value": string
-    }
-  }
+	export interface Resource {
+		EncryptionKey: {
+			type: "sst.sst.Secret";
+			value: string;
+		};
+	}
 }
-// cloudflare 
-import * as cloudflare from "@cloudflare/workers-types";
+// cloudflare
+import type * as cloudflare from "@cloudflare/workers-types";
 declare module "sst" {
-  export interface Resource {
-    "Api": cloudflare.Service
-    "BUCKET": cloudflare.R2Bucket
-    "DB": cloudflare.D1Database
-  }
+	export interface Resource {
+		Api: cloudflare.Service;
+		BUCKET: cloudflare.R2Bucket;
+		DB: cloudflare.D1Database;
+	}
 }
 
-import "sst"
-export {}
+import "sst";

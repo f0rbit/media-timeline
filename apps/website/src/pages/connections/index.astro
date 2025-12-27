@@ -1,0 +1,12 @@
+---
+import ConnectionList from "../../components/solid/ConnectionList";
+import AppLayout from "../../layouts/AppLayout.astro";
+---
+
+<AppLayout title="Connections | Media Timeline">
+  <section>
+    <h3>Connections</h3>
+    <p class="description">Manage your connected platforms.</p>
+  </section>
+  <ConnectionList client:load />
+</AppLayout>

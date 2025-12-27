@@ -1,0 +1,12 @@
+---
+import TimelineList from "../components/solid/TimelineList";
+import AppLayout from "../layouts/AppLayout.astro";
+---
+
+<AppLayout title="Timeline | Media Timeline">
+  <section>
+    <h3>Timeline</h3>
+    <p class="description">Your aggregated activity across all connected platforms.</p>
+  </section>
+  <TimelineList client:load />
+</AppLayout>

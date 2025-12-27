@@ -1,116 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { normalizeGitHub } from "../../src/platforms";
-import type { GitHubRaw, Platform } from "../../src/schema";
-import { combineTimelines, groupByDate, groupCommits, type TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, GITHUB_FIXTURES, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
-import { addAccountMember, createTestContext, getAccountMembers, getUserAccounts, seedAccount, seedUser, type TestContext } from "./setup";
-
-type AccountWithUser = {
-	id: string;
-	platform: Platform;
-	platform_user_id: string | null;
-	user_id: string;
-};
-
-type RawSnapshot = {
-	account_id: string;
-	platform: Platform;
-	version: string;
-	data: unknown;
-};
-
-type ProviderDataMap = Record<string, GitHubRaw>;
-
-const runTestCron = async (ctx: TestContext, providerData: ProviderDataMap): Promise<{ updated_users: string[]; fetch_count: Map<string, number> }> => {
-	const { results: accountsWithUsers } = await ctx.d1
-		.prepare(`
-      SELECT 
-        a.id, a.platform, a.platform_user_id, am.user_id
-      FROM accounts a
-      INNER JOIN account_members am ON a.id = am.account_id
-      WHERE a.is_active = 1
-    `)
-		.all<AccountWithUser>();
-
-	const userAccounts = new Map<string, AccountWithUser[]>();
-	for (const account of accountsWithUsers) {
-		const existing = userAccounts.get(account.user_id) ?? [];
-		existing.push(account);
-		userAccounts.set(account.user_id, existing);
-	}
-
-	const updatedUsers = new Set<string>();
-	const rawSnapshots = new Map<string, RawSnapshot>();
-	const fetchCount = new Map<string, number>();
-
-	const processedAccounts = new Set<string>();
-
-	for (const [userId, accounts] of userAccounts) {
-		for (const account of accounts) {
-			if (processedAccounts.has(account.id)) {
-				const existingSnapshot = rawSnapshots.get(account.id);
-				if (existingSnapshot) {
-					updatedUsers.add(userId);
-				}
-				continue;
-			}
-
-			const data = providerData[account.id];
-			if (!data) continue;
-
-			fetchCount.set(account.id, (fetchCount.get(account.id) ?? 0) + 1);
-			processedAccounts.add(account.id);
-
-			const store = ctx.corpus.createRawStore(account.platform, account.id);
-			const putResult = await store.put(data as Record<string, unknown>);
-			if (!putResult.ok) continue;
-
-			rawSnapshots.set(account.id, {
-				account_id: account.id,
-				platform: account.platform,
-				version: putResult.value.version,
-				data,
-			});
-			updatedUsers.add(userId);
-		}
-	}
-
-	for (const userId of updatedUsers) {
-		const accounts = userAccounts.get(userId) ?? [];
-		const snapshots: RawSnapshot[] = [];
-
-		for (const account of accounts) {
-			const snapshot = rawSnapshots.get(account.id);
-			if (snapshot) {
-				snapshots.push(snapshot);
-			}
-		}
-
-		if (snapshots.length === 0) continue;
-
-		const items = snapshots.flatMap(s => normalizeGitHub(s.data as GitHubRaw));
-		const sorted = combineTimelines(items);
-		const grouped = groupCommits(sorted);
-		const dateGroups = groupByDate(grouped);
-
-		const timeline = {
-			user_id: userId,
-			generated_at: new Date().toISOString(),
-			groups: dateGroups,
-		};
-
-		const timelineStore = ctx.corpus.createTimelineStore(userId);
-		const parents = snapshots.map(s => ({
-			store_id: `raw/${s.platform}/${s.account_id}`,
-			version: s.version,
-			role: "source" as const,
-		}));
-
-		await timelineStore.put(timeline, { parents });
-	}
-
-	return { updated_users: Array.from(updatedUsers), fetch_count: fetchCount };
-};
+import { handleCron } from "../../src/cron";
+import type { TimelineEntry } from "../../src/timeline";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, USERS, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
+import { type TestContext, addAccountMember, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, getAccountMembers, getUserAccounts, seedAccount, seedUser, setupGitHubProvider } from "./setup";
 
 describe("multi-tenant", () => {
 	let ctx: TestContext;
@@ -131,17 +23,10 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
 			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
 
-			const sharedData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 99, name: "org/shared-repo", url: "https://api.github.com/repos/org/shared-repo" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: "shared123", message: "shared commit" })],
-					},
-				}),
-			]);
+			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ sha: "shared123", repo: "org/shared-repo", message: "shared commit" })]);
 
-			await runTestCron(ctx, { [ACCOUNTS.shared_org_github.id]: sharedData });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
 			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
@@ -167,7 +52,7 @@ describe("multi-tenant", () => {
 			}
 		});
 
-		it("shared account is only fetched once per cron run", async () => {
+		it("shared account generates timelines for all members", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedUser(ctx, USERS.bob);
 			await seedUser(ctx, USERS.charlie);
@@ -178,10 +63,19 @@ describe("multi-tenant", () => {
 
 			const sharedData = GITHUB_FIXTURES.singleCommit();
 
-			const result = await runTestCron(ctx, { [ACCOUNTS.shared_org_github.id]: sharedData });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
+			const result = await handleCron({ ...ctx.appContext, gitHubProvider });
 
-			expect(result.fetch_count.get(ACCOUNTS.shared_org_github.id)).toBe(1);
 			expect(result.updated_users).toHaveLength(3);
+			expect(result.timelines_generated).toBe(3);
+
+			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
+			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
+			const charlieTimeline = await ctx.corpus.createTimelineStore(USERS.charlie.id).get_latest();
+
+			expect(aliceTimeline.ok).toBe(true);
+			expect(bobTimeline.ok).toBe(true);
+			expect(charlieTimeline.ok).toBe(true);
 		});
 
 		it("each user gets their own timeline even with shared data", async () => {
@@ -192,24 +86,15 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.shared_org_github, "owner");
 			await addAccountMember(ctx, USERS.alice.id, ACCOUNTS.shared_org_github.id, "member");
 
-			const aliceData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 1, name: "alice/personal", url: "https://api.github.com/repos/alice/personal" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "alice personal" })] },
-				}),
-			]);
+			const aliceData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/personal", message: "alice personal" })]);
 
-			const sharedData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					repo: { id: 99, name: "org/shared", url: "https://api.github.com/repos/org/shared" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "shared work" })] },
-				}),
-			]);
+			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "org/shared", message: "shared work" })]);
 
-			await runTestCron(ctx, {
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
 				[ACCOUNTS.alice_github.id]: aliceData,
 				[ACCOUNTS.shared_org_github.id]: sharedData,
 			});
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
 			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
@@ -244,10 +129,11 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.bob_github);
 
-			await runTestCron(ctx, {
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
 				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit("alice/repo"),
 				[ACCOUNTS.bob_github.id]: GITHUB_FIXTURES.singleCommit("bob/repo"),
 			});
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const aliceStore = ctx.corpus.createTimelineStore(USERS.alice.id);
 			const bobStore = ctx.corpus.createTimelineStore(USERS.bob.id);
@@ -281,7 +167,8 @@ describe("multi-tenant", () => {
 			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
 
 			const sharedData = GITHUB_FIXTURES.singleCommit("org/shared");
-			await runTestCron(ctx, { [ACCOUNTS.shared_org_github.id]: sharedData });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
 			expect(bobTimeline.ok).toBe(true);
@@ -300,7 +187,8 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
 
 			const aliceData = GITHUB_FIXTURES.singleCommit("alice/private");
-			await runTestCron(ctx, { [ACCOUNTS.alice_github.id]: aliceData });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.alice_github.id]: aliceData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const charlieTimeline = await ctx.corpus.createTimelineStore(USERS.charlie.id).get_latest();
 
@@ -413,14 +301,15 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky, "owner");
 
 			const githubData = makeGitHubRaw([
-				makeGitHubPushEvent({
-					created_at: new Date(Date.now() - 3600000).toISOString(),
-					repo: { id: 1, name: "alice/repo", url: "https://api.github.com/repos/alice/repo" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "github commit" })] },
+				makeGitHubExtendedCommit({
+					date: new Date(Date.now() - 3600000).toISOString(),
+					repo: "alice/repo",
+					message: "github commit",
 				}),
 			]);
 
-			await runTestCron(ctx, { [ACCOUNTS.alice_github.id]: githubData });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.alice_github.id]: githubData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const timeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
 			expect(timeline.ok).toBe(true);
@@ -444,7 +333,8 @@ describe("multi-tenant", () => {
 
 			const githubData = GITHUB_FIXTURES.multipleCommitsSameDay("org/project");
 
-			await runTestCron(ctx, { [ACCOUNTS.shared_org_github.id]: githubData });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: githubData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const adminAccounts = await getUserAccounts(ctx, USERS.org_admin.id);
 			const aliceAccounts = await getUserAccounts(ctx, USERS.alice.id);

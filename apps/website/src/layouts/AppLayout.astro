@@ -1,0 +1,46 @@
+---
+import Layout from "./Layout.astro";
+
+interface Props {
+	title?: string;
+}
+
+const { title = "Media Timeline" } = Astro.props;
+
+const pages = [
+	{ name: "timeline", href: "/" },
+	{ name: "connections", href: "/connections" },
+];
+
+const currentPath = Astro.url.pathname;
+const active = pages.find(p => (p.href === "/" ? currentPath === "/" : currentPath.startsWith(p.href)))?.name ?? "timeline";
+---
+
+<Layout title={title}>
+  <body>
+    <div id="container">
+      <header>
+        <a href="/"><h5>media timeline</h5></a>
+        <nav>
+          {pages.map(p => (
+            <a href={p.href} class={active === p.name ? "active" : ""}>
+              {p.name}
+            </a>
+          ))}
+        </nav>
+      </header>
+      <main class="flex-col">
+        <slot />
+      </main>
+    </div>
+    <footer>
+      <p class="description">media.devpad.tools</p>
+    </footer>
+  </body>
+</Layout>
+
+<style>
+  main {
+    margin-top: 24px;
+  }
+</style>

@@ -1,17 +1,73 @@
-import { create_cloudflare_backend, create_corpus, define_store, json_codec, type Store } from "@f0rbit/corpus/cloudflare";
+import { type Backend, type Store, create_corpus, define_store, json_codec } from "@f0rbit/corpus";
 import { z } from "zod";
-import type { Bindings } from "./bindings";
-import { BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, TimelineSchema, YouTubeRawSchema } from "./schema";
-import { err, ok, type Result } from "./utils";
+import {
+	BlueskyRawSchema,
+	DevpadRawSchema,
+	type GitHubMetaStore,
+	GitHubMetaStoreSchema,
+	GitHubRawSchema,
+	type GitHubRepoCommitsStore,
+	GitHubRepoCommitsStoreSchema,
+	type GitHubRepoPRsStore,
+	GitHubRepoPRsStoreSchema,
+	type RedditCommentsStore,
+	RedditCommentsStoreSchema,
+	type RedditMetaStore,
+	RedditMetaStoreSchema,
+	type RedditPostsStore,
+	RedditPostsStoreSchema,
+	TimelineSchema,
+	type TwitterMetaStore,
+	TwitterMetaStoreSchema,
+	type TwitterTweetsStore,
+	TwitterTweetsStoreSchema,
+	YouTubeRawSchema,
+} from "./schema";
+import { type Result, err, ok } from "./utils";
 
 export type CorpusError = { kind: "store_not_found"; store_id: string };
 
 export type RawStoreId = `raw/${string}/${string}`;
 export type TimelineStoreId = `timeline/${string}`;
-export type StoreId = RawStoreId | TimelineStoreId;
+export type GitHubMetaStoreId = `github/${string}/meta`;
+export type GitHubCommitsStoreId = `github/${string}/commits/${string}/${string}`;
+export type GitHubPRsStoreId = `github/${string}/prs/${string}/${string}`;
+
+// Reddit store IDs
+export type RedditMetaStoreId = `reddit/${string}/meta`;
+export type RedditPostsStoreId = `reddit/${string}/posts`;
+export type RedditCommentsStoreId = `reddit/${string}/comments`;
+
+// Twitter store IDs
+export type TwitterMetaStoreId = `twitter/${string}/meta`;
+export type TwitterTweetsStoreId = `twitter/${string}/tweets`;
+
+export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId | RedditMetaStoreId | RedditPostsStoreId | RedditCommentsStoreId | TwitterMetaStoreId | TwitterTweetsStoreId;
 
 export const rawStoreId = (platform: string, accountId: string): RawStoreId => `raw/${platform}/${accountId}`;
 export const timelineStoreId = (userId: string): TimelineStoreId => `timeline/${userId}`;
+
+// === GitHub Store ID Helpers ===
+
+export const githubMetaStoreId = (accountId: string): GitHubMetaStoreId => `github/${accountId}/meta`;
+
+export const githubCommitsStoreId = (accountId: string, owner: string, repo: string): GitHubCommitsStoreId => `github/${accountId}/commits/${owner}/${repo}`;
+
+export const githubPRsStoreId = (accountId: string, owner: string, repo: string): GitHubPRsStoreId => `github/${accountId}/prs/${owner}/${repo}`;
+
+// === Reddit Store ID Helpers ===
+
+export const redditMetaStoreId = (accountId: string): RedditMetaStoreId => `reddit/${accountId}/meta`;
+
+export const redditPostsStoreId = (accountId: string): RedditPostsStoreId => `reddit/${accountId}/posts`;
+
+export const redditCommentsStoreId = (accountId: string): RedditCommentsStoreId => `reddit/${accountId}/comments`;
+
+// === Twitter Store ID Helpers ===
+
+export const twitterMetaStoreId = (accountId: string): TwitterMetaStoreId => `twitter/${accountId}/meta`;
+
+export const twitterTweetsStoreId = (accountId: string): TwitterTweetsStoreId => `twitter/${accountId}/tweets`;
 
 export const RawDataSchema = z.union([GitHubRawSchema, BlueskyRawSchema, YouTubeRawSchema, DevpadRawSchema]);
 export const TimelineDataSchema = TimelineSchema;
@@ -19,44 +75,210 @@ export const TimelineDataSchema = TimelineSchema;
 export type RawData = z.infer<typeof RawDataSchema>;
 export type TimelineData = z.infer<typeof TimelineDataSchema>;
 
-type CorpusBackend = {
-	d1: { prepare: (sql: string) => unknown };
-	r2: {
-		get: (key: string) => Promise<{ body: ReadableStream<Uint8Array>; arrayBuffer: () => Promise<ArrayBuffer> } | null>;
-		put: (key: string, data: ReadableStream<Uint8Array> | Uint8Array) => Promise<void>;
-		delete: (key: string) => Promise<void>;
-		head: (key: string) => Promise<{ key: string } | null>;
-	};
-};
-
-const toCorpusBackend = (env: Bindings): CorpusBackend => ({
-	d1: env.DB as unknown as CorpusBackend["d1"],
-	r2: env.BUCKET as unknown as CorpusBackend["r2"],
-});
-
 export type RawStore = { store: Store<RawData>; id: RawStoreId };
 export type TimelineStore = { store: Store<TimelineData>; id: TimelineStoreId };
 
-export function createRawStore(platform: string, accountId: string, env: Bindings): Result<RawStore, CorpusError> {
+export function createRawStore(backend: Backend, platform: string, accountId: string): Result<RawStore, CorpusError> {
 	const id = rawStoreId(platform, accountId);
 	const corpus = create_corpus()
-		.with_backend(create_cloudflare_backend(toCorpusBackend(env)))
+		.with_backend(backend)
 		.with_store(define_store(id, json_codec(RawDataSchema)))
 		.build();
+
 	const store = corpus.stores[id];
-	if (!store) return err({ kind: "store_not_found", store_id: id });
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
 	return ok({ store, id });
 }
 
-export function createTimelineStore(userId: string, env: Bindings): Result<TimelineStore, CorpusError> {
+export function createTimelineStore(backend: Backend, userId: string): Result<TimelineStore, CorpusError> {
 	const id = timelineStoreId(userId);
 	const corpus = create_corpus()
-		.with_backend(create_cloudflare_backend(toCorpusBackend(env)))
+		.with_backend(backend)
 		.with_store(define_store(id, json_codec(TimelineDataSchema)))
 		.build();
+
 	const store = corpus.stores[id];
-	if (!store) return err({ kind: "store_not_found", store_id: id });
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
 	return ok({ store, id });
+}
+
+export type GitHubMetaStoreResult = { store: Store<GitHubMetaStore>; id: GitHubMetaStoreId };
+export type GitHubCommitsStoreResult = { store: Store<GitHubRepoCommitsStore>; id: GitHubCommitsStoreId };
+export type GitHubPRsStoreResult = { store: Store<GitHubRepoPRsStore>; id: GitHubPRsStoreId };
+
+export function createGitHubMetaStore(backend: Backend, accountId: string): Result<GitHubMetaStoreResult, CorpusError> {
+	const id = githubMetaStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(GitHubMetaStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createGitHubCommitsStore(backend: Backend, accountId: string, owner: string, repo: string): Result<GitHubCommitsStoreResult, CorpusError> {
+	const id = githubCommitsStoreId(accountId, owner, repo);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(GitHubRepoCommitsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createGitHubPRsStore(backend: Backend, accountId: string, owner: string, repo: string): Result<GitHubPRsStoreResult, CorpusError> {
+	const id = githubPRsStoreId(accountId, owner, repo);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(GitHubRepoPRsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+// === Reddit Store Types ===
+
+export type RedditMetaStoreResult = { store: Store<RedditMetaStore>; id: RedditMetaStoreId };
+export type RedditPostsStoreResult = { store: Store<RedditPostsStore>; id: RedditPostsStoreId };
+export type RedditCommentsStoreResult = { store: Store<RedditCommentsStore>; id: RedditCommentsStoreId };
+
+// === Reddit Store Creators ===
+
+export function createRedditMetaStore(backend: Backend, accountId: string): Result<RedditMetaStoreResult, CorpusError> {
+	const id = redditMetaStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(RedditMetaStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createRedditPostsStore(backend: Backend, accountId: string): Result<RedditPostsStoreResult, CorpusError> {
+	const id = redditPostsStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(RedditPostsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createRedditCommentsStore(backend: Backend, accountId: string): Result<RedditCommentsStoreResult, CorpusError> {
+	const id = redditCommentsStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(RedditCommentsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+// === Twitter Store Types ===
+
+export type TwitterMetaStoreResult = { store: Store<TwitterMetaStore>; id: TwitterMetaStoreId };
+export type TwitterTweetsStoreResult = { store: Store<TwitterTweetsStore>; id: TwitterTweetsStoreId };
+
+// === Twitter Store Creators ===
+
+export function createTwitterMetaStore(backend: Backend, accountId: string): Result<TwitterMetaStoreResult, CorpusError> {
+	const id = twitterMetaStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(TwitterMetaStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createTwitterTweetsStore(backend: Backend, accountId: string): Result<TwitterTweetsStoreResult, CorpusError> {
+	const id = twitterTweetsStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(TwitterTweetsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+// === Twitter Store ID Listing ===
+
+export function listTwitterStoreIds(accountId: string): string[] {
+	return [twitterMetaStoreId(accountId), twitterTweetsStoreId(accountId)];
+}
+
+// === Reddit Store ID Listing ===
+
+export function listRedditStoreIds(accountId: string): string[] {
+	return [redditMetaStoreId(accountId), redditPostsStoreId(accountId), redditCommentsStoreId(accountId)];
+}
+
+// === GitHub Store Discovery ===
+
+export type RepoStoreInfo = { owner: string; repo: string; storeId: string };
+
+export async function listGitHubCommitStores(backend: Backend, accountId: string): Promise<RepoStoreInfo[]> {
+	const metaResult = createGitHubMetaStore(backend, accountId);
+	if (!metaResult.ok) return [];
+
+	const latestResult = await metaResult.value.store.get_latest();
+	if (!latestResult.ok) return [];
+
+	return latestResult.value.data.repositories.map((repo: { owner: string; name: string }) => ({
+		owner: repo.owner,
+		repo: repo.name,
+		storeId: githubCommitsStoreId(accountId, repo.owner, repo.name),
+	}));
+}
+
+export async function listGitHubPRStores(backend: Backend, accountId: string): Promise<RepoStoreInfo[]> {
+	const metaResult = createGitHubMetaStore(backend, accountId);
+	if (!metaResult.ok) return [];
+
+	const latestResult = await metaResult.value.store.get_latest();
+	if (!latestResult.ok) return [];
+
+	return latestResult.value.data.repositories.map((repo: { owner: string; name: string }) => ({
+		owner: repo.owner,
+		repo: repo.name,
+		storeId: githubPRsStoreId(accountId, repo.owner, repo.name),
+	}));
 }
 
 export type RateLimitState = {
@@ -101,7 +323,7 @@ export const shouldFetch = (state: RateLimitState): boolean => {
 const parseHeader = (headers: Headers, name: string): number | null => {
 	const value = headers.get(name);
 	if (!value) return null;
-	const parsed = parseInt(value, 10);
+	const parsed = Number.parseInt(value, 10);
 	return Number.isNaN(parsed) ? null : parsed;
 };
 

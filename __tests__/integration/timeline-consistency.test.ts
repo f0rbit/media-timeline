@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { normalizeBluesky, normalizeGitHub } from "../../src/platforms";
 import type { CommitGroup, TimelineItem } from "../../src/schema";
-import { combineTimelines, groupByDate, groupCommits, type TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubCommit, makeGitHubPushEvent, makeGitHubRaw, USERS } from "./fixtures";
-import { createTestContext, seedAccount, seedUser, type TestContext } from "./setup";
+import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "../../src/timeline";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
+import { type TestContext, createTestContext, seedAccount, seedUser } from "./setup";
 
 const isCommitGroup = (entry: TimelineEntry): entry is CommitGroup => entry.type === "commit_group";
 
@@ -35,14 +35,9 @@ describe("timeline consistency", () => {
 		it("groups commits from same repo on same day", async () => {
 			const timestamp = daysAgo(0);
 			const raw = makeGitHubRaw([
-				makeGitHubPushEvent({
-					created_at: timestamp,
-					repo: { id: 1, name: "user/repo", url: "https://api.github.com/repos/user/repo" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: "aaa", message: "commit A" }), makeGitHubCommit({ sha: "bbb", message: "commit B" }), makeGitHubCommit({ sha: "ccc", message: "commit C" })],
-					},
-				}),
+				makeGitHubExtendedCommit({ sha: "aaa", date: timestamp, repo: "user/repo", message: "commit A" }),
+				makeGitHubExtendedCommit({ sha: "bbb", date: timestamp, repo: "user/repo", message: "commit B" }),
+				makeGitHubExtendedCommit({ sha: "ccc", date: timestamp, repo: "user/repo", message: "commit C" }),
 			]);
 
 			const items = normalizeGitHub(raw);
@@ -62,22 +57,8 @@ describe("timeline consistency", () => {
 		it("keeps commits from different repos separate", async () => {
 			const timestamp = daysAgo(0);
 			const raw = makeGitHubRaw([
-				makeGitHubPushEvent({
-					created_at: timestamp,
-					repo: { id: 1, name: "user/repo-a", url: "https://api.github.com/repos/user/repo-a" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: "aaa", message: "commit in repo-a" })],
-					},
-				}),
-				makeGitHubPushEvent({
-					created_at: timestamp,
-					repo: { id: 2, name: "user/repo-b", url: "https://api.github.com/repos/user/repo-b" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: "bbb", message: "commit in repo-b" })],
-					},
-				}),
+				makeGitHubExtendedCommit({ sha: "aaa", date: timestamp, repo: "user/repo-a", message: "commit in repo-a" }),
+				makeGitHubExtendedCommit({ sha: "bbb", date: timestamp, repo: "user/repo-b", message: "commit in repo-b" }),
 			]);
 
 			const items = normalizeGitHub(raw);
@@ -95,22 +76,8 @@ describe("timeline consistency", () => {
 
 		it("keeps commits from same repo on different days separate", async () => {
 			const raw = makeGitHubRaw([
-				makeGitHubPushEvent({
-					created_at: daysAgo(0),
-					repo: { id: 1, name: "user/repo", url: "https://api.github.com/repos/user/repo" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: "today", message: "today commit" })],
-					},
-				}),
-				makeGitHubPushEvent({
-					created_at: daysAgo(1),
-					repo: { id: 1, name: "user/repo", url: "https://api.github.com/repos/user/repo" },
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ sha: "yesterday", message: "yesterday commit" })],
-					},
-				}),
+				makeGitHubExtendedCommit({ sha: "today", date: daysAgo(0), repo: "user/repo", message: "today commit" }),
+				makeGitHubExtendedCommit({ sha: "yesterday", date: daysAgo(1), repo: "user/repo", message: "yesterday commit" }),
 			]);
 
 			const items = normalizeGitHub(raw);
@@ -165,7 +132,8 @@ describe("timeline consistency", () => {
 					type: "commit",
 					timestamp: daysAgo(2),
 					title: "old commit",
-					payload: { type: "commit", sha: "old", message: "old", repo: "test/repo" },
+					url: "https://github.com/test/repo/commit/old",
+					payload: { type: "commit", sha: "old", message: "old", repo: "test/repo", branch: "main" },
 				},
 				{
 					id: "new",
@@ -173,7 +141,8 @@ describe("timeline consistency", () => {
 					type: "commit",
 					timestamp: daysAgo(0),
 					title: "new commit",
-					payload: { type: "commit", sha: "new", message: "new", repo: "test/repo" },
+					url: "https://github.com/test/repo/commit/new",
+					payload: { type: "commit", sha: "new", message: "new", repo: "test/repo", branch: "main" },
 				},
 				{
 					id: "mid",
@@ -181,7 +150,8 @@ describe("timeline consistency", () => {
 					type: "commit",
 					timestamp: daysAgo(1),
 					title: "mid commit",
-					payload: { type: "commit", sha: "mid", message: "mid", repo: "test/repo" },
+					url: "https://github.com/test/repo/commit/mid",
+					payload: { type: "commit", sha: "mid", message: "mid", repo: "test/repo", branch: "main" },
 				},
 			];
 
@@ -193,21 +163,9 @@ describe("timeline consistency", () => {
 
 		it("groups items by date correctly", () => {
 			const raw = makeGitHubRaw([
-				makeGitHubPushEvent({
-					created_at: daysAgo(0),
-					repo: { id: 1, name: "user/repo", url: "" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "today" })] },
-				}),
-				makeGitHubPushEvent({
-					created_at: daysAgo(1),
-					repo: { id: 1, name: "user/repo", url: "" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "yesterday" })] },
-				}),
-				makeGitHubPushEvent({
-					created_at: daysAgo(0),
-					repo: { id: 2, name: "user/other", url: "" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "also today" })] },
-				}),
+				makeGitHubExtendedCommit({ date: daysAgo(0), repo: "user/repo", message: "today" }),
+				makeGitHubExtendedCommit({ date: daysAgo(1), repo: "user/repo", message: "yesterday" }),
+				makeGitHubExtendedCommit({ date: daysAgo(0), repo: "user/other", message: "also today" }),
 			]);
 
 			const items = normalizeGitHub(raw);
@@ -230,25 +188,31 @@ describe("timeline consistency", () => {
 					type: "commit_group",
 					date: "2024-01-01",
 					repo: "test/repo",
+					branch: "main",
 					commits: [],
 					total_additions: 0,
 					total_deletions: 0,
+					total_files_changed: 0,
 				},
 				{
 					type: "commit_group",
 					date: "2024-01-03",
 					repo: "test/repo",
+					branch: "main",
 					commits: [],
 					total_additions: 0,
 					total_deletions: 0,
+					total_files_changed: 0,
 				},
 				{
 					type: "commit_group",
 					date: "2024-01-02",
 					repo: "test/repo",
+					branch: "main",
 					commits: [],
 					total_additions: 0,
 					total_deletions: 0,
+					total_files_changed: 0,
 				},
 			];
 
@@ -264,13 +228,7 @@ describe("timeline consistency", () => {
 			const timestamp2 = hoursAgo(2);
 			const timestamp3 = hoursAgo(3);
 
-			const githubRaw = makeGitHubRaw([
-				makeGitHubPushEvent({
-					created_at: timestamp2,
-					repo: { id: 1, name: "user/repo", url: "" },
-					payload: { ref: "refs/heads/main", commits: [makeGitHubCommit({ message: "github" })] },
-				}),
-			]);
+			const githubRaw = makeGitHubRaw([makeGitHubExtendedCommit({ date: timestamp2, repo: "user/repo", message: "github" })]);
 
 			const blueskyRaw = makeBlueskyRaw([
 				makeBlueskyFeedItem({
@@ -412,14 +370,7 @@ describe("timeline consistency", () => {
 	describe("edge cases", () => {
 		it("handles commits with very long messages", () => {
 			const longMessage = "a".repeat(1000);
-			const raw = makeGitHubRaw([
-				makeGitHubPushEvent({
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ message: longMessage })],
-					},
-				}),
-			]);
+			const raw = makeGitHubRaw([makeGitHubExtendedCommit({ message: longMessage })]);
 
 			const items = normalizeGitHub(raw);
 			expect(items).toHaveLength(1);
@@ -428,14 +379,7 @@ describe("timeline consistency", () => {
 
 		it("handles commits with multi-line messages", () => {
 			const multiLineMessage = "First line\n\nThis is a body\nWith multiple lines";
-			const raw = makeGitHubRaw([
-				makeGitHubPushEvent({
-					payload: {
-						ref: "refs/heads/main",
-						commits: [makeGitHubCommit({ message: multiLineMessage })],
-					},
-				}),
-			]);
+			const raw = makeGitHubRaw([makeGitHubExtendedCommit({ message: multiLineMessage })]);
 
 			const items = normalizeGitHub(raw);
 			expect(items[0]?.title).toBe("First line");
@@ -455,7 +399,7 @@ describe("timeline consistency", () => {
 			expect(items[0]?.title).toBe(specialText);
 		});
 
-		it("handles empty events array", () => {
+		it("handles empty commits array", () => {
 			const raw = GITHUB_FIXTURES.empty();
 			const items = normalizeGitHub(raw);
 			expect(items).toHaveLength(0);
@@ -467,7 +411,7 @@ describe("timeline consistency", () => {
 			expect(items).toHaveLength(0);
 		});
 
-		it("filters out non-PushEvent GitHub events", () => {
+		it("processes commits and ignores non-relevant events", () => {
 			const raw = GITHUB_FIXTURES.withNonPushEvents();
 			const items = normalizeGitHub(raw);
 			expect(items).toHaveLength(1);

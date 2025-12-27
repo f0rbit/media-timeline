@@ -1,0 +1,239 @@
+import type { RedditComment, RedditCommentsStore, RedditMetaStore, RedditPost, RedditPostsStore } from "../schema";
+import type { Result } from "../utils";
+import { err, ok } from "../utils";
+import type { ProviderError } from "./types";
+
+export type RedditProviderConfig = {
+	maxPosts: number;
+	maxComments: number;
+	userAgent: string;
+};
+
+const DEFAULT_CONFIG: RedditProviderConfig = {
+	maxPosts: 1000,
+	maxComments: 1000,
+	userAgent: "media-timeline/2.0.0",
+};
+
+export type RedditFetchResult = {
+	meta: RedditMetaStore;
+	posts: RedditPostsStore;
+	comments: RedditCommentsStore;
+};
+
+export class RedditProvider {
+	readonly platform = "reddit";
+	private config: RedditProviderConfig;
+
+	constructor(config: Partial<RedditProviderConfig> = {}) {
+		this.config = { ...DEFAULT_CONFIG, ...config };
+	}
+
+	async fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>> {
+		try {
+			console.log("[reddit] Starting fetch with config:", {
+				maxPosts: this.config.maxPosts,
+				maxComments: this.config.maxComments,
+			});
+
+			// 1. Fetch user info first
+			const userResult = await this.fetchUser(token);
+			if (!userResult.ok) return userResult;
+			const { username, meta } = userResult.value;
+			console.log("[reddit] Authenticated as:", username);
+
+			// 2. Fetch posts and comments in parallel
+			console.log("[reddit] Fetching posts and comments...");
+			const [postsResult, commentsResult] = await Promise.all([this.fetchPosts(token, username), this.fetchComments(token, username)]);
+
+			if (!postsResult.ok) return postsResult;
+			if (!commentsResult.ok) return commentsResult;
+
+			// 3. Update meta with active subreddits
+			const subreddits = new Set<string>();
+			for (const post of postsResult.value) {
+				subreddits.add(post.subreddit);
+			}
+			for (const comment of commentsResult.value) {
+				subreddits.add(comment.subreddit);
+			}
+
+			const result: RedditFetchResult = {
+				meta: {
+					...meta,
+					subreddits_active: Array.from(subreddits),
+				},
+				posts: {
+					username,
+					posts: postsResult.value,
+					total_posts: postsResult.value.length,
+					fetched_at: new Date().toISOString(),
+				},
+				comments: {
+					username,
+					comments: commentsResult.value,
+					total_comments: commentsResult.value.length,
+					fetched_at: new Date().toISOString(),
+				},
+			};
+
+			console.log("[reddit] Fetch complete:", {
+				posts: result.posts.total_posts,
+				comments: result.comments.total_comments,
+				subreddits: result.meta.subreddits_active.length,
+			});
+
+			return ok(result);
+		} catch (error) {
+			console.error("[reddit] Fetch failed:", error);
+			return err(this.mapError(error));
+		}
+	}
+
+	private async fetchUser(token: string): Promise<Result<{ username: string; meta: RedditMetaStore }, ProviderError>> {
+		const response = await fetch("https://oauth.reddit.com/api/v1/me", {
+			headers: this.headers(token),
+		});
+
+		if (!response.ok) {
+			return err(this.handleResponse(response));
+		}
+
+		const data = (await response.json()) as Record<string, unknown>;
+		const username = data.name as string;
+
+		return ok({
+			username,
+			meta: {
+				username,
+				user_id: data.id as string,
+				icon_img: data.icon_img as string | undefined,
+				total_karma: (data.total_karma as number) ?? 0,
+				link_karma: (data.link_karma as number) ?? 0,
+				comment_karma: (data.comment_karma as number) ?? 0,
+				created_utc: data.created_utc as number,
+				is_gold: (data.is_gold as boolean) ?? false,
+				subreddits_active: [],
+				fetched_at: new Date().toISOString(),
+			},
+		});
+	}
+
+	private async fetchPosts(token: string, username: string): Promise<Result<RedditPost[], ProviderError>> {
+		return this.fetchPaginated(token, `https://oauth.reddit.com/user/${username}/submitted`, this.config.maxPosts, this.parsePost.bind(this));
+	}
+
+	private async fetchComments(token: string, username: string): Promise<Result<RedditComment[], ProviderError>> {
+		return this.fetchPaginated(token, `https://oauth.reddit.com/user/${username}/comments`, this.config.maxComments, this.parseComment.bind(this));
+	}
+
+	private async fetchPaginated<T>(token: string, baseUrl: string, maxItems: number, parser: (item: Record<string, unknown>) => T): Promise<Result<T[], ProviderError>> {
+		const items: T[] = [];
+		let after: string | null = null;
+
+		while (items.length < maxItems) {
+			const url = new URL(baseUrl);
+			url.searchParams.set("limit", "100");
+			url.searchParams.set("raw_json", "1");
+			if (after) url.searchParams.set("after", after);
+
+			const response = await fetch(url.toString(), {
+				headers: this.headers(token),
+			});
+
+			if (!response.ok) {
+				return err(this.handleResponse(response));
+			}
+
+			const data = (await response.json()) as {
+				data: { children: Array<{ data: Record<string, unknown> }>; after: string | null };
+			};
+			const children = data.data.children;
+
+			if (children.length === 0) break;
+
+			for (const child of children) {
+				items.push(parser(child.data));
+			}
+
+			after = data.data.after;
+			if (!after) break;
+		}
+
+		return ok(items.slice(0, maxItems));
+	}
+
+	private parsePost(data: Record<string, unknown>): RedditPost {
+		return {
+			id: data.id as string,
+			name: data.name as string,
+			title: data.title as string,
+			selftext: (data.selftext as string) ?? "",
+			url: data.url as string,
+			permalink: data.permalink as string,
+			subreddit: data.subreddit as string,
+			subreddit_prefixed: (data.subreddit_name_prefixed as string) ?? `r/${data.subreddit}`,
+			author: data.author as string,
+			created_utc: data.created_utc as number,
+			score: data.score as number,
+			upvote_ratio: data.upvote_ratio as number | undefined,
+			num_comments: data.num_comments as number,
+			is_self: data.is_self as boolean,
+			is_video: (data.is_video as boolean) ?? false,
+			thumbnail: data.thumbnail as string | undefined,
+			link_flair_text: data.link_flair_text as string | null | undefined,
+			over_18: (data.over_18 as boolean) ?? false,
+			spoiler: (data.spoiler as boolean) ?? false,
+			stickied: (data.stickied as boolean) ?? false,
+			locked: (data.locked as boolean) ?? false,
+			archived: (data.archived as boolean) ?? false,
+		};
+	}
+
+	private parseComment(data: Record<string, unknown>): RedditComment {
+		return {
+			id: data.id as string,
+			name: data.name as string,
+			body: data.body as string,
+			body_html: data.body_html as string | undefined,
+			permalink: data.permalink as string,
+			link_id: data.link_id as string,
+			link_title: data.link_title as string,
+			link_permalink: (data.link_permalink as string) ?? "",
+			subreddit: data.subreddit as string,
+			subreddit_prefixed: (data.subreddit_name_prefixed as string) ?? `r/${data.subreddit}`,
+			author: data.author as string,
+			created_utc: data.created_utc as number,
+			score: data.score as number,
+			is_submitter: (data.is_submitter as boolean) ?? false,
+			stickied: (data.stickied as boolean) ?? false,
+			edited: (data.edited as boolean | number) ?? false,
+			parent_id: data.parent_id as string,
+		};
+	}
+
+	private headers(token: string): Record<string, string> {
+		return {
+			Authorization: `Bearer ${token}`,
+			"User-Agent": this.config.userAgent,
+		};
+	}
+
+	private handleResponse(response: Response): ProviderError {
+		if (response.status === 401) {
+			return { kind: "auth_expired", message: "Reddit token expired or invalid" };
+		}
+		if (response.status === 429) {
+			const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "60", 10);
+			return { kind: "rate_limited", retry_after: retryAfter };
+		}
+		return { kind: "api_error", status: response.status, message: response.statusText };
+	}
+
+	private mapError(error: unknown): ProviderError {
+		if (error instanceof Error) {
+			return { kind: "network_error", cause: error };
+		}
+		return { kind: "network_error", cause: new Error(String(error)) };
+	}
+}

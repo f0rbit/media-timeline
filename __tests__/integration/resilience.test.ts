@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { initialState, isCircuitOpen, type RateLimitState, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
+import { type RateLimitState, initialState, isCircuitOpen, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
 import { ACCOUNTS, GITHUB_FIXTURES, USERS } from "./fixtures";
-import { createTestContext, getAccount, getRateLimit, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
+import { type TestContext, createTestContext, getAccount, getRateLimit, seedAccount, seedRateLimit, seedUser } from "./setup";
 
 const minutesFromNow = (minutes: number): Date => new Date(Date.now() + minutes * 60 * 1000);
 
@@ -272,13 +272,56 @@ describe("resilience", () => {
 		});
 
 		it("provider returns data when no simulation flags set", async () => {
-			ctx.providers.github.setEvents(GITHUB_FIXTURES.singleCommit().events);
+			// Setup repo data in the new multi-store format
+			ctx.providers.github.setRepositories([
+				{
+					owner: "test-user",
+					name: "test-repo",
+					full_name: "test-user/test-repo",
+					default_branch: "main",
+					branches: ["main"],
+					is_private: false,
+					pushed_at: new Date().toISOString(),
+					updated_at: new Date().toISOString(),
+				},
+			]);
+			ctx.providers.github.setRepoData("test-user/test-repo", {
+				commits: {
+					owner: "test-user",
+					repo: "test-repo",
+					branches: ["main"],
+					commits: [
+						{
+							sha: "abc123",
+							message: "Initial commit",
+							author_name: "Test User",
+							author_email: "test@example.com",
+							author_date: new Date().toISOString(),
+							committer_name: "Test User",
+							committer_email: "test@example.com",
+							committer_date: new Date().toISOString(),
+							url: "https://github.com/test-user/test-repo/commit/abc123",
+							branch: "main",
+						},
+					],
+					total_commits: 1,
+					fetched_at: new Date().toISOString(),
+				},
+				prs: {
+					owner: "test-user",
+					repo: "test-repo",
+					pull_requests: [],
+					total_prs: 0,
+					fetched_at: new Date().toISOString(),
+				},
+			});
 
 			const result = await ctx.providers.github.fetch("fake-token");
 
 			expect(result.ok).toBe(true);
 			if (result.ok) {
-				expect(result.value.events).toHaveLength(1);
+				expect(result.value.meta.repositories).toHaveLength(1);
+				expect(result.value.repos.get("test-user/test-repo")?.commits.commits).toHaveLength(1);
 			}
 		});
 

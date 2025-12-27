@@ -4,65 +4,55 @@ const FetchedAtSchema = z.object({
 	fetched_at: z.string().datetime(),
 });
 
-export const GitHubCommitSchema = z.object({
+export const GitHubRepoSchema = z.object({
+	id: z.number(),
+	name: z.string(),
+	url: z.string(),
+});
+
+export const GitHubBaseEventSchema = z.object({
+	id: z.string(),
+	type: z.string(),
+	created_at: z.string(),
+	repo: GitHubRepoSchema,
+	payload: z.record(z.unknown()),
+});
+
+export const GitHubEventSchema = GitHubBaseEventSchema;
+
+// Extended commit schema for data fetched from Commits API
+export const GitHubExtendedCommitSchema = z.object({
 	sha: z.string(),
 	message: z.string(),
-	author: z.object({
-		name: z.string(),
-		email: z.string(),
-	}),
-	url: z.string().url(),
+	date: z.string(),
+	url: z.string(),
+	repo: z.string(),
+	branch: z.string(),
 });
 
-export const GitHubPushEventSchema = z.object({
-	id: z.string(),
-	type: z.literal("PushEvent"),
+// Pull request schema for data extracted from PullRequestEvents
+export const GitHubPullRequestSchema = z.object({
+	id: z.number(),
+	number: z.number(),
+	title: z.string(),
+	state: z.enum(["open", "closed", "merged"]),
+	action: z.string(),
+	url: z.string(),
+	repo: z.string(),
 	created_at: z.string(),
-	repo: z.object({
-		id: z.number(),
-		name: z.string(),
-		url: z.string(),
-	}),
-	payload: z.object({
-		ref: z.string(),
-		commits: z.array(GitHubCommitSchema),
-	}),
+	merged_at: z.string().optional(),
+	head_ref: z.string(),
+	base_ref: z.string(),
+	// Commit SHAs associated with this PR (fetched from pulls.listCommits)
+	commit_shas: z.array(z.string()).default([]),
+	// The merge commit SHA (for deduplication of merge commits)
+	merge_commit_sha: z.string().optional(),
 });
-
-export const GitHubEventSchema = z.discriminatedUnion("type", [
-	GitHubPushEventSchema,
-	z.object({
-		id: z.string(),
-		type: z.literal("CreateEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ ref: z.string().nullable(), ref_type: z.string() }),
-	}),
-	z.object({
-		id: z.string(),
-		type: z.literal("WatchEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ action: z.string() }),
-	}),
-	z.object({
-		id: z.string(),
-		type: z.literal("IssuesEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ action: z.string(), issue: z.object({ number: z.number(), title: z.string() }) }),
-	}),
-	z.object({
-		id: z.string(),
-		type: z.literal("PullRequestEvent"),
-		created_at: z.string(),
-		repo: z.object({ id: z.number(), name: z.string(), url: z.string() }),
-		payload: z.object({ action: z.string(), pull_request: z.object({ number: z.number(), title: z.string() }) }),
-	}),
-]);
 
 export const GitHubRawSchema = FetchedAtSchema.extend({
 	events: z.array(GitHubEventSchema),
+	commits: z.array(GitHubExtendedCommitSchema).default([]),
+	pull_requests: z.array(GitHubPullRequestSchema).default([]),
 });
 
 export const BlueskyAuthorSchema = z.object({
@@ -86,9 +76,9 @@ export const BlueskyPostSchema = z.object({
 			})
 			.optional(),
 	}),
-	replyCount: z.number().optional(),
-	repostCount: z.number().optional(),
-	likeCount: z.number().optional(),
+	replyCount: z.number().default(0),
+	repostCount: z.number().default(0),
+	likeCount: z.number().default(0),
 	embed: z
 		.object({
 			images: z
@@ -162,7 +152,7 @@ export const DevpadTaskSchema = z.object({
 	status: z.enum(["todo", "in_progress", "done", "archived"]),
 	priority: z.enum(["low", "medium", "high"]).optional(),
 	project: z.string().optional(),
-	tags: z.array(z.string()).optional(),
+	tags: z.array(z.string()).default([]),
 	created_at: z.string(),
 	updated_at: z.string(),
 	due_date: z.string().optional(),

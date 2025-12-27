@@ -1,184 +1,431 @@
-import { GitHubRawSchema, type GitHubRaw, type GitHubEvent, type GitHubPushEvent, type TimelineItem, type CommitPayload } from "../schema";
-import { ok, err, type Result } from "../utils";
-import { toProviderError, type Provider, type ProviderError, type FetchResult } from "./types";
-
-// === TYPES ===
+import { Octokit } from "octokit";
+import type { GitHubMetaStore, GitHubRepoCommit, GitHubRepoCommitsStore, GitHubRepoMeta, GitHubRepoPR, GitHubRepoPRsStore } from "../schema";
+import { type Result, err, ok } from "../utils";
+import { type ProviderError, toProviderError } from "./types";
 
 export type GitHubProviderConfig = {
-	username: string;
+	maxRepos: number;
+	maxCommitsPerRepo: number;
+	maxPRsPerRepo: number;
+	concurrency: number;
+	prCommitConcurrency: number;
 };
 
-export type GitHubMemoryConfig = {
-	events?: GitHubEvent[];
+const DEFAULT_CONFIG: GitHubProviderConfig = {
+	maxRepos: 500,
+	maxCommitsPerRepo: 10000,
+	maxPRsPerRepo: 10000,
+	concurrency: 5,
+	prCommitConcurrency: 3,
 };
 
-type MemoryProviderState = {
-	call_count: number;
-	simulate_rate_limit: boolean;
-	simulate_auth_expired: boolean;
-};
-
-// === HELPERS ===
-
-const parseRateLimitReset = (headers: Headers): number => {
-	const resetTimestamp = headers.get("X-RateLimit-Reset");
-	return resetTimestamp ? Math.max(0, parseInt(resetTimestamp, 10) - Math.floor(Date.now() / 1000)) : 60;
-};
-
-const handleGitHubResponse = async (response: Response): Promise<GitHubRaw> => {
-	if (response.status === 401 || response.status === 403) {
-		if (response.headers.get("X-RateLimit-Remaining") === "0") {
-			throw { kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } satisfies ProviderError;
+export type GitHubFetchResult = {
+	meta: GitHubMetaStore;
+	repos: Map<
+		string,
+		{
+			commits: GitHubRepoCommitsStore;
+			prs: GitHubRepoPRsStore;
 		}
-		throw { kind: "auth_expired", message: "GitHub token expired or invalid" } satisfies ProviderError;
-	}
-
-	if (response.status === 429) {
-		throw { kind: "rate_limited", retry_after: parseRateLimitReset(response.headers) } satisfies ProviderError;
-	}
-
-	if (!response.ok) {
-		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
-	}
-
-	const json = await response.json();
-	const result = GitHubRawSchema.safeParse({ events: json, fetched_at: new Date().toISOString() });
-	if (!result.success) {
-		throw { kind: "api_error", status: 500, message: `Invalid GitHub response: ${result.error.message}` } satisfies ProviderError;
-	}
-	return result.data;
+	>;
 };
 
-const tryCatchAsync = async <T, E>(fn: () => Promise<T>, mapError: (e: unknown) => E): Promise<Result<T, E>> => {
-	try {
-		return ok(await fn());
-	} catch (e) {
-		return err(mapError(e));
-	}
+type OctokitResponse<T> = { data: T };
+
+type RepoData = {
+	id: number;
+	name: string;
+	full_name: string;
+	owner: { login: string };
+	default_branch: string;
+	private: boolean;
+	fork: boolean;
+	pushed_at: string | null;
+	updated_at: string | null;
 };
 
-// === PROVIDER (real API) ===
+type BranchData = {
+	name: string;
+};
 
-export class GitHubProvider implements Provider<GitHubRaw> {
+type CommitData = {
+	sha: string;
+	commit: {
+		message: string;
+		author: { name: string; email: string; date?: string } | null;
+		committer: { name: string; email: string; date?: string } | null;
+	};
+	html_url: string;
+	stats?: { additions?: number; deletions?: number };
+	files?: unknown[];
+};
+
+type PRData = {
+	id: number;
+	number: number;
+	title: string;
+	body: string | null;
+	state: "open" | "closed";
+	html_url: string;
+	created_at: string;
+	updated_at: string;
+	closed_at: string | null;
+	merged_at: string | null;
+	head: { ref: string };
+	base: { ref: string };
+	merge_commit_sha: string | null;
+	user: { login: string; avatar_url?: string } | null;
+	additions?: number;
+	deletions?: number;
+	changed_files?: number;
+};
+
+type PRCommitData = {
+	sha: string;
+};
+
+const parallel_map = async <T, R>(items: T[], fn: (item: T) => Promise<R>, concurrency: number): Promise<R[]> => {
+	const results: R[] = [];
+	for (let i = 0; i < items.length; i += concurrency) {
+		const batch = items.slice(i, i + concurrency);
+		const batchResults = await Promise.all(batch.map(fn));
+		results.push(...batchResults);
+	}
+	return results;
+};
+
+const parseRateLimitReset = (resetTimestamp: number | undefined): number => {
+	if (!resetTimestamp) return 60;
+	return Math.max(0, resetTimestamp - Math.floor(Date.now() / 1000));
+};
+
+const mapOctokitError = (error: unknown): ProviderError => {
+	if (error && typeof error === "object" && "status" in error) {
+		const status = (error as { status: number }).status;
+		const response = (error as { response?: { headers?: Record<string, string | number> } }).response;
+
+		if (status === 401 || status === 403) {
+			const rateLimitRemaining = response?.headers?.["x-ratelimit-remaining"];
+			const rateLimitReset = response?.headers?.["x-ratelimit-reset"];
+
+			if (rateLimitRemaining === 0 && rateLimitReset) {
+				return { kind: "rate_limited", retry_after: parseRateLimitReset(Number(rateLimitReset)) };
+			}
+			return { kind: "auth_expired", message: "GitHub token expired or invalid" };
+		}
+
+		if (status === 429) {
+			const rateLimitReset = response?.headers?.["x-ratelimit-reset"];
+			return { kind: "rate_limited", retry_after: parseRateLimitReset(rateLimitReset ? Number(rateLimitReset) : undefined) };
+		}
+
+		const message = (error as { message?: string }).message ?? "Unknown API error";
+		return { kind: "api_error", status, message };
+	}
+
+	return toProviderError(error);
+};
+
+const fetchAllPages = async <T>(fetcher: (page: number) => Promise<OctokitResponse<T[]>>, maxItems: number): Promise<T[]> => {
+	const results: T[] = [];
+	let page = 1;
+	const perPage = 100;
+
+	while (results.length < maxItems) {
+		const { data } = await fetcher(page);
+		if (data.length === 0) break;
+		results.push(...data);
+		if (data.length < perPage) break;
+		page++;
+	}
+
+	return results.slice(0, maxItems);
+};
+
+export class GitHubProvider {
 	readonly platform = "github";
 	private config: GitHubProviderConfig;
 
-	constructor(config: GitHubProviderConfig) {
-		this.config = config;
+	constructor(config: Partial<GitHubProviderConfig> = {}) {
+		this.config = { ...DEFAULT_CONFIG, ...config };
 	}
 
-	fetch(token: string): Promise<FetchResult<GitHubRaw>> {
-		const url = `https://api.github.com/users/${this.config.username}/events`;
-		return tryCatchAsync(
-			async () =>
-				handleGitHubResponse(
-					await fetch(url, {
-						headers: {
-							Authorization: `Bearer ${token}`,
-							Accept: "application/vnd.github+json",
-							"X-GitHub-Api-Version": "2022-11-28",
-						},
-					})
-				),
-			toProviderError
+	async fetch(token: string): Promise<Result<GitHubFetchResult, ProviderError>> {
+		try {
+			console.log("[github] Starting fetch with config:", {
+				maxRepos: this.config.maxRepos,
+				maxCommitsPerRepo: this.config.maxCommitsPerRepo,
+				maxPRsPerRepo: this.config.maxPRsPerRepo,
+				concurrency: this.config.concurrency,
+			});
+
+			const octokit = new Octokit({
+				auth: token,
+				userAgent: "media-timeline/2.0.0",
+			});
+
+			console.log("[github] Fetching authenticated user...");
+			const userResult = await this.fetchUser(octokit);
+			if (!userResult.ok) return userResult;
+			const username = userResult.value;
+			console.log("[github] Authenticated as:", username);
+
+			console.log("[github] Fetching repositories...");
+			const reposResult = await this.fetchRepos(octokit);
+			if (!reposResult.ok) return reposResult;
+			const repos = reposResult.value;
+			console.log("[github] Found", repos.length, "repos (after filtering forks)");
+
+			console.log("[github] Building metadata and fetching branches...");
+			const meta = await this.buildMeta(octokit, username, repos);
+			console.log("[github] Metadata built for", meta.repositories.length, "repos");
+
+			console.log("[github] Fetching commits and PRs for all repos...");
+			const repoDataMap = await this.fetchAllRepoData(octokit, meta.repositories, username);
+			console.log("[github] Fetch complete - processed", repoDataMap.size, "repos");
+
+			const totalCommits = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.commits.total_commits, 0);
+			const totalPRs = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.prs.total_prs, 0);
+			console.log("[github] Summary: repos=", repoDataMap.size, "commits=", totalCommits, "prs=", totalPRs);
+
+			return ok({ meta, repos: repoDataMap });
+		} catch (error: unknown) {
+			console.error("[github] Fetch failed with error:", error);
+			return err(mapOctokitError(error));
+		}
+	}
+
+	private async fetchUser(octokit: Octokit): Promise<Result<string, ProviderError>> {
+		try {
+			const { data: user } = await octokit.rest.users.getAuthenticated();
+			return ok(user.login);
+		} catch (error) {
+			return err(mapOctokitError(error));
+		}
+	}
+
+	private async fetchRepos(octokit: Octokit): Promise<Result<RepoData[], ProviderError>> {
+		try {
+			const repos = await fetchAllPages<RepoData>(
+				page =>
+					octokit.rest.repos.listForAuthenticatedUser({
+						sort: "pushed",
+						direction: "desc",
+						per_page: 100,
+						page,
+					}) as Promise<OctokitResponse<RepoData[]>>,
+				this.config.maxRepos
+			);
+			console.log("[github] Raw repos fetched:", repos.length);
+
+			const filteredRepos = repos.filter(repo => !repo.fork);
+			console.log("[github] Repos after filtering forks:", filteredRepos.length, "(removed", repos.length - filteredRepos.length, "forks)");
+			return ok(filteredRepos);
+		} catch (error) {
+			console.error("[github] Failed to fetch repos:", error);
+			return err(mapOctokitError(error));
+		}
+	}
+
+	private async buildMeta(octokit: Octokit, username: string, repos: RepoData[]): Promise<GitHubMetaStore> {
+		const repoMetas = await parallel_map(
+			repos,
+			async (repo): Promise<GitHubRepoMeta> => {
+				const branches = await this.fetchBranches(octokit, repo.owner.login, repo.name);
+				return {
+					owner: repo.owner.login,
+					name: repo.name,
+					full_name: repo.full_name,
+					default_branch: repo.default_branch,
+					branches,
+					is_private: repo.private,
+					pushed_at: repo.pushed_at,
+					updated_at: repo.updated_at ?? new Date().toISOString(),
+				};
+			},
+			this.config.concurrency
 		);
-	}
-}
 
-// === NORMALIZER ===
-
-const isPushEvent = (event: { type: string }): event is GitHubPushEvent => event.type === "PushEvent";
-
-const makeCommitId = (repo: string, sha: string): string => `github:commit:${repo}:${sha.slice(0, 7)}`;
-
-const makeCommitUrl = (repo: string, sha: string): string => `https://github.com/${repo}/commit/${sha}`;
-
-const truncateMessage = (message: string): string => {
-	const firstLine = message.split("\n")[0] ?? "";
-	return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
-};
-
-export const normalizeGitHub = (raw: GitHubRaw): TimelineItem[] =>
-	raw.events.filter(isPushEvent).flatMap(event =>
-		event.payload.commits.map((commit): TimelineItem => {
-			const payload: CommitPayload = {
-				type: "commit",
-				repo: event.repo.name,
-				sha: commit.sha,
-				message: commit.message,
-			};
-			return {
-				id: makeCommitId(event.repo.name, commit.sha),
-				platform: "github",
-				type: "commit",
-				timestamp: event.created_at,
-				title: truncateMessage(commit.message),
-				url: makeCommitUrl(event.repo.name, commit.sha),
-				payload,
-			};
-		})
-	);
-
-// === MEMORY PROVIDER (for tests) ===
-
-const createMemoryProviderState = (): MemoryProviderState => ({
-	call_count: 0,
-	simulate_rate_limit: false,
-	simulate_auth_expired: false,
-});
-
-const simulateErrors = <T>(state: MemoryProviderState, getData: () => T): FetchResult<T> => {
-	state.call_count++;
-
-	if (state.simulate_rate_limit) {
-		return err({ kind: "rate_limited", retry_after: 60 });
-	}
-	if (state.simulate_auth_expired) {
-		return err({ kind: "auth_expired", message: "Simulated auth expiry" });
-	}
-
-	return ok(getData());
-};
-
-export interface MemoryProviderControls {
-	getCallCount(): number;
-	reset(): void;
-	setSimulateRateLimit(value: boolean): void;
-	setSimulateAuthExpired(value: boolean): void;
-}
-
-export class GitHubMemoryProvider implements Provider<GitHubRaw>, MemoryProviderControls {
-	readonly platform = "github";
-	private config: GitHubMemoryConfig;
-	private state: MemoryProviderState;
-
-	constructor(config: GitHubMemoryConfig = {}) {
-		this.config = config;
-		this.state = createMemoryProviderState();
-	}
-
-	async fetch(_token: string): Promise<FetchResult<GitHubRaw>> {
-		return simulateErrors(this.state, () => ({
-			events: this.config.events ?? [],
+		return {
+			username,
+			repositories: repoMetas,
+			total_repos_available: repos.length,
+			repos_fetched: repoMetas.length,
 			fetched_at: new Date().toISOString(),
-		}));
+		};
 	}
 
-	getCallCount = () => this.state.call_count;
+	private async fetchBranches(octokit: Octokit, owner: string, repo: string): Promise<string[]> {
+		try {
+			const { data: branches } = (await octokit.rest.repos.listBranches({
+				owner,
+				repo,
+				per_page: 100,
+			})) as OctokitResponse<BranchData[]>;
+			return branches.map(b => b.name);
+		} catch {
+			return [];
+		}
+	}
 
-	reset = () => {
-		this.state.call_count = 0;
-	};
+	private async fetchAllRepoData(octokit: Octokit, repoMetas: GitHubRepoMeta[], username: string): Promise<Map<string, { commits: GitHubRepoCommitsStore; prs: GitHubRepoPRsStore }>> {
+		let processed = 0;
+		const total = repoMetas.length;
 
-	setSimulateRateLimit = (value: boolean) => {
-		this.state.simulate_rate_limit = value;
-	};
+		const results = await parallel_map(
+			repoMetas,
+			async (repoMeta): Promise<[string, { commits: GitHubRepoCommitsStore; prs: GitHubRepoPRsStore }]> => {
+				const [commits, prs] = await Promise.all([this.fetchRepoCommits(octokit, repoMeta, username), this.fetchRepoPRs(octokit, repoMeta, username)]);
+				processed++;
+				if (processed % 5 === 0 || processed === total) {
+					console.log(`[github] Progress: ${processed}/${total} repos (${repoMeta.full_name}: ${commits.total_commits} commits, ${prs.total_prs} PRs)`);
+				}
+				return [repoMeta.full_name, { commits, prs }];
+			},
+			this.config.concurrency
+		);
 
-	setSimulateAuthExpired = (value: boolean) => {
-		this.state.simulate_auth_expired = value;
-	};
+		return new Map(results);
+	}
 
-	setEvents(events: GitHubEvent[]): void {
-		this.config.events = events;
+	private async fetchRepoCommits(octokit: Octokit, repoMeta: GitHubRepoMeta, username: string): Promise<GitHubRepoCommitsStore> {
+		const { owner, name, branches } = repoMeta;
+		const commitMap = new Map<string, GitHubRepoCommit>();
+
+		for (const branch of branches) {
+			try {
+				const branchCommits = await fetchAllPages<CommitData>(
+					page =>
+						octokit.rest.repos.listCommits({
+							owner,
+							repo: name,
+							sha: branch,
+							author: username,
+							per_page: 100,
+							page,
+						}) as Promise<OctokitResponse<CommitData[]>>,
+					this.config.maxCommitsPerRepo
+				);
+
+				for (const commit of branchCommits) {
+					if (commitMap.has(commit.sha)) continue;
+
+					const authorDate = commit.commit.author?.date ?? commit.commit.committer?.date ?? new Date().toISOString();
+					const committerDate = commit.commit.committer?.date ?? commit.commit.author?.date ?? new Date().toISOString();
+
+					commitMap.set(commit.sha, {
+						sha: commit.sha,
+						message: commit.commit.message,
+						author_name: commit.commit.author?.name ?? "Unknown",
+						author_email: commit.commit.author?.email ?? "",
+						author_date: authorDate,
+						committer_name: commit.commit.committer?.name ?? "Unknown",
+						committer_email: commit.commit.committer?.email ?? "",
+						committer_date: committerDate,
+						url: commit.html_url,
+						branch,
+						additions: commit.stats?.additions,
+						deletions: commit.stats?.deletions,
+						files_changed: commit.files?.length,
+					});
+				}
+			} catch {}
+		}
+
+		return {
+			owner,
+			repo: name,
+			branches,
+			commits: Array.from(commitMap.values()),
+			total_commits: commitMap.size,
+			fetched_at: new Date().toISOString(),
+		};
+	}
+
+	private async fetchRepoPRs(octokit: Octokit, repoMeta: GitHubRepoMeta, username: string): Promise<GitHubRepoPRsStore> {
+		const { owner, name } = repoMeta;
+
+		try {
+			const allPRs = await fetchAllPages<PRData>(
+				page =>
+					octokit.rest.pulls.list({
+						owner,
+						repo: name,
+						state: "all",
+						sort: "updated",
+						direction: "desc",
+						per_page: 100,
+						page,
+					}) as Promise<OctokitResponse<PRData[]>>,
+				this.config.maxPRsPerRepo
+			);
+
+			const userPRs = allPRs.filter(pr => pr.user?.login.toLowerCase() === username.toLowerCase());
+			const filteredCount = allPRs.length - userPRs.length;
+			if (filteredCount > 0) {
+				console.log(`[github] ${repoMeta.full_name}: filtered out ${filteredCount} PRs not authored by ${username}`);
+			}
+
+			const prsWithCommits = await parallel_map(
+				userPRs,
+				async (pr): Promise<GitHubRepoPR> => {
+					const commitShas = await this.fetchPRCommits(octokit, owner, name, pr.number);
+					const state = pr.merged_at ? "merged" : pr.state;
+
+					return {
+						id: pr.id,
+						number: pr.number,
+						title: pr.title,
+						body: pr.body,
+						state,
+						url: pr.html_url,
+						created_at: pr.created_at,
+						updated_at: pr.updated_at,
+						closed_at: pr.closed_at,
+						merged_at: pr.merged_at,
+						head_ref: pr.head.ref,
+						base_ref: pr.base.ref,
+						commit_shas: commitShas,
+						merge_commit_sha: pr.merge_commit_sha,
+						author_login: pr.user?.login ?? "unknown",
+						author_avatar_url: pr.user?.avatar_url,
+						additions: pr.additions,
+						deletions: pr.deletions,
+						changed_files: pr.changed_files,
+					};
+				},
+				this.config.prCommitConcurrency
+			);
+
+			return {
+				owner,
+				repo: name,
+				pull_requests: prsWithCommits,
+				total_prs: prsWithCommits.length,
+				fetched_at: new Date().toISOString(),
+			};
+		} catch {
+			return {
+				owner,
+				repo: name,
+				pull_requests: [],
+				total_prs: 0,
+				fetched_at: new Date().toISOString(),
+			};
+		}
+	}
+
+	private async fetchPRCommits(octokit: Octokit, owner: string, repo: string, prNumber: number): Promise<string[]> {
+		try {
+			const { data: commits } = (await octokit.rest.pulls.listCommits({
+				owner,
+				repo,
+				pull_number: prNumber,
+				per_page: 250,
+			})) as OctokitResponse<PRCommitData[]>;
+			return commits.map(c => c.sha);
+		} catch {
+			return [];
+		}
 	}
 }
