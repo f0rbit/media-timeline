@@ -1,4 +1,21 @@
-import type { BlueskyAuthor, BlueskyFeedItem, BlueskyPost, BlueskyRaw, DevpadRaw, DevpadTask, GitHubEvent, GitHubExtendedCommit, GitHubRaw, YouTubeRaw, YouTubeVideo } from "../../src/schema";
+import type {
+	BlueskyAuthor,
+	BlueskyFeedItem,
+	BlueskyPost,
+	BlueskyRaw,
+	DevpadRaw,
+	DevpadTask,
+	GitHubEvent,
+	GitHubExtendedCommit,
+	GitHubRaw,
+	GitHubMetaStore,
+	GitHubRepoCommitsStore,
+	GitHubRepoPRsStore,
+	GitHubRepoMeta,
+	YouTubeRaw,
+	YouTubeVideo,
+} from "../../src/schema";
+import type { GitHubFetchResult } from "../../src/platforms/github";
 import { daysAgo, type DeepPartial, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
 
 export type GitHubExtendedCommitInput = {
@@ -152,6 +169,97 @@ export const GITHUB_FIXTURES = {
 	},
 
 	empty: () => makeGitHubRaw([]),
+};
+
+// New format fixtures for GitHubFetchResult (used by GitHubMemoryProvider)
+export const makeGitHubRepoMeta = (repo = "alice/project"): GitHubRepoMeta => {
+	const [owner, name] = repo.split("/");
+	return {
+		owner: owner ?? "alice",
+		name: name ?? "project",
+		full_name: repo,
+		default_branch: "main",
+		branches: ["main"],
+		is_private: false,
+		pushed_at: new Date().toISOString(),
+		updated_at: new Date().toISOString(),
+	};
+};
+
+export const makeGitHubRepoCommitsStore = (repo = "alice/project", commits: Array<{ sha?: string; message?: string; date?: string }> = []): GitHubRepoCommitsStore => {
+	const [owner, name] = repo.split("/");
+	const now = new Date().toISOString();
+	return {
+		owner: owner ?? "alice",
+		repo: name ?? "project",
+		branches: ["main"],
+		commits: commits.map(c => ({
+			sha: c.sha ?? randomSha(),
+			message: c.message ?? "feat: add new feature",
+			author_name: "Test User",
+			author_email: "test@example.com",
+			author_date: c.date ?? now,
+			committer_name: "Test User",
+			committer_email: "test@example.com",
+			committer_date: c.date ?? now,
+			url: `https://github.com/${repo}/commit/${c.sha ?? "abc123"}`,
+			branch: "main",
+		})),
+		total_commits: commits.length,
+		fetched_at: now,
+	};
+};
+
+export const makeGitHubRepoPRsStore = (repo = "alice/project"): GitHubRepoPRsStore => {
+	const [owner, name] = repo.split("/");
+	return {
+		owner: owner ?? "alice",
+		repo: name ?? "project",
+		pull_requests: [],
+		total_prs: 0,
+		fetched_at: new Date().toISOString(),
+	};
+};
+
+export const makeGitHubFetchResult = (repos: Array<{ repo: string; commits: Array<{ sha?: string; message?: string; date?: string }> }>): GitHubFetchResult => {
+	const repoMetas = repos.map(r => makeGitHubRepoMeta(r.repo));
+	const repoData = new Map<string, { commits: GitHubRepoCommitsStore; prs: GitHubRepoPRsStore }>();
+
+	for (const r of repos) {
+		repoData.set(r.repo, {
+			commits: makeGitHubRepoCommitsStore(r.repo, r.commits),
+			prs: makeGitHubRepoPRsStore(r.repo),
+		});
+	}
+
+	return {
+		meta: {
+			username: "test-user",
+			repositories: repoMetas,
+			total_repos_available: repos.length,
+			repos_fetched: repos.length,
+			fetched_at: new Date().toISOString(),
+		},
+		repos: repoData,
+	};
+};
+
+export const GITHUB_V2_FIXTURES = {
+	singleCommit: (repo = "alice/project", timestamp = hoursAgo(1)) => makeGitHubFetchResult([{ repo, commits: [{ message: "Initial commit", date: timestamp }] }]),
+
+	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hoursAgo(2)) =>
+		makeGitHubFetchResult([
+			{
+				repo,
+				commits: [
+					{ message: "feat: add feature A", date: baseTimestamp },
+					{ message: "feat: add feature B", date: baseTimestamp },
+					{ message: "fix: bug fix", date: baseTimestamp },
+				],
+			},
+		]),
+
+	empty: () => makeGitHubFetchResult([]),
 };
 
 export const BLUESKY_FIXTURES = {

@@ -5,9 +5,10 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { getAuth } from "./auth";
 import type { Bindings } from "./bindings";
+import { deleteConnection } from "./connection-delete";
 import type { AppContext } from "./infrastructure";
 import { accountMembers, accounts, accountSettings, DateGroupSchema } from "./schema";
-import { createRawStore, createTimelineStore, RawDataSchema, type CorpusError } from "./storage";
+import { createRawStore, createTimelineStore, createGitHubMetaStore, RawDataSchema, type CorpusError } from "./storage";
 import { encrypt, err, match, ok, pipe, type Result } from "./utils";
 
 type Variables = {
@@ -278,24 +279,61 @@ connectionRoutes.delete("/:account_id", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	const membership = await ctx.db
-		.select({ role: accountMembers.role })
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
-		.get();
+	const result = await deleteConnection({ db: ctx.db, backend: ctx.backend }, accountId, auth.user_id);
 
-	if (!membership) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	if (!result.ok) {
+		const error = result.error;
+		if (error.kind === "not_found") {
+			return c.json({ error: "Not found", message: "Account not found" }, 404);
+		}
+		if (error.kind === "forbidden") {
+			return c.json({ error: "Forbidden", message: error.message }, 403);
+		}
+		return c.json({ error: "Internal error", message: error.message }, 500);
 	}
 
-	if (membership.role !== "owner") {
-		return c.json({ error: "Forbidden", message: "Only owners can delete accounts" }, 403);
+	const { affected_users, deleted_stores, account_id, platform } = result.value;
+
+	const regenerateTimelines = async () => {
+		const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
+
+		for (const userId of affected_users) {
+			console.log("[delete] Regenerating timeline for user:", userId);
+
+			const userAccounts = await ctx.db
+				.select({
+					id: accounts.id,
+					platform: accounts.platform,
+					platform_user_id: accounts.platform_user_id,
+					access_token_encrypted: accounts.access_token_encrypted,
+					refresh_token_encrypted: accounts.refresh_token_encrypted,
+					user_id: accountMembers.user_id,
+				})
+				.from(accounts)
+				.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+				.where(and(eq(accountMembers.user_id, userId), eq(accounts.is_active, true)));
+
+			const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+			await combineUserTimeline(ctx.backend, userId, snapshots);
+			console.log("[delete] Timeline regenerated for user:", userId);
+		}
+	};
+
+	// Regenerate timelines - in production use waitUntil, in dev await directly
+	try {
+		c.executionCtx.waitUntil(regenerateTimelines());
+	} catch {
+		console.log("[delete] No ExecutionContext available (dev mode), awaiting regeneration");
+		await regenerateTimelines();
 	}
 
-	const now = new Date().toISOString();
-	await ctx.db.update(accounts).set({ is_active: false, updated_at: now }).where(eq(accounts.id, accountId));
-
-	return c.json({ deleted: true });
+	return c.json({
+		deleted: true,
+		account_id,
+		platform,
+		deleted_stores: deleted_stores.length,
+		affected_users: affected_users.length,
+	});
 });
 
 connectionRoutes.post("/:account_id/members", async c => {
@@ -394,9 +432,54 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 		return c.json({ error: "Bad request", message: "Account is not active" }, 400);
 	}
 
-	console.log("[refresh] Before calling processAccount");
 	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
+	if (accountWithUser.platform === "github") {
+		console.log("[refresh] Starting GitHub background sync for account:", accountId);
+
+		const backgroundTask = (async () => {
+			try {
+				console.log("[refresh:bg] Background task started for:", accountId);
+				const snapshot = await processAccount(ctx, accountWithUser);
+				console.log("[refresh:bg] processAccount completed:", snapshot ? "success" : "no changes");
+
+				if (snapshot) {
+					console.log("[refresh:bg] Generating timeline for user:", auth.user_id);
+					const allUserAccounts = await ctx.db
+						.select({
+							id: accounts.id,
+							platform: accounts.platform,
+							platform_user_id: accounts.platform_user_id,
+							access_token_encrypted: accounts.access_token_encrypted,
+							refresh_token_encrypted: accounts.refresh_token_encrypted,
+							user_id: accountMembers.user_id,
+						})
+						.from(accounts)
+						.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+						.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
+
+					const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
+					console.log("[refresh:bg] Gathered snapshots:", snapshots.length);
+					await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
+					console.log("[refresh:bg] Timeline generation complete");
+				}
+			} catch (error) {
+				console.error("[refresh:bg] Background task failed:", error);
+			}
+		})();
+
+		// Use waitUntil if available (Cloudflare Workers), otherwise just let it run
+		try {
+			c.executionCtx.waitUntil(backgroundTask);
+		} catch {
+			// Dev server doesn't have ExecutionContext, task will run anyway
+			console.log("[refresh] No ExecutionContext available (dev mode), task running in background");
+		}
+
+		return c.json({ status: "processing", message: "GitHub sync started in background" });
+	}
+
+	console.log("[refresh] Before calling processAccount (sync)");
 	const snapshot = await processAccount(ctx, accountWithUser);
 
 	console.log("[refresh] processAccount result:", snapshot ? "snapshot created" : "null");
@@ -462,10 +545,51 @@ connectionRoutes.post("/refresh-all", async c => {
 
 	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
+	const githubAccounts = userAccounts.filter(a => a.platform === "github");
+	const nonGithubAccounts = userAccounts.filter(a => a.platform !== "github");
+
+	if (githubAccounts.length > 0) {
+		console.log("[refresh-all] Starting background sync for", githubAccounts.length, "GitHub account(s)");
+
+		const backgroundTask = (async () => {
+			let bgSucceeded = 0;
+			let bgFailed = 0;
+
+			for (const account of githubAccounts) {
+				console.log("[refresh-all:bg] Processing GitHub account:", { id: account.id });
+				try {
+					const snapshot = await processAccount(ctx, account);
+					console.log("[refresh-all:bg] GitHub account result:", { id: account.id, success: !!snapshot });
+					if (snapshot) bgSucceeded++;
+				} catch (e) {
+					console.error(`[refresh-all:bg] Failed to refresh GitHub account ${account.id}:`, e);
+					bgFailed++;
+				}
+			}
+
+			if (bgSucceeded > 0) {
+				console.log("[refresh-all:bg] Generating timeline for user:", auth.user_id);
+				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+				console.log("[refresh-all:bg] Gathered snapshots:", snapshots.length);
+				await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
+				console.log("[refresh-all:bg] Timeline generation complete");
+			}
+
+			console.log("[refresh-all:bg] GitHub sync complete:", { succeeded: bgSucceeded, failed: bgFailed });
+		})();
+
+		// Use waitUntil if available (Cloudflare Workers), otherwise just let it run
+		try {
+			c.executionCtx.waitUntil(backgroundTask);
+		} catch {
+			console.log("[refresh-all] No ExecutionContext available (dev mode), task running in background");
+		}
+	}
+
 	let succeeded = 0;
 	let failed = 0;
 
-	for (const account of userAccounts) {
+	for (const account of nonGithubAccounts) {
 		console.log("[refresh-all] Processing account:", { id: account.id, platform: account.platform });
 		try {
 			const snapshot = await processAccount(ctx, account);
@@ -481,19 +605,22 @@ connectionRoutes.post("/refresh-all", async c => {
 
 	if (succeeded > 0) {
 		console.log("[refresh-all] Generating timeline for user:", auth.user_id);
-		const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+		const snapshots = await gatherLatestSnapshots(ctx.backend, nonGithubAccounts);
 		console.log("[refresh-all] Gathered snapshots:", snapshots.length);
 		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
 		console.log("[refresh-all] Timeline generated");
 	}
 
-	console.log("[refresh-all] Final result:", { succeeded, failed, total: userAccounts.length });
+	const hasGithub = githubAccounts.length > 0;
+	console.log("[refresh-all] Final result:", { succeeded, failed, total: nonGithubAccounts.length, github_processing: hasGithub });
 
 	return c.json({
-		status: "completed",
+		status: hasGithub ? "processing" : "completed",
+		message: hasGithub ? "GitHub accounts syncing in background" : undefined,
 		succeeded,
 		failed,
 		total: userAccounts.length,
+		github_accounts: githubAccounts.length,
 	});
 });
 
@@ -611,30 +738,12 @@ connectionRoutes.put("/:account_id/settings", async c => {
 });
 
 type GitHubRepoInfo = {
+	full_name: string;
 	name: string;
-	commit_count: number;
-};
-
-const extractReposFromGitHubData = (data: unknown): GitHubRepoInfo[] => {
-	const events = (data as Record<string, unknown>)?.events ?? [];
-	if (!Array.isArray(events)) return [];
-
-	const repoMap = new Map<string, number>();
-
-	for (const event of events) {
-		const e = event as Record<string, unknown>;
-		if (e.type === "PushEvent" && (e.repo as Record<string, unknown>)?.name) {
-			const repoName = (e.repo as Record<string, unknown>).name as string;
-			const current = repoMap.get(repoName) ?? 0;
-			const payload = e.payload as Record<string, unknown> | undefined;
-			const commits = Array.isArray(payload?.commits) ? payload.commits.length : 1;
-			repoMap.set(repoName, current + commits);
-		}
-	}
-
-	return Array.from(repoMap.entries())
-		.map(([name, commit_count]) => ({ name, commit_count }))
-		.sort((a, b) => b.commit_count - a.commit_count);
+	owner: string;
+	is_private: boolean;
+	default_branch: string;
+	pushed_at: string | null;
 };
 
 connectionRoutes.get("/:account_id/repos", async c => {
@@ -660,17 +769,24 @@ connectionRoutes.get("/:account_id/repos", async c => {
 		return c.json({ error: "Bad request", message: "Not a GitHub account" }, 400);
 	}
 
-	const rawStoreResult = createRawStore(ctx.backend, "github", accountId);
-	if (!rawStoreResult.ok) {
+	const metaStoreResult = createGitHubMetaStore(ctx.backend, accountId);
+	if (!metaStoreResult.ok) {
 		return c.json({ repos: [] });
 	}
 
-	const latest = await rawStoreResult.value.store.get_latest();
+	const latest = await metaStoreResult.value.store.get_latest();
 	if (!latest.ok) {
 		return c.json({ repos: [] });
 	}
 
-	const repos = extractReposFromGitHubData(latest.value.data);
+	const repos: GitHubRepoInfo[] = latest.value.data.repositories.map(repo => ({
+		full_name: repo.full_name,
+		name: repo.name,
+		owner: repo.owner,
+		is_private: repo.is_private,
+		default_branch: repo.default_branch,
+		pushed_at: repo.pushed_at,
+	}));
 
 	return c.json({ repos });
 });

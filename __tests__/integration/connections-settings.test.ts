@@ -6,7 +6,16 @@ type ErrorResponse = { error: string; message: string };
 type SettingsResponse = { settings: Record<string, unknown> };
 type UpdateResponse = { updated: boolean };
 type StatusUpdateResponse = { success: boolean; connection: Record<string, unknown> };
-type ReposResponse = { repos: Array<{ name: string; commit_count: number }> };
+type ReposResponse = {
+	repos: Array<{
+		full_name: string;
+		name: string;
+		owner: string;
+		is_private: boolean;
+		default_branch: string;
+		pushed_at: string | null;
+	}>;
+};
 
 describe("Connection Settings API", () => {
 	let ctx: TestContext;
@@ -276,7 +285,7 @@ describe("Connection Settings API", () => {
 
 			expect(res.status).toBe(200);
 			const data = (await res.json()) as { accounts: Array<{ settings: Record<string, unknown> }> };
-			expect(data.accounts[0].settings).toEqual({ hidden_repos: ["alice/hidden"] });
+			expect(data.accounts[0]?.settings).toEqual({ hidden_repos: ["alice/hidden"] });
 		});
 
 		it("returns accounts without settings when include_settings is not set", async () => {
@@ -296,42 +305,42 @@ describe("Connection Settings API", () => {
 	});
 
 	describe("GET /api/v1/connections/:account_id/repos", () => {
-		it("returns repos from GitHub raw data", async () => {
+		it("returns repos from GitHub meta store", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
-			const rawData = {
-				events: [
+			const metaData = {
+				username: "alice",
+				repositories: [
 					{
-						id: "1",
-						type: "PushEvent",
-						created_at: new Date().toISOString(),
-						repo: { id: 1, name: "alice/project-a", url: "https://api.github.com/repos/alice/project-a" },
-						payload: { commits: [{ sha: "abc" }, { sha: "def" }] },
+						owner: "alice",
+						name: "project-a",
+						full_name: "alice/project-a",
+						default_branch: "main",
+						branches: ["main", "develop"],
+						is_private: false,
+						pushed_at: new Date().toISOString(),
+						updated_at: new Date().toISOString(),
 					},
 					{
-						id: "2",
-						type: "PushEvent",
-						created_at: new Date().toISOString(),
-						repo: { id: 2, name: "alice/project-b", url: "https://api.github.com/repos/alice/project-b" },
-						payload: { commits: [{ sha: "ghi" }] },
-					},
-					{
-						id: "3",
-						type: "PushEvent",
-						created_at: new Date().toISOString(),
-						repo: { id: 1, name: "alice/project-a", url: "https://api.github.com/repos/alice/project-a" },
-						payload: { commits: [{ sha: "jkl" }] },
+						owner: "alice",
+						name: "project-b",
+						full_name: "alice/project-b",
+						default_branch: "main",
+						branches: ["main"],
+						is_private: true,
+						pushed_at: null,
+						updated_at: new Date().toISOString(),
 					},
 				],
-				commits: [],
-				pull_requests: [],
+				total_repos_available: 2,
+				repos_fetched: 2,
 				fetched_at: new Date().toISOString(),
 			};
 
-			const store = ctx.corpus.createRawStore("github", ACCOUNTS.alice_github.id);
-			await store.put(rawData);
+			const store = ctx.corpus.createGitHubMetaStore(ACCOUNTS.alice_github.id);
+			await store.put(metaData);
 
 			const app = createTestApp(ctx);
 			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/repos`, {
@@ -341,8 +350,20 @@ describe("Connection Settings API", () => {
 			expect(res.status).toBe(200);
 			const data = (await res.json()) as ReposResponse;
 			expect(data.repos).toHaveLength(2);
-			expect(data.repos[0]).toEqual({ name: "alice/project-a", commit_count: 3 });
-			expect(data.repos[1]).toEqual({ name: "alice/project-b", commit_count: 1 });
+			expect(data.repos[0]).toMatchObject({
+				full_name: "alice/project-a",
+				name: "project-a",
+				owner: "alice",
+				is_private: false,
+				default_branch: "main",
+			});
+			expect(data.repos[1]).toMatchObject({
+				full_name: "alice/project-b",
+				name: "project-b",
+				owner: "alice",
+				is_private: true,
+				default_branch: "main",
+			});
 		});
 
 		it("returns empty array when no raw data exists", async () => {

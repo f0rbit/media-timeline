@@ -352,7 +352,7 @@ describe("API routes", () => {
 	});
 
 	describe("DELETE /api/v1/connections/:account_id", () => {
-		it("deactivates account when owner", async () => {
+		it("fully deletes account and associated data when owner", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
@@ -364,12 +364,17 @@ describe("API routes", () => {
 			});
 
 			expect(res.status).toBe(200);
-			const data = (await res.json()) as DeleteResponse;
+			const data = (await res.json()) as { deleted: boolean; account_id: string; platform: string; deleted_stores: number; affected_users: number };
 			expect(data.deleted).toBe(true);
+			expect(data.account_id).toBe(ACCOUNTS.alice_github.id);
+			expect(data.platform).toBe("github");
+			expect(data.affected_users).toBe(1);
 
-			const account = await ctx.d1.prepare("SELECT is_active FROM accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first<{ is_active: number }>();
+			const account = await ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first();
+			expect(account).toBeNull();
 
-			expect(account?.is_active).toBe(0);
+			const members = await ctx.d1.prepare("SELECT * FROM account_members WHERE account_id = ?").bind(ACCOUNTS.alice_github.id).all();
+			expect(members.results.length).toBe(0);
 		});
 
 		it("returns 403 when member tries to delete", async () => {

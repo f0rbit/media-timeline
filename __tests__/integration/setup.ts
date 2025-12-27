@@ -20,6 +20,7 @@ export type { Platform };
 
 const RawDataSchema = z.record(z.unknown());
 const TimelineDataSchema = z.record(z.unknown());
+const GitHubMetaStoreSchema = z.record(z.unknown());
 export type MemberRole = "owner" | "member";
 
 export type UserSeed = {
@@ -92,6 +93,7 @@ export type TestCorpus = {
 	backend: Backend;
 	createRawStore(platform: Platform, accountId: string): Store<Record<string, unknown>>;
 	createTimelineStore(userId: string): Store<Record<string, unknown>>;
+	createGitHubMetaStore(accountId: string): Store<Record<string, unknown>>;
 };
 
 export type TestContext = {
@@ -361,7 +363,23 @@ export const createTestCorpus = (): TestCorpus => {
 		return store;
 	};
 
-	return { backend, createRawStore, createTimelineStore };
+	const createGitHubMetaStore = (accountId: string): Store<Record<string, unknown>> => {
+		const storeId = `github/${accountId}/meta`;
+		const existing = stores.get(storeId);
+		if (existing) return existing;
+
+		const corpus = create_corpus()
+			.with_backend(backend)
+			.with_store(define_store(storeId, json_codec(GitHubMetaStoreSchema)))
+			.build();
+
+		const store = corpus.stores[storeId];
+		if (!store) throw new Error(`Failed to create store: ${storeId}`);
+		stores.set(storeId, store);
+		return store;
+	};
+
+	return { backend, createRawStore, createTimelineStore, createGitHubMetaStore };
 };
 
 const defaultTestProviderFactory: ProviderFactory = {
@@ -402,6 +420,7 @@ export const createTestContext = (): TestContext => {
 		backend: corpus.backend as unknown as AppContext["backend"],
 		providerFactory: defaultTestProviderFactory,
 		encryptionKey: ENCRYPTION_KEY,
+		gitHubProvider: providers.github,
 	};
 
 	const cleanup = () => {
@@ -495,6 +514,54 @@ export const createProviderFactoryFromAccounts = (dataByAccountId: Record<string
 	return createProviderFactoryByToken(dataByToken);
 };
 
+import type { GitHubFetchResult } from "../../src/platforms/github";
+import type { GitHubProviderLike } from "../../src/infrastructure";
+import { GITHUB_V2_FIXTURES, makeGitHubFetchResult } from "./fixtures";
+import type { GitHubRaw as LegacyGitHubRaw } from "../../src/schema";
+
+type GitHubV2DataByAccountId = Record<string, GitHubFetchResult>;
+type LegacyGitHubDataByAccountId = Record<string, LegacyGitHubRaw>;
+
+const convertLegacyToV2 = (data: LegacyGitHubRaw): GitHubFetchResult => {
+	const repoCommits = new Map<string, Array<{ sha?: string; message?: string; date?: string }>>();
+
+	for (const commit of data.commits) {
+		const existing = repoCommits.get(commit.repo) ?? [];
+		existing.push({ sha: commit.sha, message: commit.message, date: commit.date });
+		repoCommits.set(commit.repo, existing);
+	}
+
+	const repos = Array.from(repoCommits.entries()).map(([repo, commits]) => ({ repo, commits }));
+	return repos.length > 0 ? makeGitHubFetchResult(repos) : makeGitHubFetchResult([]);
+};
+
+export const createGitHubProviderFromAccounts = (dataByAccountId: GitHubV2DataByAccountId, accountFixtures: Record<string, { id: string; access_token: string }> = ACCOUNTS): GitHubProviderLike => {
+	const dataByToken: Record<string, GitHubFetchResult> = {};
+
+	for (const [accountId, data] of Object.entries(dataByAccountId)) {
+		const account = Object.values(accountFixtures).find(a => a.id === accountId);
+		if (account) {
+			dataByToken[account.access_token] = data;
+		}
+	}
+
+	return {
+		async fetch(token: string) {
+			const data = dataByToken[token];
+			if (data) return ok(data);
+			return ok(GITHUB_V2_FIXTURES.empty());
+		},
+	};
+};
+
+export const createGitHubProviderFromLegacyAccounts = (dataByAccountId: LegacyGitHubDataByAccountId, accountFixtures: Record<string, { id: string; access_token: string }> = ACCOUNTS): GitHubProviderLike => {
+	const v2Data: GitHubV2DataByAccountId = {};
+	for (const [accountId, data] of Object.entries(dataByAccountId)) {
+		v2Data[accountId] = convertLegacyToV2(data);
+	}
+	return createGitHubProviderFromAccounts(v2Data, accountFixtures);
+};
+
 const now = () => new Date().toISOString();
 
 export const seedUser = async (ctx: TestContext, user: UserSeed): Promise<void> => {
@@ -568,6 +635,28 @@ export const addAccountMember = async (ctx: TestContext, userId: string, account
 export const getUser = async (ctx: TestContext, userId: string) => ctx.d1.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
 
 export const getAccount = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(accountId).first();
+
+// Helper to setup GitHub memory provider with data from legacy fixtures
+export const setupGitHubProvider = (ctx: TestContext, data: LegacyGitHubRaw): void => {
+	// Convert legacy GitHubRaw format to new GitHubFetchResult format
+	const repoCommits = new Map<string, Array<{ sha?: string; message?: string; date?: string }>>();
+
+	for (const commit of data.commits) {
+		const existing = repoCommits.get(commit.repo) ?? [];
+		existing.push({ sha: commit.sha, message: commit.message, date: commit.date });
+		repoCommits.set(commit.repo, existing);
+	}
+
+	const repos = Array.from(repoCommits.entries()).map(([repo, commits]) => ({ repo, commits }));
+	const fetchResult = repos.length > 0 ? makeGitHubFetchResult(repos) : makeGitHubFetchResult([]);
+
+	// Set up the memory provider
+	ctx.providers.github.setUsername(fetchResult.meta.username);
+	ctx.providers.github.setRepositories(fetchResult.meta.repositories);
+	for (const [fullName, data] of fetchResult.repos) {
+		ctx.providers.github.setRepoData(fullName, data);
+	}
+};
 
 export const getAccountMembers = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM account_members WHERE account_id = ?").bind(accountId).all();
 

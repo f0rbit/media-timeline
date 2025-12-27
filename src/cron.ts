@@ -1,11 +1,13 @@
 import type { Backend } from "@f0rbit/corpus";
 import { eq, sql } from "drizzle-orm";
+import { processGitHubAccount, type GitHubProcessResult } from "./cron-github";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
-import { normalizeBluesky, normalizeDevpad, normalizeGitHub, normalizeYouTube, type ProviderError, type ProviderFactory } from "./platforms";
-import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
-import { createRawStore, createTimelineStore, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
+import { GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube, type ProviderError, type ProviderFactory } from "./platforms";
+import { accountMembers, accounts, BlueskyRawSchema, DevpadRawSchema, rateLimits, YouTubeRawSchema, type Platform, type TimelineItem, type CommitGroup } from "./schema";
+import { createRawStore, createTimelineStore, githubCommitsStoreId, githubPRsStoreId, rawStoreId, shouldFetch, type RawData, type RateLimitState } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
+import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
 import { decrypt, pipe, to_nullable, tryCatch, type Result } from "./utils";
 
 export { processAccount, gatherLatestSnapshots, combineUserTimeline };
@@ -206,6 +208,105 @@ const toProcessError = (e: ProviderError): ProcessError => ({
 	status: e.kind === "api_error" ? e.status : undefined,
 });
 
+const processGitHubAccountFlow = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	console.log("[processGitHubAccountFlow] Starting for account:", account.id);
+
+	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
+	if (!decryptResult.ok) {
+		console.error("[processGitHubAccountFlow] Decryption failed:", decryptResult.error.message);
+		return null;
+	}
+
+	const provider = ctx.gitHubProvider ?? new GitHubProvider();
+	const result = await processGitHubAccount(ctx.backend, account.id, decryptResult.value, provider);
+
+	if (!result.ok) {
+		console.error("[processGitHubAccountFlow] GitHub processing failed:", result.error);
+		await recordFailure(ctx.db, account.id);
+		return null;
+	}
+
+	await recordSuccess(ctx.db, account.id);
+
+	return {
+		account_id: account.id,
+		platform: "github",
+		version: result.value.meta_version,
+		data: {
+			type: "github_multi_store" as const,
+			...result.value.stats,
+		},
+	};
+};
+
+const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
+	console.log("[processGenericAccount] Starting for account:", { id: account.id, platform: account.platform, user_id: account.user_id, platform_user_id: account.platform_user_id });
+
+	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
+		.tap(() => console.log("[processGenericAccount] Decryption result: success"))
+		.mapErr((e): ProcessError => {
+			console.log("[processGenericAccount] Decryption result: failed -", e.message);
+			return { kind: "decryption_failed", message: e.message };
+		})
+		.flatMap(token => {
+			console.log("[processGenericAccount] Before calling providerFactory.create:", { platform: account.platform, platformUserId: account.platform_user_id, hasToken: !!token });
+			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
+			console.log("[processGenericAccount] providerFactory.create called, awaiting result...");
+			return pipe(result)
+				.tap(data => {
+					console.log("[processGenericAccount] providerFactory.create result: success, data type:", typeof data);
+					console.log("[processGenericAccount] providerFactory.create result keys:", Object.keys(data as Record<string, unknown>));
+				})
+				.mapErr(e => {
+					console.log("[processGenericAccount] providerFactory.create result: error -", e);
+					return toProcessError(e);
+				})
+				.tapErr(() => recordFailure(ctx.db, account.id))
+				.result();
+		})
+		.flatMap(rawData => {
+			console.log("[processGenericAccount] Before creating raw store for:", { platform: account.platform, accountId: account.id });
+			return pipe(createRawStore(ctx.backend, account.platform, account.id))
+				.tap(() => console.log("[processGenericAccount] Raw store creation: success"))
+				.mapErr((e): ProcessError => {
+					console.log("[processGenericAccount] Raw store creation: failed -", e);
+					return { kind: "store_failed", store_id: e.store_id };
+				})
+				.map(({ store }) => ({ rawData, store }))
+				.result();
+		})
+		.flatMap(({ rawData, store }) => {
+			console.log("[processGenericAccount] Before store.put");
+			return pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
+				.tap(result => console.log("[processGenericAccount] store.put result: success, version:", result.version))
+				.mapErr((e): ProcessError => {
+					console.log("[processGenericAccount] store.put result: failed -", e);
+					return { kind: "put_failed", message: String(e) };
+				})
+				.map((result: { version: string }) => ({ rawData, version: result.version }))
+				.result();
+		})
+		.tapErr(logProcessError(account.id))
+		.tap(() => {
+			console.log("[processGenericAccount] All operations successful, recording success");
+			return recordSuccess(ctx.db, account.id);
+		})
+		.map((result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => {
+			console.log("[processGenericAccount] Creating final snapshot:", { account_id: account.id, platform: account.platform, version: result.version });
+			return {
+				account_id: account.id,
+				platform: account.platform,
+				version: result.version,
+				data: result.rawData,
+			};
+		})
+		.unwrapOr(null as unknown as RawSnapshot)
+		.then(r => {
+			console.log("[processGenericAccount] Final result:", r ? "snapshot created" : "null (failed or skipped)");
+			return r as RawSnapshot | null;
+		});
+};
+
 const processAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	console.log("[processAccount] Starting for account:", { id: account.id, platform: account.platform, user_id: account.user_id, platform_user_id: account.platform_user_id });
 
@@ -227,80 +328,36 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		return null;
 	}
 
-	console.log("[processAccount] Before decryption");
-	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-		.tap(() => console.log("[processAccount] Decryption result: success"))
-		.mapErr((e): ProcessError => {
-			console.log("[processAccount] Decryption result: failed -", e.message);
-			return { kind: "decryption_failed", message: e.message };
-		})
-		.flatMap(token => {
-			console.log("[processAccount] Before calling providerFactory.create:", { platform: account.platform, platformUserId: account.platform_user_id, hasToken: !!token });
-			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
-			console.log("[processAccount] providerFactory.create called, awaiting result...");
-			return pipe(result)
-				.tap(data => {
-					console.log("[processAccount] providerFactory.create result: success, data type:", typeof data);
-					console.log("[processAccount] providerFactory.create result keys:", Object.keys(data as Record<string, unknown>));
-					const d = data as { commits?: unknown[]; pull_requests?: unknown[]; events?: unknown[] };
-					console.log("[processAccount] providerFactory.create result counts:", {
-						events: d.events?.length ?? 0,
-						commits: d.commits?.length ?? 0,
-						pull_requests: d.pull_requests?.length ?? 0,
-					});
-				})
-				.mapErr(e => {
-					console.log("[processAccount] providerFactory.create result: error -", e);
-					return toProcessError(e);
-				})
-				.tapErr(() => recordFailure(ctx.db, account.id))
-				.result();
-		})
-		.flatMap(rawData => {
-			console.log("[processAccount] Before creating raw store for:", { platform: account.platform, accountId: account.id });
-			return pipe(createRawStore(ctx.backend, account.platform, account.id))
-				.tap(() => console.log("[processAccount] Raw store creation: success"))
-				.mapErr((e): ProcessError => {
-					console.log("[processAccount] Raw store creation: failed -", e);
-					return { kind: "store_failed", store_id: e.store_id };
-				})
-				.map(({ store }) => ({ rawData, store }))
-				.result();
-		})
-		.flatMap(({ rawData, store }) => {
-			console.log("[processAccount] Before store.put");
-			return pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
-				.tap(result => console.log("[processAccount] store.put result: success, version:", result.version))
-				.mapErr((e): ProcessError => {
-					console.log("[processAccount] store.put result: failed -", e);
-					return { kind: "put_failed", message: String(e) };
-				})
-				.map((result: { version: string }) => ({ rawData, version: result.version }))
-				.result();
-		})
-		.tapErr(logProcessError(account.id))
-		.tap(() => {
-			console.log("[processAccount] All operations successful, recording success");
-			return recordSuccess(ctx.db, account.id);
-		})
-		.map((result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => {
-			console.log("[processAccount] Creating final snapshot:", { account_id: account.id, platform: account.platform, version: result.version });
-			return {
-				account_id: account.id,
-				platform: account.platform,
-				version: result.version,
-				data: result.rawData,
-			};
-		})
-		.unwrapOr(null as unknown as RawSnapshot)
-		.then(r => {
-			console.log("[processAccount] Final result:", r ? "snapshot created" : "null (failed or skipped)");
-			return r as RawSnapshot | null;
-		});
+	if (account.platform === "github") {
+		return processGitHubAccountFlow(ctx, account);
+	}
+
+	return processGenericAccount(ctx, account);
 };
 
 const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	console.log("[getLatestSnapshot] Starting for account:", { id: account.id, platform: account.platform });
+
+	// GitHub uses multi-store format - check if there's data in GitHub stores
+	if (account.platform === "github") {
+		const githubData = await loadGitHubDataForAccount(backend, account.id);
+		if (githubData.commits.length === 0 && githubData.prs.length === 0) {
+			console.log("[getLatestSnapshot] No GitHub data found for account:", account.id);
+			return null;
+		}
+		console.log("[getLatestSnapshot] GitHub data loaded:", {
+			commits: githubData.commits.length,
+			prs: githubData.prs.length,
+		});
+		// Return a marker snapshot - the actual data will be loaded in combineUserTimeline
+		return {
+			account_id: account.id,
+			platform: "github",
+			version: new Date().toISOString(),
+			data: { type: "github_multi_store" },
+		};
+	}
+
 	const storeResult = createRawStore(backend, account.platform, account.id);
 	console.log("[getLatestSnapshot] Store creation result:", storeResult.ok ? "success" : "failed");
 	if (!storeResult.ok) {
@@ -369,7 +426,19 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 	);
 
 	if (snapshots.length === 0) {
-		console.log("[combineUserTimeline] No snapshots, returning early");
+		console.log("[combineUserTimeline] No snapshots, creating empty timeline");
+		const emptyTimeline = {
+			user_id: userId,
+			generated_at: new Date().toISOString(),
+			groups: [],
+		};
+		await pipe(createTimelineStore(backend, userId))
+			.tap(({ id }) => console.log("[combineUserTimeline] Timeline store created:", id))
+			.tap(async ({ store }) => {
+				await store.put(emptyTimeline, { parents: [] });
+				console.log("[combineUserTimeline] Empty timeline stored");
+			})
+			.result();
 		return;
 	}
 
@@ -378,9 +447,23 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 		console.log(`[combineUserTimeline] Snapshot ${snapshot.platform} data preview:`, JSON.stringify(snapshot.data).slice(0, 200));
 	}
 
-	console.log("[combineUserTimeline] Normalizing snapshots...");
-	const normalizeResults = snapshots.map((snapshot, index) => {
-		console.log(`[combineUserTimeline] Normalizing snapshot ${index + 1}/${snapshots.length} (${snapshot.platform})...`);
+	// Separate GitHub snapshots (handled via multi-store) from other platforms
+	const githubSnapshots = snapshots.filter(s => s.platform === "github");
+	const otherSnapshots = snapshots.filter(s => s.platform !== "github");
+
+	// Load GitHub data from multi-stores
+	const githubItems: TimelineItem[] = [];
+	for (const snapshot of githubSnapshots) {
+		console.log(`[combineUserTimeline] Loading GitHub data for account: ${snapshot.account_id}`);
+		const data = await loadGitHubDataForAccount(backend, snapshot.account_id);
+		const normalized = normalizeGitHub(data);
+		console.log(`[combineUserTimeline] GitHub normalized: ${normalized.length} items`);
+		githubItems.push(...normalized);
+	}
+
+	console.log("[combineUserTimeline] Normalizing non-GitHub snapshots...");
+	const normalizeResults = otherSnapshots.map((snapshot, index) => {
+		console.log(`[combineUserTimeline] Normalizing snapshot ${index + 1}/${otherSnapshots.length} (${snapshot.platform})...`);
 		const result = normalizeSnapshot(snapshot);
 		console.log(`[combineUserTimeline] Normalize result for ${snapshot.platform}:`, result.ok ? `ok, ${result.value.length} items` : `error: ${result.error.message}`);
 		return result;
@@ -392,7 +475,8 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 		}
 	}
 
-	const items = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
+	const otherItems = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
+	const items = [...githubItems, ...otherItems];
 	console.log("[combineUserTimeline] Items after filtering successful results:", items.length);
 	console.log(
 		"[combineUserTimeline] Items preview:",
@@ -456,11 +540,9 @@ const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], Normal
 			let result: TimelineItem[];
 			switch (snapshot.platform as Platform) {
 				case "github":
-					console.log("[normalizeSnapshot] Case: github - parsing with GitHubRawSchema");
-					const githubParsed = GitHubRawSchema.parse(snapshot.data);
-					console.log("[normalizeSnapshot] GitHub parsed successfully, events count:", githubParsed.events?.length ?? 0);
-					result = normalizeGitHub(githubParsed);
-					console.log("[normalizeSnapshot] GitHub normalized, items count:", result.length);
+					// GitHub is handled separately via multi-store in combineUserTimeline
+					console.log("[normalizeSnapshot] Case: github - skipping (handled via multi-store)");
+					result = [];
 					break;
 				case "bluesky":
 					console.log("[normalizeSnapshot] Case: bluesky - parsing with BlueskyRawSchema");

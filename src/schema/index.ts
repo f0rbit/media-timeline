@@ -20,6 +20,27 @@ export {
 } from "./platforms";
 
 export {
+	GitHubRepoMetaSchema,
+	GitHubMetaStoreSchema,
+	type GitHubRepoMeta,
+	type GitHubMetaStore,
+} from "./github-meta";
+
+export {
+	GitHubRepoCommitSchema,
+	GitHubRepoCommitsStoreSchema,
+	type GitHubRepoCommit,
+	type GitHubRepoCommitsStore,
+} from "./github-commits";
+
+export {
+	GitHubRepoPRSchema,
+	GitHubRepoPRsStoreSchema,
+	type GitHubRepoPR,
+	type GitHubRepoPRsStore,
+} from "./github-prs";
+
+export {
 	CommitGroupSchema,
 	CommitPayloadSchema,
 	DateGroupSchema,

@@ -127,8 +127,12 @@ export type ConnectionsWithSettingsResponse = {
 };
 
 export type GitHubRepo = {
+	full_name: string;
 	name: string;
-	commit_count: number;
+	owner: string;
+	is_private: boolean;
+	default_branch: string;
+	pushed_at: string | null;
 };
 
 export type PRCommit = {

@@ -68,6 +68,9 @@ export const PullRequestPayloadSchema = z.object({
 	additions: z.number().optional(),
 	deletions: z.number().optional(),
 	changed_files: z.number().optional(),
+	// SHAs of commits that belong to this PR (for deduplication)
+	commit_shas: z.array(z.string()).default([]),
+	merge_commit_sha: z.string().nullable().optional(),
 	// Commits that belong to this PR (populated during timeline processing)
 	commits: z.array(PRCommitSchema).default([]),
 });

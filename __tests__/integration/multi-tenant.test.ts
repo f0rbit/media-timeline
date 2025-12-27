@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { handleCron } from "../../src/cron";
 import type { TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, GITHUB_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw, USERS } from "./fixtures";
-import { addAccountMember, createProviderFactoryFromAccounts, createTestContext, getAccountMembers, getUserAccounts, seedAccount, seedUser, type TestContext } from "./setup";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw, USERS } from "./fixtures";
+import { addAccountMember, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, getAccountMembers, getUserAccounts, seedAccount, seedUser, setupGitHubProvider, type TestContext } from "./setup";
 
 describe("multi-tenant", () => {
 	let ctx: TestContext;
@@ -25,8 +25,8 @@ describe("multi-tenant", () => {
 
 			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ sha: "shared123", repo: "org/shared-repo", message: "shared commit" })]);
 
-			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
-			await handleCron({ ...ctx.appContext, providerFactory });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
 			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
@@ -63,8 +63,8 @@ describe("multi-tenant", () => {
 
 			const sharedData = GITHUB_FIXTURES.singleCommit();
 
-			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
-			const result = await handleCron({ ...ctx.appContext, providerFactory });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
+			const result = await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			expect(result.updated_users).toHaveLength(3);
 			expect(result.timelines_generated).toBe(3);
@@ -90,11 +90,11 @@ describe("multi-tenant", () => {
 
 			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "org/shared", message: "shared work" })]);
 
-			const providerFactory = createProviderFactoryFromAccounts({
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
 				[ACCOUNTS.alice_github.id]: aliceData,
 				[ACCOUNTS.shared_org_github.id]: sharedData,
 			});
-			await handleCron({ ...ctx.appContext, providerFactory });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
 			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
@@ -129,11 +129,11 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.bob_github);
 
-			const providerFactory = createProviderFactoryFromAccounts({
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
 				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit("alice/repo"),
 				[ACCOUNTS.bob_github.id]: GITHUB_FIXTURES.singleCommit("bob/repo"),
 			});
-			await handleCron({ ...ctx.appContext, providerFactory });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const aliceStore = ctx.corpus.createTimelineStore(USERS.alice.id);
 			const bobStore = ctx.corpus.createTimelineStore(USERS.bob.id);
@@ -167,8 +167,8 @@ describe("multi-tenant", () => {
 			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
 
 			const sharedData = GITHUB_FIXTURES.singleCommit("org/shared");
-			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
-			await handleCron({ ...ctx.appContext, providerFactory });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
 			expect(bobTimeline.ok).toBe(true);
@@ -187,8 +187,8 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
 
 			const aliceData = GITHUB_FIXTURES.singleCommit("alice/private");
-			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.alice_github.id]: aliceData });
-			await handleCron({ ...ctx.appContext, providerFactory });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.alice_github.id]: aliceData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const charlieTimeline = await ctx.corpus.createTimelineStore(USERS.charlie.id).get_latest();
 
@@ -308,8 +308,8 @@ describe("multi-tenant", () => {
 				}),
 			]);
 
-			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.alice_github.id]: githubData });
-			await handleCron({ ...ctx.appContext, providerFactory });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.alice_github.id]: githubData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const timeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
 			expect(timeline.ok).toBe(true);
@@ -333,8 +333,8 @@ describe("multi-tenant", () => {
 
 			const githubData = GITHUB_FIXTURES.multipleCommitsSameDay("org/project");
 
-			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.shared_org_github.id]: githubData });
-			await handleCron({ ...ctx.appContext, providerFactory });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: githubData });
+			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const adminAccounts = await getUserAccounts(ctx, USERS.org_admin.id);
 			const aliceAccounts = await getUserAccounts(ctx, USERS.alice.id);

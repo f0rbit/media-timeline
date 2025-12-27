@@ -84,18 +84,14 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 	const prToCommitShas = new Map<string, string[]>();
 
 	for (const pr of prs) {
-		// Get commit_shas from the raw PR data (stored in payload or retrieved from original)
-		// We need to access the original PR's commit_shas which were stored during fetch
-		const payload = pr.payload as PullRequestPayload & { commit_shas?: string[]; merge_commit_sha?: string };
-		const shas = payload.commit_shas ?? [];
+		const shas = pr.payload.commit_shas ?? [];
 
 		prToCommitShas.set(pr.id, shas);
 		for (const sha of shas) {
 			prCommitShas.add(sha);
 		}
-		// Also add the merge commit SHA to prevent it appearing as orphan
-		if (payload.merge_commit_sha) {
-			prCommitShas.add(payload.merge_commit_sha);
+		if (pr.payload.merge_commit_sha) {
+			prCommitShas.add(pr.payload.merge_commit_sha);
 		}
 	}
 

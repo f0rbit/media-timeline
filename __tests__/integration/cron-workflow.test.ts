@@ -3,7 +3,7 @@ import { handleCron } from "../../src/cron";
 import type { GitHubRaw, Platform } from "../../src/schema";
 import { type TimelineEntry } from "../../src/timeline";
 import { ACCOUNTS, BLUESKY_FIXTURES, DEVPAD_FIXTURES, GITHUB_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw, USERS, YOUTUBE_FIXTURES } from "./fixtures";
-import { addAccountMember, createProviderFactoryFromAccounts, createTestContext, seedAccount, seedRateLimit, seedUser, type TestContext } from "./setup";
+import { addAccountMember, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, seedAccount, seedRateLimit, seedUser, setupGitHubProvider, type TestContext } from "./setup";
 
 describe("cron workflow", () => {
 	let ctx: TestContext;
@@ -21,11 +21,10 @@ describe("cron workflow", () => {
 			await seedUser(ctx, USERS.alice);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 
-			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
-			});
+			// Setup GitHub provider with data
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
 
-			const result = await handleCron({ ...ctx.appContext, providerFactory });
+			const result = await handleCron(ctx.appContext);
 
 			expect(result.processed_accounts).toBe(1);
 			expect(result.updated_users).toContain(USERS.alice.id);
@@ -48,8 +47,10 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
 
+			// Setup GitHub provider
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
+
 			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
 				[ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost(),
 			});
 
@@ -132,6 +133,9 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, aliceYoutube);
 			await seedAccount(ctx, USERS.alice.id, aliceDevpad);
 
+			// Setup GitHub provider
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
+
 			const customAccounts = {
 				...ACCOUNTS,
 				alice_youtube: aliceYoutube,
@@ -140,7 +144,6 @@ describe("cron workflow", () => {
 
 			const providerFactory = createProviderFactoryFromAccounts(
 				{
-					[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
 					[ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost(),
 					[aliceYoutube.id]: YOUTUBE_FIXTURES.singleVideo(),
 					[aliceDevpad.id]: DEVPAD_FIXTURES.singleTask(),
@@ -180,12 +183,13 @@ describe("cron workflow", () => {
 
 			const bobData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "bob/repo", message: "bob commit" })]);
 
-			const providerFactory = createProviderFactoryFromAccounts({
+			// Setup GitHub provider for both users
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
 				[ACCOUNTS.alice_github.id]: aliceData,
 				[ACCOUNTS.bob_github.id]: bobData,
 			});
 
-			const result = await handleCron({ ...ctx.appContext, providerFactory });
+			const result = await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			expect(result.processed_accounts).toBe(2);
 			expect(result.updated_users).toHaveLength(2);
@@ -221,11 +225,11 @@ describe("cron workflow", () => {
 
 			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "org/shared-repo", message: "shared commit" })]);
 
-			const providerFactory = createProviderFactoryFromAccounts({
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
 				[ACCOUNTS.shared_org_github.id]: sharedData,
 			});
 
-			const result = await handleCron({ ...ctx.appContext, providerFactory });
+			const result = await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			expect(result.updated_users).toContain(USERS.alice.id);
 			expect(result.updated_users).toContain(USERS.bob.id);
@@ -250,11 +254,9 @@ describe("cron workflow", () => {
 			await seedUser(ctx, USERS.bob);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 
-			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
-			});
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
 
-			const result = await handleCron({ ...ctx.appContext, providerFactory });
+			const result = await handleCron(ctx.appContext);
 
 			expect(result.updated_users).toContain(USERS.alice.id);
 			expect(result.updated_users).not.toContain(USERS.bob.id);
@@ -268,11 +270,10 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
 
-			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
-			});
+			// Setup GitHub provider
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
 
-			const result = await handleCron({ ...ctx.appContext, providerFactory });
+			const result = await handleCron(ctx.appContext);
 
 			expect(result.processed_accounts).toBe(2);
 			expect(result.updated_users).toContain(USERS.alice.id);
@@ -283,16 +284,16 @@ describe("cron workflow", () => {
 			await seedUser(ctx, USERS.alice);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 
-			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
-			});
-			await handleCron({ ...ctx.appContext, providerFactory });
+			// Setup GitHub provider for first run
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
+			await handleCron(ctx.appContext);
 
 			const firstTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
 			expect(firstTimeline.ok).toBe(true);
 
-			const emptyProviderFactory = createProviderFactoryFromAccounts({});
-			const failedResult = await handleCron({ ...ctx.appContext, providerFactory: emptyProviderFactory });
+			// Simulate provider failure by setting rate limit error
+			ctx.providers.github.setSimulateRateLimit(true);
+			const failedResult = await handleCron(ctx.appContext);
 
 			expect(failedResult.updated_users).toHaveLength(0);
 
@@ -306,12 +307,12 @@ describe("cron workflow", () => {
 
 		it("skips inactive accounts", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.inactive_account);
+			await seedAccount(ctx, USERS.alice.id, { ...ACCOUNTS.alice_github, is_active: false });
+			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
 
+			// GitHub is inactive, so Bluesky should be the only one processed
 			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
-				[ACCOUNTS.inactive_account.id]: GITHUB_FIXTURES.singleCommit(),
+				[ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost(),
 			});
 
 			const result = await handleCron({ ...ctx.appContext, providerFactory });
@@ -386,17 +387,16 @@ describe("cron workflow", () => {
 	describe("corpus versioning", () => {
 		it("stores raw data with correct version chain", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
 
-			const data1 = GITHUB_FIXTURES.singleCommit();
-			const providerFactory1 = createProviderFactoryFromAccounts({ [ACCOUNTS.alice_github.id]: data1 });
+			// Use Bluesky to test raw store versioning (GitHub now uses multi-store format)
+			const providerFactory1 = createProviderFactoryFromAccounts({ [ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost() });
 			await handleCron({ ...ctx.appContext, providerFactory: providerFactory1 });
 
-			const data2 = GITHUB_FIXTURES.multipleCommitsSameDay();
-			const providerFactory2 = createProviderFactoryFromAccounts({ [ACCOUNTS.alice_github.id]: data2 });
+			const providerFactory2 = createProviderFactoryFromAccounts({ [ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.multiplePosts() });
 			await handleCron({ ...ctx.appContext, providerFactory: providerFactory2 });
 
-			const store = ctx.corpus.createRawStore("github", ACCOUNTS.alice_github.id);
+			const store = ctx.corpus.createRawStore("bluesky", ACCOUNTS.alice_bluesky.id);
 			const versions: string[] = [];
 			for await (const meta of store.list()) {
 				versions.push(meta.version);
@@ -410,8 +410,10 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
 
+			// Setup GitHub provider
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
+
 			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
 				[ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost(),
 			});
 
@@ -423,6 +425,7 @@ describe("cron workflow", () => {
 			expect(timeline.ok).toBe(true);
 			if (timeline.ok) {
 				const parents = timeline.value.meta.parents ?? [];
+				// Should have parent for GitHub (multi-store format now uses raw store id) and Bluesky
 				expect(parents.length).toBe(2);
 				expect(parents.some(p => p.store_id.includes("github"))).toBe(true);
 				expect(parents.some(p => p.store_id.includes("bluesky"))).toBe(true);
@@ -435,11 +438,10 @@ describe("cron workflow", () => {
 			await seedUser(ctx, USERS.alice);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 
-			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
-			});
+			// GitHub now uses its own provider, not the factory
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
 
-			const result = await handleCron({ ...ctx.appContext, providerFactory });
+			const result = await handleCron(ctx.appContext);
 
 			expect(result.processed_accounts).toBe(1);
 			expect(result.updated_users).toContain(USERS.alice.id);
@@ -450,8 +452,11 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
 
+			// Setup GitHub provider (doesn't use provider factory)
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
+
+			// Provider factory is used for non-GitHub platforms
 			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
 				[ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost(),
 			});
 
@@ -506,8 +511,11 @@ describe("cron workflow", () => {
 			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.bob_youtube);
 
+			// Setup GitHub provider for Alice (GitHub uses separate flow)
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
+
+			// Setup provider factory for non-GitHub platforms (YouTube for Bob)
 			const providerFactory = createProviderFactoryFromAccounts({
-				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit(),
 				[ACCOUNTS.bob_youtube.id]: YOUTUBE_FIXTURES.singleVideo(),
 			});
 

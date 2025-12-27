@@ -1,7 +1,8 @@
 // Re-export providers, normalizers, and memory providers
-export { GitHubProvider, normalizeGitHub, GitHubMemoryProvider } from "./github";
-export { BlueskyProvider, normalizeBluesky, BlueskyMemoryProvider } from "./bluesky";
-export { YouTubeProvider, normalizeYouTube, YouTubeMemoryProvider } from "./youtube";
+export { GitHubProvider, type GitHubFetchResult, type GitHubProviderConfig } from "./github";
+export { GitHubMemoryProvider, type GitHubMemoryConfig } from "./github-memory";
+export { BlueskyProvider, normalizeBluesky, BlueskyMemoryProvider, type BlueskyProviderConfig } from "./bluesky";
+export { YouTubeProvider, normalizeYouTube, YouTubeMemoryProvider, type YouTubeProviderConfig } from "./youtube";
 export { DevpadProvider, normalizeDevpad, DevpadMemoryProvider } from "./devpad";
 
 // Re-export types
@@ -9,28 +10,17 @@ export * from "./types";
 export type { MemoryProviderControls, MemoryProviderState, SimulationConfig } from "./memory-base";
 export { createMemoryProviderState, simulateErrors, createMemoryProviderControlMethods } from "./memory-base";
 
-// Factory function for creating providers
+// Re-export GitHub normalizers
+// normalizeGitHubLegacy is for the old GitHubRaw format (tests, legacy snapshots)
+// cron.ts uses normalizeGitHub from timeline-github for new multi-store format
+export { normalizeGitHubLegacy as normalizeGitHub } from "../timeline-github";
+
+// Factory function for creating providers (non-GitHub only)
 import { err, type Result } from "../utils";
 import type { Provider, ProviderError, ProviderFactory } from "./types";
-import { GitHubProvider, type GitHubProviderConfig } from "./github";
-import { BlueskyProvider, type BlueskyProviderConfig } from "./bluesky";
-import { YouTubeProvider, type YouTubeProviderConfig } from "./youtube";
+import { BlueskyProvider } from "./bluesky";
+import { YouTubeProvider } from "./youtube";
 import { DevpadProvider } from "./devpad";
-
-export type ProviderConfig = { platform: "github"; config: GitHubProviderConfig } | { platform: "bluesky"; config: BlueskyProviderConfig } | { platform: "youtube"; config: YouTubeProviderConfig } | { platform: "devpad" };
-
-export const createProvider = (params: ProviderConfig): Provider<unknown> => {
-	switch (params.platform) {
-		case "github":
-			return new GitHubProvider(params.config);
-		case "bluesky":
-			return new BlueskyProvider(params.config);
-		case "youtube":
-			return new YouTubeProvider(params.config);
-		case "devpad":
-			return new DevpadProvider();
-	}
-};
 
 export const defaultProviderFactory: ProviderFactory = {
 	async create(platform, platformUserId, token) {
@@ -42,8 +32,6 @@ export const defaultProviderFactory: ProviderFactory = {
 
 const providerForPlatform = (platform: string, platformUserId: string | null): Provider<unknown> | null => {
 	switch (platform) {
-		case "github":
-			return new GitHubProvider({ username: platformUserId ?? undefined });
 		case "bluesky":
 			return new BlueskyProvider({ actor: platformUserId ?? "" });
 		case "youtube":

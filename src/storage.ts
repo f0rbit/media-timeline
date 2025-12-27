@@ -1,16 +1,39 @@
 import { create_corpus, define_store, json_codec, type Backend, type Store } from "@f0rbit/corpus";
 import { z } from "zod";
-import { BlueskyRawSchema, DevpadRawSchema, GitHubRawSchema, TimelineSchema, YouTubeRawSchema } from "./schema";
+import {
+	BlueskyRawSchema,
+	DevpadRawSchema,
+	GitHubRawSchema,
+	GitHubMetaStoreSchema,
+	GitHubRepoCommitsStoreSchema,
+	GitHubRepoPRsStoreSchema,
+	TimelineSchema,
+	YouTubeRawSchema,
+	type GitHubMetaStore,
+	type GitHubRepoCommitsStore,
+	type GitHubRepoPRsStore,
+} from "./schema";
 import { err, ok, type Result } from "./utils";
 
 export type CorpusError = { kind: "store_not_found"; store_id: string };
 
 export type RawStoreId = `raw/${string}/${string}`;
 export type TimelineStoreId = `timeline/${string}`;
-export type StoreId = RawStoreId | TimelineStoreId;
+export type GitHubMetaStoreId = `github/${string}/meta`;
+export type GitHubCommitsStoreId = `github/${string}/commits/${string}/${string}`;
+export type GitHubPRsStoreId = `github/${string}/prs/${string}/${string}`;
+export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId;
 
 export const rawStoreId = (platform: string, accountId: string): RawStoreId => `raw/${platform}/${accountId}`;
 export const timelineStoreId = (userId: string): TimelineStoreId => `timeline/${userId}`;
+
+// === GitHub Store ID Helpers ===
+
+export const githubMetaStoreId = (accountId: string): GitHubMetaStoreId => `github/${accountId}/meta`;
+
+export const githubCommitsStoreId = (accountId: string, owner: string, repo: string): GitHubCommitsStoreId => `github/${accountId}/commits/${owner}/${repo}`;
+
+export const githubPRsStoreId = (accountId: string, owner: string, repo: string): GitHubPRsStoreId => `github/${accountId}/prs/${owner}/${repo}`;
 
 export const RawDataSchema = z.union([GitHubRawSchema, BlueskyRawSchema, YouTubeRawSchema, DevpadRawSchema]);
 export const TimelineDataSchema = TimelineSchema;
@@ -47,6 +70,84 @@ export function createTimelineStore(backend: Backend, userId: string): Result<Ti
 		return err({ kind: "store_not_found", store_id: id });
 	}
 	return ok({ store, id });
+}
+
+export type GitHubMetaStoreResult = { store: Store<GitHubMetaStore>; id: GitHubMetaStoreId };
+export type GitHubCommitsStoreResult = { store: Store<GitHubRepoCommitsStore>; id: GitHubCommitsStoreId };
+export type GitHubPRsStoreResult = { store: Store<GitHubRepoPRsStore>; id: GitHubPRsStoreId };
+
+export function createGitHubMetaStore(backend: Backend, accountId: string): Result<GitHubMetaStoreResult, CorpusError> {
+	const id = githubMetaStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(GitHubMetaStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createGitHubCommitsStore(backend: Backend, accountId: string, owner: string, repo: string): Result<GitHubCommitsStoreResult, CorpusError> {
+	const id = githubCommitsStoreId(accountId, owner, repo);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(GitHubRepoCommitsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createGitHubPRsStore(backend: Backend, accountId: string, owner: string, repo: string): Result<GitHubPRsStoreResult, CorpusError> {
+	const id = githubPRsStoreId(accountId, owner, repo);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(GitHubRepoPRsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+// === GitHub Store Discovery ===
+
+export type RepoStoreInfo = { owner: string; repo: string; storeId: string };
+
+export async function listGitHubCommitStores(backend: Backend, accountId: string): Promise<RepoStoreInfo[]> {
+	const metaResult = createGitHubMetaStore(backend, accountId);
+	if (!metaResult.ok) return [];
+
+	const latestResult = await metaResult.value.store.get_latest();
+	if (!latestResult.ok) return [];
+
+	return latestResult.value.data.repositories.map((repo: { owner: string; name: string }) => ({
+		owner: repo.owner,
+		repo: repo.name,
+		storeId: githubCommitsStoreId(accountId, repo.owner, repo.name),
+	}));
+}
+
+export async function listGitHubPRStores(backend: Backend, accountId: string): Promise<RepoStoreInfo[]> {
+	const metaResult = createGitHubMetaStore(backend, accountId);
+	if (!metaResult.ok) return [];
+
+	const latestResult = await metaResult.value.store.get_latest();
+	if (!latestResult.ok) return [];
+
+	return latestResult.value.data.repositories.map((repo: { owner: string; name: string }) => ({
+		owner: repo.owner,
+		repo: repo.name,
+		storeId: githubPRsStoreId(accountId, repo.owner, repo.name),
+	}));
 }
 
 export type RateLimitState = {
