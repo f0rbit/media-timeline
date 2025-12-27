@@ -1,7 +1,7 @@
 import { z } from "zod";
 
-export const PlatformSchema = z.enum(["github", "bluesky", "youtube", "devpad"]);
-export const TimelineTypeSchema = z.enum(["commit", "post", "video", "task", "pull_request"]);
+export const PlatformSchema = z.enum(["github", "bluesky", "youtube", "devpad", "reddit"]);
+export const TimelineTypeSchema = z.enum(["commit", "post", "video", "task", "pull_request", "comment"]);
 
 export const CommitPayloadSchema = z.object({
 	type: z.literal("commit"),
@@ -75,7 +75,19 @@ export const PullRequestPayloadSchema = z.object({
 	commits: z.array(PRCommitSchema).default([]),
 });
 
-export const PayloadSchema = z.discriminatedUnion("type", [CommitPayloadSchema, PostPayloadSchema, VideoPayloadSchema, TaskPayloadSchema, PullRequestPayloadSchema]);
+// Comment payload (for Reddit comments)
+export const CommentPayloadSchema = z.object({
+	type: z.literal("comment"),
+	content: z.string(),
+	author_handle: z.string(),
+	parent_title: z.string(), // title of the post being commented on
+	parent_url: z.string(),
+	subreddit: z.string(),
+	score: z.number(),
+	is_op: z.boolean().default(false),
+});
+
+export const PayloadSchema = z.discriminatedUnion("type", [CommitPayloadSchema, PostPayloadSchema, VideoPayloadSchema, TaskPayloadSchema, PullRequestPayloadSchema, CommentPayloadSchema]);
 
 export const TimelineItemSchema = z.object({
 	id: z.string(),
@@ -116,6 +128,7 @@ export type PostPayload = z.infer<typeof PostPayloadSchema>;
 export type VideoPayload = z.infer<typeof VideoPayloadSchema>;
 export type TaskPayload = z.infer<typeof TaskPayloadSchema>;
 export type PullRequestPayload = z.infer<typeof PullRequestPayloadSchema>;
+export type CommentPayload = z.infer<typeof CommentPayloadSchema>;
 export type Payload = z.infer<typeof PayloadSchema>;
 export type TimelineItem = z.infer<typeof TimelineItemSchema>;
 export type CommitGroup = z.infer<typeof CommitGroupSchema>;

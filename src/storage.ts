@@ -7,11 +7,17 @@ import {
 	GitHubMetaStoreSchema,
 	GitHubRepoCommitsStoreSchema,
 	GitHubRepoPRsStoreSchema,
+	RedditMetaStoreSchema,
+	RedditPostsStoreSchema,
+	RedditCommentsStoreSchema,
 	TimelineSchema,
 	YouTubeRawSchema,
 	type GitHubMetaStore,
 	type GitHubRepoCommitsStore,
 	type GitHubRepoPRsStore,
+	type RedditMetaStore,
+	type RedditPostsStore,
+	type RedditCommentsStore,
 } from "./schema";
 import { err, ok, type Result } from "./utils";
 
@@ -22,7 +28,13 @@ export type TimelineStoreId = `timeline/${string}`;
 export type GitHubMetaStoreId = `github/${string}/meta`;
 export type GitHubCommitsStoreId = `github/${string}/commits/${string}/${string}`;
 export type GitHubPRsStoreId = `github/${string}/prs/${string}/${string}`;
-export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId;
+
+// Reddit store IDs
+export type RedditMetaStoreId = `reddit/${string}/meta`;
+export type RedditPostsStoreId = `reddit/${string}/posts`;
+export type RedditCommentsStoreId = `reddit/${string}/comments`;
+
+export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId | RedditMetaStoreId | RedditPostsStoreId | RedditCommentsStoreId;
 
 export const rawStoreId = (platform: string, accountId: string): RawStoreId => `raw/${platform}/${accountId}`;
 export const timelineStoreId = (userId: string): TimelineStoreId => `timeline/${userId}`;
@@ -34,6 +46,14 @@ export const githubMetaStoreId = (accountId: string): GitHubMetaStoreId => `gith
 export const githubCommitsStoreId = (accountId: string, owner: string, repo: string): GitHubCommitsStoreId => `github/${accountId}/commits/${owner}/${repo}`;
 
 export const githubPRsStoreId = (accountId: string, owner: string, repo: string): GitHubPRsStoreId => `github/${accountId}/prs/${owner}/${repo}`;
+
+// === Reddit Store ID Helpers ===
+
+export const redditMetaStoreId = (accountId: string): RedditMetaStoreId => `reddit/${accountId}/meta`;
+
+export const redditPostsStoreId = (accountId: string): RedditPostsStoreId => `reddit/${accountId}/posts`;
+
+export const redditCommentsStoreId = (accountId: string): RedditCommentsStoreId => `reddit/${accountId}/comments`;
 
 export const RawDataSchema = z.union([GitHubRawSchema, BlueskyRawSchema, YouTubeRawSchema, DevpadRawSchema]);
 export const TimelineDataSchema = TimelineSchema;
@@ -116,6 +136,62 @@ export function createGitHubPRsStore(backend: Backend, accountId: string, owner:
 		return err({ kind: "store_not_found", store_id: id });
 	}
 	return ok({ store, id });
+}
+
+// === Reddit Store Types ===
+
+export type RedditMetaStoreResult = { store: Store<RedditMetaStore>; id: RedditMetaStoreId };
+export type RedditPostsStoreResult = { store: Store<RedditPostsStore>; id: RedditPostsStoreId };
+export type RedditCommentsStoreResult = { store: Store<RedditCommentsStore>; id: RedditCommentsStoreId };
+
+// === Reddit Store Creators ===
+
+export function createRedditMetaStore(backend: Backend, accountId: string): Result<RedditMetaStoreResult, CorpusError> {
+	const id = redditMetaStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(RedditMetaStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createRedditPostsStore(backend: Backend, accountId: string): Result<RedditPostsStoreResult, CorpusError> {
+	const id = redditPostsStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(RedditPostsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+export function createRedditCommentsStore(backend: Backend, accountId: string): Result<RedditCommentsStoreResult, CorpusError> {
+	const id = redditCommentsStoreId(accountId);
+	const corpus = create_corpus()
+		.with_backend(backend)
+		.with_store(define_store(id, json_codec(RedditCommentsStoreSchema)))
+		.build();
+
+	const store = corpus.stores[id];
+	if (!store) {
+		return err({ kind: "store_not_found", store_id: id });
+	}
+	return ok({ store, id });
+}
+
+// === Reddit Store ID Listing ===
+
+export function listRedditStoreIds(accountId: string): string[] {
+	return [redditMetaStoreId(accountId), redditPostsStoreId(accountId), redditCommentsStoreId(accountId)];
 }
 
 // === GitHub Store Discovery ===

@@ -4,6 +4,8 @@ export { GitHubMemoryProvider, type GitHubMemoryConfig } from "./github-memory";
 export { BlueskyProvider, normalizeBluesky, BlueskyMemoryProvider, type BlueskyProviderConfig } from "./bluesky";
 export { YouTubeProvider, normalizeYouTube, YouTubeMemoryProvider, type YouTubeProviderConfig } from "./youtube";
 export { DevpadProvider, normalizeDevpad, DevpadMemoryProvider } from "./devpad";
+export * from "./reddit";
+export * from "./reddit-memory";
 
 // Re-export types
 export * from "./types";

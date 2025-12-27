@@ -41,8 +41,28 @@ export {
 } from "./github-prs";
 
 export {
+	RedditPostSchema,
+	RedditPostsStoreSchema,
+	type RedditPost,
+	type RedditPostsStore,
+} from "./reddit-posts";
+
+export {
+	RedditCommentSchema,
+	RedditCommentsStoreSchema,
+	type RedditComment,
+	type RedditCommentsStore,
+} from "./reddit-comments";
+
+export {
+	RedditMetaStoreSchema,
+	type RedditMetaStore,
+} from "./reddit-meta";
+
+export {
 	CommitGroupSchema,
 	CommitPayloadSchema,
+	CommentPayloadSchema,
 	DateGroupSchema,
 	PayloadSchema,
 	PlatformSchema,
@@ -58,6 +78,7 @@ export {
 export type {
 	CommitGroup,
 	CommitPayload,
+	CommentPayload,
 	DateGroup,
 	Payload,
 	Platform,
