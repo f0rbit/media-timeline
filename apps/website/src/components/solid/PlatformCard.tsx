@@ -81,7 +81,7 @@ export default function PlatformCard(props: Props) {
 			<div class="flex-row justify-between">
 				<div class="flex-row" style={{ gap: "12px" }}>
 					<PlatformIcon platform={props.platform} size={24} />
-					<div class="flex-row">
+					<div class="flex-row" style={{ "margin-bottom": state() === "inactive" ? "-0.15rem" : "" }}>
 						<h6 class="secondary font-medium">{formatPlatformName(props.platform)}</h6>
 						<Show when={props.connection}>
 							<span class="tertiary text-sm">{"·"}</span>

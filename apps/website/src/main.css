@@ -1262,6 +1262,9 @@ hr {
 	margin-top: 12px;
 	padding-top: 12px;
 	border-top: 1px solid var(--input-border);
+	justify-content: center;
+    align-items: center;
+    padding-bottom: 8px;
 }
 
 .oauth-button {
