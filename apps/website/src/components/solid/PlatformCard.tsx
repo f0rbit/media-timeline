@@ -9,6 +9,7 @@ import GitHubSettings from "./PlatformSettings/GitHubSettings";
 import BlueskySettings from "./PlatformSettings/BlueskySettings";
 import YouTubeSettings from "./PlatformSettings/YouTubeSettings";
 import DevpadSettings from "./PlatformSettings/DevpadSettings";
+import RedditSettings from "./PlatformSettings/RedditSettings";
 
 type Props = {
 	platform: Platform;
@@ -76,6 +77,13 @@ export default function PlatformCard(props: Props) {
 							</Match>
 							<Match when={props.platform === "devpad"}>
 								<DevpadSettings accountId={props.connection!.account_id} settings={props.connection?.settings as { hidden_projects?: string[]; all_projects?: boolean } | null} onUpdate={props.onConnectionChange} />
+							</Match>
+							<Match when={props.platform === "reddit"}>
+								<RedditSettings
+									accountId={props.connection!.account_id}
+									settings={props.connection?.settings as { include_posts?: boolean; include_comments?: boolean; hidden_subreddits?: string[] } | null}
+									onUpdate={props.onConnectionChange}
+								/>
 							</Match>
 						</Switch>
 					</div>

@@ -11,6 +11,9 @@ export type Bindings = {
 	BUCKET: R2Bucket;
 	EncryptionKey: string;
 	ENVIRONMENT: string;
+	REDDIT_CLIENT_ID?: string;
+	REDDIT_CLIENT_SECRET?: string;
+	APP_URL?: string;
 };
 
 type CorpusBackend = {

@@ -12,6 +12,8 @@ import type {
 	GitHubRepoCommitsStore,
 	GitHubRepoPRsStore,
 	GitHubRepoMeta,
+	RedditPost,
+	RedditComment,
 	YouTubeRaw,
 	YouTubeVideo,
 } from "../../src/schema";
@@ -486,6 +488,22 @@ export const ACCOUNTS = {
 		access_token: "devpad_token",
 		is_active: true,
 	},
+	alice_reddit: {
+		id: "acc-alice-reddit",
+		platform: "reddit" as const,
+		platform_user_id: "reddit-alice-123",
+		platform_username: "alice_redditor",
+		access_token: "reddit_alice_token",
+		is_active: true,
+	},
+	bob_reddit: {
+		id: "acc-bob-reddit",
+		platform: "reddit" as const,
+		platform_user_id: "reddit-bob-456",
+		platform_username: "bob_redditor",
+		access_token: "reddit_bob_token",
+		is_active: true,
+	},
 };
 
 export const API_KEYS = {
@@ -497,8 +515,8 @@ export const API_KEYS = {
 export const makeTimelineItem = (
 	overrides: Partial<{
 		id: string;
-		platform: "github" | "bluesky" | "youtube" | "devpad";
-		type: "commit" | "post" | "video" | "task";
+		platform: "github" | "bluesky" | "youtube" | "devpad" | "reddit";
+		type: "commit" | "post" | "video" | "task" | "comment";
 		timestamp: string;
 		title: string;
 		url: string;
@@ -514,3 +532,97 @@ export const makeTimelineItem = (
 	payload: { type: "commit", sha: randomSha(), message: "test", repo: "test/repo", branch: "main" },
 	...overrides,
 });
+
+// Reddit fixtures
+export const makeRedditPost = (overrides: Partial<RedditPost> = {}): RedditPost => ({
+	id: crypto.randomUUID().slice(0, 7),
+	name: `t3_${crypto.randomUUID().slice(0, 7)}`,
+	title: "Test Reddit Post",
+	selftext: "This is a test post",
+	url: "https://reddit.com/r/test/comments/abc123/test_post/",
+	permalink: "/r/test/comments/abc123/test_post/",
+	subreddit: "test",
+	subreddit_prefixed: "r/test",
+	author: "testuser",
+	created_utc: Date.now() / 1000,
+	score: 42,
+	upvote_ratio: 0.95,
+	num_comments: 5,
+	is_self: true,
+	is_video: false,
+	over_18: false,
+	spoiler: false,
+	stickied: false,
+	locked: false,
+	archived: false,
+	...overrides,
+});
+
+export const makeRedditComment = (overrides: Partial<RedditComment> = {}): RedditComment => ({
+	id: crypto.randomUUID().slice(0, 7),
+	name: `t1_${crypto.randomUUID().slice(0, 7)}`,
+	body: "This is a test comment",
+	permalink: "/r/test/comments/abc123/test_post/def456/",
+	link_id: "t3_abc123",
+	link_title: "Parent Post Title",
+	link_permalink: "/r/test/comments/abc123/test_post/",
+	subreddit: "test",
+	subreddit_prefixed: "r/test",
+	author: "testuser",
+	created_utc: Date.now() / 1000,
+	score: 10,
+	is_submitter: false,
+	stickied: false,
+	edited: false,
+	parent_id: "t3_abc123",
+	...overrides,
+});
+
+export const REDDIT_FIXTURES = {
+	singlePost: () => [makeRedditPost()],
+
+	multiplePosts: (count = 3) =>
+		Array.from({ length: count }, (_, i) =>
+			makeRedditPost({
+				title: `Post ${i + 1}`,
+				score: i * 10,
+				created_utc: Date.now() / 1000 - i * 3600,
+			})
+		),
+
+	singleComment: () => [makeRedditComment()],
+
+	multipleComments: (count = 3) =>
+		Array.from({ length: count }, (_, i) =>
+			makeRedditComment({
+				body: `Comment ${i + 1}`,
+				score: i * 5,
+			})
+		),
+
+	postsWithSubreddits: () => [makeRedditPost({ subreddit: "programming", title: "Programming post" }), makeRedditPost({ subreddit: "typescript", title: "TypeScript post" }), makeRedditPost({ subreddit: "webdev", title: "Web dev post" })],
+
+	commentsWithSubreddits: () => [makeRedditComment({ subreddit: "programming", body: "Programming comment" }), makeRedditComment({ subreddit: "typescript", body: "TypeScript comment" })],
+
+	nsfwPost: () => [makeRedditPost({ over_18: true, title: "NSFW post" })],
+
+	videoPost: () => [
+		makeRedditPost({
+			is_video: true,
+			is_self: false,
+			url: "https://v.redd.it/test123",
+			title: "Video post",
+		}),
+	],
+
+	linkPost: () => [
+		makeRedditPost({
+			is_self: false,
+			selftext: "",
+			url: "https://example.com/article",
+			title: "Link post",
+		}),
+	],
+
+	empty: () => [],
+};

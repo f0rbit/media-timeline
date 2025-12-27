@@ -181,6 +181,213 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 
 export const connectionRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+// Reddit OAuth token refresh helper
+export const refreshRedditToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<{ access_token: string; refresh_token?: string; expires_in: number } | null> => {
+	try {
+		const response = await fetch("https://www.reddit.com/api/v1/access_token", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+				Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+				"User-Agent": "media-timeline/2.0.0",
+			},
+			body: new URLSearchParams({
+				grant_type: "refresh_token",
+				refresh_token: refreshToken,
+			}),
+		});
+
+		if (!response.ok) return null;
+		return await response.json();
+	} catch {
+		return null;
+	}
+};
+
+// GET /auth/reddit - Initiate Reddit OAuth
+authRoutes.get("/reddit", async c => {
+	const clientId = c.env.REDDIT_CLIENT_ID;
+	if (!clientId) {
+		return c.json({ error: "Reddit OAuth not configured" }, 500);
+	}
+
+	const redirectUri = `${c.env.APP_URL || "http://localhost:3000"}/api/auth/reddit/callback`;
+	const state = crypto.randomUUID();
+
+	const scope = "identity,history,read";
+	const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
+	authUrl.searchParams.set("client_id", clientId);
+	authUrl.searchParams.set("response_type", "code");
+	authUrl.searchParams.set("state", state);
+	authUrl.searchParams.set("redirect_uri", redirectUri);
+	authUrl.searchParams.set("duration", "permanent");
+	authUrl.searchParams.set("scope", scope);
+
+	return c.redirect(authUrl.toString());
+});
+
+// GET /auth/reddit/callback - Handle Reddit OAuth callback
+authRoutes.get("/reddit/callback", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const db = ctx.db;
+
+	const code = c.req.query("code");
+	const error = c.req.query("error");
+
+	if (error) {
+		console.error("[reddit-oauth] Authorization denied:", error);
+		return c.redirect("/connections?error=reddit_auth_denied");
+	}
+
+	if (!code) {
+		return c.redirect("/connections?error=reddit_no_code");
+	}
+
+	const clientId = c.env.REDDIT_CLIENT_ID;
+	const clientSecret = c.env.REDDIT_CLIENT_SECRET;
+	const redirectUri = `${c.env.APP_URL || "http://localhost:3000"}/api/auth/reddit/callback`;
+
+	if (!clientId || !clientSecret) {
+		return c.redirect("/connections?error=reddit_not_configured");
+	}
+
+	try {
+		// Exchange code for tokens
+		const tokenResponse = await fetch("https://www.reddit.com/api/v1/access_token", {
+			method: "POST",
+			headers: {
+				"Content-Type": "application/x-www-form-urlencoded",
+				Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+				"User-Agent": "media-timeline/2.0.0",
+			},
+			body: new URLSearchParams({
+				grant_type: "authorization_code",
+				code,
+				redirect_uri: redirectUri,
+			}),
+		});
+
+		if (!tokenResponse.ok) {
+			console.error("[reddit-oauth] Token exchange failed:", await tokenResponse.text());
+			return c.redirect("/connections?error=reddit_token_failed");
+		}
+
+		const tokens = (await tokenResponse.json()) as {
+			access_token: string;
+			refresh_token: string;
+			expires_in: number;
+			token_type: string;
+			scope: string;
+		};
+
+		// Get user info
+		const userResponse = await fetch("https://oauth.reddit.com/api/v1/me", {
+			headers: {
+				Authorization: `Bearer ${tokens.access_token}`,
+				"User-Agent": "media-timeline/2.0.0",
+			},
+		});
+
+		if (!userResponse.ok) {
+			console.error("[reddit-oauth] Failed to get user info");
+			return c.redirect("/connections?error=reddit_user_failed");
+		}
+
+		const userData = (await userResponse.json()) as {
+			id: string;
+			name: string;
+			icon_img?: string;
+		};
+
+		// Check if connection already exists
+		const existing = await db
+			.select()
+			.from(accounts)
+			.where(and(eq(accounts.platform, "reddit"), eq(accounts.platform_user_id, userData.id)))
+			.get();
+
+		const encryptedAccessTokenResult = await encrypt(tokens.access_token, ctx.encryptionKey);
+		if (!encryptedAccessTokenResult.ok) {
+			console.error("[reddit-oauth] Failed to encrypt access token");
+			return c.redirect("/connections?error=reddit_encryption_failed");
+		}
+
+		const encryptedRefreshTokenResult = tokens.refresh_token ? await encrypt(tokens.refresh_token, ctx.encryptionKey) : null;
+
+		const encryptedAccessToken = encryptedAccessTokenResult.value;
+		const encryptedRefreshToken = encryptedRefreshTokenResult?.ok ? encryptedRefreshTokenResult.value : null;
+
+		const now = new Date().toISOString();
+		const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+		if (existing) {
+			// Check if user is already a member
+			const existingMembership = await db
+				.select()
+				.from(accountMembers)
+				.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, existing.id)))
+				.get();
+
+			// Update existing connection
+			await db
+				.update(accounts)
+				.set({
+					access_token_encrypted: encryptedAccessToken,
+					refresh_token_encrypted: encryptedRefreshToken,
+					token_expires_at: tokenExpiresAt,
+					is_active: true,
+					updated_at: now,
+				})
+				.where(eq(accounts.id, existing.id));
+
+			// Add user as member if not already
+			if (!existingMembership) {
+				await db.insert(accountMembers).values({
+					id: crypto.randomUUID(),
+					user_id: auth.user_id,
+					account_id: existing.id,
+					role: "member",
+					created_at: now,
+				});
+			}
+		} else {
+			// Create new connection
+			const accountId = crypto.randomUUID();
+			const memberId = crypto.randomUUID();
+
+			await db.batch([
+				db.insert(accounts).values({
+					id: accountId,
+					platform: "reddit",
+					platform_user_id: userData.id,
+					platform_username: userData.name,
+					access_token_encrypted: encryptedAccessToken,
+					refresh_token_encrypted: encryptedRefreshToken,
+					token_expires_at: tokenExpiresAt,
+					is_active: true,
+					created_at: now,
+					updated_at: now,
+				}),
+				db.insert(accountMembers).values({
+					id: memberId,
+					user_id: auth.user_id,
+					account_id: accountId,
+					role: "owner",
+					created_at: now,
+				}),
+			]);
+		}
+
+		return c.redirect("/connections?success=reddit");
+	} catch (error) {
+		console.error("[reddit-oauth] Error:", error);
+		return c.redirect("/connections?error=reddit_exception");
+	}
+});
+
 connectionRoutes.get("/", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);

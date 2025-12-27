@@ -2,7 +2,7 @@ import { createSignal, Show } from "solid-js";
 import { connections } from "@/utils/api-client";
 import { formatPlatformName } from "@/utils/formatters";
 
-export type Platform = "github" | "bluesky" | "youtube" | "devpad";
+export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit";
 
 type Props = {
 	platform: Platform;
@@ -45,6 +45,13 @@ const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
 		usernameLabel: "Username",
 		usernamePlaceholder: "your-username",
 		helpText: "Generate a token in your Devpad settings",
+	},
+	reddit: {
+		tokenLabel: "Access Token",
+		tokenPlaceholder: "your-reddit-token",
+		usernameLabel: "Reddit Username",
+		usernamePlaceholder: "u/your-username",
+		helpText: "Connect via Reddit OAuth or use your API credentials",
 	},
 };
 

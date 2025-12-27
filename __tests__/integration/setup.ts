@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { authMiddleware } from "../../src/auth";
 import type { AppContext } from "../../src/infrastructure";
 import type { ProviderFactory } from "../../src/cron";
-import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
+import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
 import { timelineRoutes, connectionRoutes } from "../../src/routes";
 import type { Platform } from "../../src/schema";
 import * as schema from "../../src/schema/database";
@@ -53,6 +53,7 @@ export type TestProviders = {
 	bluesky: BlueskyMemoryProvider;
 	youtube: YouTubeMemoryProvider;
 	devpad: DevpadMemoryProvider;
+	reddit: RedditMemoryProvider;
 };
 
 export type D1PreparedStatement = {
@@ -325,6 +326,7 @@ const createTestProviders = (): TestProviders => ({
 	bluesky: new BlueskyMemoryProvider({}),
 	youtube: new YouTubeMemoryProvider({}),
 	devpad: new DevpadMemoryProvider({}),
+	reddit: new RedditMemoryProvider({}),
 });
 
 export const createTestCorpus = (): TestCorpus => {
@@ -429,6 +431,7 @@ export const createTestContext = (): TestContext => {
 		providers.bluesky.reset();
 		providers.youtube.reset();
 		providers.devpad.reset();
+		providers.reddit.reset();
 	};
 
 	return { db, d1, r2, providers, env, corpus, appContext, cleanup };

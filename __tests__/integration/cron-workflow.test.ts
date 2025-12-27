@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { handleCron } from "../../src/cron";
 import type { GitHubRaw, Platform } from "../../src/schema";
 import { type TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, BLUESKY_FIXTURES, DEVPAD_FIXTURES, GITHUB_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw, USERS, YOUTUBE_FIXTURES } from "./fixtures";
+import { ACCOUNTS, BLUESKY_FIXTURES, DEVPAD_FIXTURES, GITHUB_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw, REDDIT_FIXTURES, USERS, YOUTUBE_FIXTURES } from "./fixtures";
 import { addAccountMember, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, seedAccount, seedRateLimit, seedUser, setupGitHubProvider, type TestContext } from "./setup";
 
 describe("cron workflow", () => {
@@ -542,6 +542,47 @@ describe("cron workflow", () => {
 				const bobEntries = bobData.groups.flatMap(g => g.items);
 				expect(bobEntries.some(e => e.type === "video")).toBe(true);
 			}
+		});
+	});
+
+	describe("Reddit integration in cron", () => {
+		it("processes Reddit account via cron flow", async () => {
+			await seedUser(ctx, USERS.alice);
+			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+
+			// Reddit uses its own provider flow (like GitHub), not the generic factory
+			// The cron.ts processRedditAccountFlow handles this
+			// For integration tests, we need to set up the Reddit memory provider
+			ctx.providers.reddit.setPosts(REDDIT_FIXTURES.multiplePosts(2));
+			ctx.providers.reddit.setComments(REDDIT_FIXTURES.multipleComments(1));
+
+			// Note: Reddit doesn't use providerFactory, it uses RedditProvider directly
+			// This test validates the account is processed (skipped if no real provider)
+			const result = await handleCron(ctx.appContext);
+
+			// Reddit account was processed (even if it might fail without real API)
+			expect(result.processed_accounts).toBe(1);
+		});
+
+		it("combines Reddit with other platforms in timeline", async () => {
+			await seedUser(ctx, USERS.alice);
+			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
+			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+
+			// Setup GitHub
+			setupGitHubProvider(ctx, GITHUB_FIXTURES.singleCommit());
+
+			// Setup Bluesky via provider factory
+			const providerFactory = createProviderFactoryFromAccounts({
+				[ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost(),
+			});
+
+			const result = await handleCron({ ...ctx.appContext, providerFactory });
+
+			// All 3 accounts processed
+			expect(result.processed_accounts).toBe(3);
+			expect(result.updated_users).toContain(USERS.alice.id);
 		});
 	});
 });

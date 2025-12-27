@@ -103,9 +103,13 @@ export const api = {
 	delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
+export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit";
+
+export type TimelineType = "commit" | "post" | "video" | "task" | "pull_request" | "comment";
+
 export type Connection = {
 	account_id: string;
-	platform: string;
+	platform: Platform;
 	platform_username: string | null;
 	is_active: boolean;
 	last_fetched_at: string | null;
@@ -162,14 +166,36 @@ export type PullRequestPayload = {
 	commit_shas?: string[];
 };
 
+export type CommentPayload = {
+	type: "comment";
+	content: string;
+	author_handle: string;
+	parent_title: string;
+	parent_url: string;
+	subreddit: string;
+	score: number;
+	is_op: boolean;
+};
+
+export type PostPayload = {
+	type: "post";
+	title: string;
+	content: string;
+	author_handle: string;
+	subreddit: string;
+	score: number;
+	num_comments: number;
+	is_self: boolean;
+};
+
 export type TimelineItem = {
 	id: string;
-	platform: string;
-	type: string;
+	platform: Platform;
+	type: TimelineType;
 	timestamp: string;
 	title: string;
 	url: string;
-	payload: CommitPayload | PullRequestPayload | Record<string, unknown>;
+	payload: CommitPayload | PullRequestPayload | CommentPayload | PostPayload | Record<string, unknown>;
 };
 
 export type CommitGroup = {
@@ -212,6 +238,7 @@ export const connections = {
 	getSettings: (accountId: string) => api.get<{ settings: PlatformSettings }>(`/connections/${accountId}/settings`),
 	updateSettings: (accountId: string, settings: PlatformSettings) => api.put<{ updated: boolean }>(`/connections/${accountId}/settings`, { settings }),
 	getRepos: (accountId: string) => api.get<{ repos: GitHubRepo[] }>(`/connections/${accountId}/repos`),
+	getSubreddits: (accountId: string) => api.get<{ subreddits: string[]; username: string }>(`/connections/${accountId}/subreddits`),
 };
 
 export const timeline = {
