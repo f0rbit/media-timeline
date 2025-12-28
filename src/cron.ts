@@ -20,8 +20,8 @@ type RedditProviderLike = {
 	fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>>;
 };
 
-export { processAccount, gatherLatestSnapshots, combineUserTimeline };
-export type { ProviderFactory };
+export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline };
+export type { ProviderFactory, RawSnapshot, PlatformGroups };
 
 type RawSnapshot = {
 	account_id: string;
@@ -431,71 +431,55 @@ const gatherLatestSnapshots = async (backend: Backend, accounts: AccountWithUser
 	return results.filter((s): s is RawSnapshot => s !== null);
 };
 
-const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
-	if (snapshots.length === 0) {
-		const emptyTimeline = {
-			user_id: userId,
-			generated_at: new Date().toISOString(),
-			groups: [],
-		};
-		await pipe(createTimelineStore(backend, userId))
-			.tap(async ({ store }) => {
-				await store.put(emptyTimeline, { parents: [] });
-			})
-			.result();
-		return;
+const MULTI_STORE_PLATFORMS = ["github", "reddit", "twitter"] as const;
+
+type PlatformGroups = {
+	github: RawSnapshot[];
+	reddit: RawSnapshot[];
+	twitter: RawSnapshot[];
+	other: RawSnapshot[];
+};
+
+const groupSnapshotsByPlatform = (snapshots: RawSnapshot[]): PlatformGroups => ({
+	github: snapshots.filter(s => s.platform === "github"),
+	reddit: snapshots.filter(s => s.platform === "reddit"),
+	twitter: snapshots.filter(s => s.platform === "twitter"),
+	other: snapshots.filter(s => !MULTI_STORE_PLATFORMS.includes(s.platform as (typeof MULTI_STORE_PLATFORMS)[number])),
+});
+
+const loadPlatformItems = async <T>(backend: Backend, snapshots: RawSnapshot[], loader: (backend: Backend, accountId: string) => Promise<T>, normalizer: (data: T) => TimelineItem[]): Promise<TimelineItem[]> => {
+	const items: TimelineItem[] = [];
+	for (const snapshot of snapshots) {
+		const data = await loader(backend, snapshot.account_id);
+		items.push(...normalizer(data));
 	}
+	return items;
+};
 
-	// Separate multi-store platforms from other platforms
-	const githubSnapshots = snapshots.filter(s => s.platform === "github");
-	const redditSnapshots = snapshots.filter(s => s.platform === "reddit");
-	const twitterSnapshots = snapshots.filter(s => s.platform === "twitter");
-	const otherSnapshots = snapshots.filter(s => s.platform !== "github" && s.platform !== "reddit" && s.platform !== "twitter");
+const normalizeOtherSnapshots = (snapshots: RawSnapshot[]): TimelineItem[] => {
+	const results = snapshots.map(snapshot => normalizeSnapshot(snapshot));
 
-	// Load GitHub data from multi-stores
-	const githubItems: TimelineItem[] = [];
-	for (const snapshot of githubSnapshots) {
-		const data = await loadGitHubDataForAccount(backend, snapshot.account_id);
-		const normalized = normalizeGitHub(data);
-		githubItems.push(...normalized);
-	}
-
-	// Load Reddit data from multi-stores
-	const redditItems: TimelineItem[] = [];
-	for (const snapshot of redditSnapshots) {
-		const data = await loadRedditDataForAccount(backend, snapshot.account_id);
-		const normalized = normalizeReddit(data, "");
-		redditItems.push(...normalized);
-	}
-
-	// Load Twitter data from multi-stores
-	const twitterItems: TimelineItem[] = [];
-	for (const snapshot of twitterSnapshots) {
-		const data = await loadTwitterDataForAccount(backend, snapshot.account_id);
-		const normalized = normalizeTwitter(data);
-		twitterItems.push(...normalized);
-	}
-
-	const normalizeResults = otherSnapshots.map(snapshot => normalizeSnapshot(snapshot));
-
-	for (const r of normalizeResults) {
+	for (const r of results) {
 		if (!r.ok) {
 			console.error(`[cron] Failed to normalize ${r.error.platform} data: ${r.error.message}`);
 		}
 	}
 
-	const otherItems = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
-	const items = [...githubItems, ...redditItems, ...twitterItems, ...otherItems];
+	return results.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
+};
 
+const generateTimeline = (userId: string, items: TimelineItem[]) => {
 	const entries: TimelineEntry[] = groupCommits(items);
 	const dateGroups = groupByDate(entries);
 
-	const timeline = {
+	return {
 		user_id: userId,
 		generated_at: new Date().toISOString(),
 		groups: dateGroups,
 	};
+};
 
+const storeTimeline = async (backend: Backend, userId: string, timeline: ReturnType<typeof generateTimeline>, snapshots: RawSnapshot[]): Promise<void> => {
 	const parents = snapshots.map(s => ({
 		store_id: rawStoreId(s.platform, s.account_id),
 		version: s.version,
@@ -508,6 +492,40 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 			await store.put(timeline, { parents });
 		})
 		.result();
+};
+
+const storeEmptyTimeline = async (backend: Backend, userId: string): Promise<void> => {
+	const emptyTimeline = {
+		user_id: userId,
+		generated_at: new Date().toISOString(),
+		groups: [],
+	};
+	await pipe(createTimelineStore(backend, userId))
+		.tap(async ({ store }) => {
+			await store.put(emptyTimeline, { parents: [] });
+		})
+		.result();
+};
+
+const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
+	if (snapshots.length === 0) {
+		await storeEmptyTimeline(backend, userId);
+		return;
+	}
+
+	const byPlatform = groupSnapshotsByPlatform(snapshots);
+
+	const [githubItems, redditItems, twitterItems] = await Promise.all([
+		loadPlatformItems(backend, byPlatform.github, loadGitHubDataForAccount, normalizeGitHub),
+		loadPlatformItems(backend, byPlatform.reddit, loadRedditDataForAccount, data => normalizeReddit(data, "")),
+		loadPlatformItems(backend, byPlatform.twitter, loadTwitterDataForAccount, normalizeTwitter),
+	]);
+
+	const otherItems = normalizeOtherSnapshots(byPlatform.other);
+	const allItems = [...githubItems, ...redditItems, ...twitterItems, ...otherItems];
+
+	const timeline = generateTimeline(userId, allItems);
+	await storeTimeline(backend, userId, timeline, snapshots);
 };
 
 const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> => {
