@@ -708,9 +708,9 @@ form section label {
 
 /* Reddit Comment Text - prose/quote style */
 .reddit-comment-text {
-	font-size: 0.875rem;
+	font-size: 0.8125rem;
 	line-height: 1.4;
-	color: var(--text-secondary);
+	color: var(--text-tertiary);
 	white-space: pre-wrap;
 	word-break: break-word;
 }
@@ -721,6 +721,28 @@ form section label {
 
 .reddit-comment-text a:hover {
 	color: var(--text-primary);
+}
+
+/* Reddit Comment Expand/Collapse */
+.reddit-comment-clamped {
+	display: -webkit-box;
+	-webkit-line-clamp: 4;
+	-webkit-box-orient: vertical;
+	overflow: hidden;
+	white-space: normal;
+}
+
+.reddit-expand-label {
+	font-size: 0.75rem;
+	color: var(--text-link);
+	cursor: pointer;
+	background: none;
+	border: none;
+	padding: 0;
+}
+
+.reddit-expand-label:hover {
+	text-decoration: underline;
 }
 
 /* Reddit OP Badge */

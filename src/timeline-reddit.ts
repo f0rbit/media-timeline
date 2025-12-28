@@ -90,7 +90,7 @@ export function normalizeReddit(data: RedditTimelineData, _username: string): Ti
 				content: comment.body,
 				author_handle: comment.author,
 				parent_title: comment.link_title,
-				parent_url: `https://reddit.com${comment.link_permalink}`,
+				parent_url: comment.link_permalink.startsWith("http") ? comment.link_permalink : `https://reddit.com${comment.link_permalink}`,
 				subreddit: comment.subreddit,
 				score: comment.score,
 				is_op: comment.is_submitter,

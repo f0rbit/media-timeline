@@ -372,6 +372,27 @@ function RedditCommentRow(props: { item: TimelineItem }) {
 			is_op: boolean;
 		};
 
+	// Check if content is long enough to need collapsing (roughly 4 lines worth)
+	const isLongContent = () => payload().content.length > 280 || payload().content.split("\n").length > 4;
+
+	const [expanded, setExpanded] = createSignal(false);
+
+	const CommentText = () => <span>{payload().content}</span>;
+
+	const ExpandLink = () => (
+		<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
+			<button type="button" class="reddit-expand-label" onClick={() => setExpanded(!expanded())} style={{ "margin-top": "-0.15rem"}}>
+				{expanded() ? "show less" : "show more"}
+			</button>
+			<Show when={props.item.url}>
+				<span class="muted">·</span>
+				<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="reddit-expand-label">
+					see comment
+				</a>
+			</Show>
+		</div>
+	);
+
 	return (
 		<div class="timeline-row">
 			<div class="timeline-icon timeline-icon-reddit-comment">
@@ -384,24 +405,41 @@ function RedditCommentRow(props: { item: TimelineItem }) {
 						<span class="reddit-op-badge">OP</span>
 					</Show>
 				</div>
-				<div class="reddit-comment-text">
-					<Show when={props.item.url} fallback={<span class="reddit-comment-content">{payload().content}</span>}>
-						<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="reddit-comment-content">
-							{payload().content}
-						</a>
-					</Show>
-				</div>
+				<Show
+					when={isLongContent()}
+					fallback={
+						<>
+							<div class="reddit-comment-text">
+								<CommentText />
+							</div>
+							<Show when={props.item.url}>
+								<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
+									<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="reddit-expand-label">
+										see comment
+									</a>
+								</div>
+							</Show>
+						</>
+					}
+				>
+					<div class={`reddit-comment-text ${expanded() ? "" : "reddit-comment-clamped"}`}>
+						<CommentText />
+					</div>
+					<ExpandLink />
+				</Show>
 				<div class="flex-row items-center text-xs muted" style={{ gap: "0.5rem", "flex-wrap": "wrap" }}>
 					<span>r/{payload().subreddit}</span>
-					<span>·</span>
-					<span>on</span>
-					<a href={payload().parent_url} target="_blank" rel="noopener noreferrer" class="muted truncate" style={{ "max-width": "250px" }}>
-						{payload().parent_title}
-					</a>
 					<span>·</span>
 					<span class="inline-flex items-center" style={{ gap: "0.25rem" }}>
 						<ArrowBigUp size={12} />
 						<span>{payload().score}</span>
+					</span>
+					<span>·</span>
+					<span>
+						on{" "}
+						<a href={payload().parent_url} target="_blank" rel="noopener noreferrer" class="muted truncate" style={{ "max-width": "250px" }}>
+							"{payload().parent_title}"
+						</a>
 					</span>
 				</div>
 			</div>
