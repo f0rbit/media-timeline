@@ -1,7 +1,7 @@
 import { Octokit } from "octokit";
 import type { GitHubMetaStore, GitHubRepoCommit, GitHubRepoCommitsStore, GitHubRepoMeta, GitHubRepoPR, GitHubRepoPRsStore } from "../schema";
 import { type Result, err, ok } from "../utils";
-import { type ProviderError, toProviderError } from "./types";
+import { type ProviderError, mapHttpError, toProviderError } from "./types";
 
 export type GitHubProviderConfig = {
 	maxRepos: number;
@@ -94,33 +94,13 @@ const parallel_map = async <T, R>(items: T[], fn: (item: T) => Promise<R>, concu
 	return results;
 };
 
-const parseRateLimitReset = (resetTimestamp: number | undefined): number => {
-	if (!resetTimestamp) return 60;
-	return Math.max(0, resetTimestamp - Math.floor(Date.now() / 1000));
-};
-
 const mapOctokitError = (error: unknown): ProviderError => {
 	if (error && typeof error === "object" && "status" in error) {
 		const status = (error as { status: number }).status;
 		const response = (error as { response?: { headers?: Record<string, string | number> } }).response;
-
-		if (status === 401 || status === 403) {
-			const rateLimitRemaining = response?.headers?.["x-ratelimit-remaining"];
-			const rateLimitReset = response?.headers?.["x-ratelimit-reset"];
-
-			if (rateLimitRemaining === 0 && rateLimitReset) {
-				return { kind: "rate_limited", retry_after: parseRateLimitReset(Number(rateLimitReset)) };
-			}
-			return { kind: "auth_expired", message: "GitHub token expired or invalid" };
-		}
-
-		if (status === 429) {
-			const rateLimitReset = response?.headers?.["x-ratelimit-reset"];
-			return { kind: "rate_limited", retry_after: parseRateLimitReset(rateLimitReset ? Number(rateLimitReset) : undefined) };
-		}
-
 		const message = (error as { message?: string }).message ?? "Unknown API error";
-		return { kind: "api_error", status, message };
+
+		return mapHttpError(status, message, response?.headers);
 	}
 
 	return toProviderError(error);

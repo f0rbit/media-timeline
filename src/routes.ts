@@ -6,11 +6,32 @@ import { z } from "zod";
 import { getAuth } from "./auth";
 import type { Bindings } from "./bindings";
 import { deleteConnection } from "./connection-delete";
+import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
 import { DateGroupSchema, accountMembers, accountSettings, accounts } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
 import { type FetchError, type Result, encrypt, err, fetchResult, match, ok, pipe, tryCatchAsync } from "./utils";
+
+type MembershipResult = Result<{ role: string }, { status: 404 | 403; error: string; message: string }>;
+
+const requireMembership = async (db: Database, userId: string, accountId: string, requiredRole?: "owner"): Promise<MembershipResult> => {
+	const membership = await db
+		.select({ role: accountMembers.role })
+		.from(accountMembers)
+		.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, accountId)))
+		.get();
+
+	if (!membership) {
+		return err({ status: 404, error: "Not found", message: "Account not found or no access" });
+	}
+
+	if (requiredRole && membership.role !== requiredRole) {
+		return err({ status: 403, error: "Forbidden", message: `Only ${requiredRole}s can perform this action` });
+	}
+
+	return ok({ role: membership.role });
+};
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -856,18 +877,10 @@ connectionRoutes.post("/:account_id/members", async c => {
 	}
 	const body = parseResult.data;
 
-	const membership = await ctx.db
-		.select({ role: accountMembers.role })
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
-		.get();
-
-	if (!membership) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
-	}
-
-	if (membership.role !== "owner") {
-		return c.json({ error: "Forbidden", message: "Only owners can add members" }, 403);
+	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId, "owner");
+	if (!membershipResult.ok) {
+		const { status, error, message } = membershipResult.error;
+		return c.json({ error, message }, status);
 	}
 
 	const existingMember = await ctx.db
@@ -956,14 +969,10 @@ connectionRoutes.patch("/:account_id", async c => {
 
 	const body = parseResult.data;
 
-	const membership = await ctx.db
-		.select({ role: accountMembers.role })
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
-		.get();
-
-	if (!membership) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId);
+	if (!membershipResult.ok) {
+		const { status, error, message } = membershipResult.error;
+		return c.json({ error, message }, status);
 	}
 
 	const now = new Date().toISOString();
@@ -979,14 +988,10 @@ connectionRoutes.get("/:account_id/settings", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	const membership = await ctx.db
-		.select()
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
-		.get();
-
-	if (!membership) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId);
+	if (!membershipResult.ok) {
+		const { status, error, message } = membershipResult.error;
+		return c.json({ error, message }, status);
 	}
 
 	const settings = await ctx.db.select().from(accountSettings).where(eq(accountSettings.account_id, accountId));
@@ -1014,18 +1019,10 @@ connectionRoutes.put("/:account_id/settings", async c => {
 
 	const body = parseResult.data;
 
-	const membership = await ctx.db
-		.select({ role: accountMembers.role })
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accountMembers.account_id, accountId)))
-		.get();
-
-	if (!membership) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
-	}
-
-	if (membership.role !== "owner") {
-		return c.json({ error: "Forbidden", message: "Only owners can update settings" }, 403);
+	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId, "owner");
+	if (!membershipResult.ok) {
+		const { status, error, message } = membershipResult.error;
+		return c.json({ error, message }, status);
 	}
 
 	const now = new Date().toISOString();

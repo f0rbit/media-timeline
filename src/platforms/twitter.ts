@@ -1,7 +1,7 @@
 import { Client, type ClientConfig } from "@xdevplatform/xdk";
 import type { TweetMedia, TwitterMetaStore, TwitterTweet, TwitterTweetsStore } from "../schema";
 import { type Result, err, ok } from "../utils";
-import type { ProviderError } from "./types";
+import { type ProviderError, mapHttpError } from "./types";
 
 export type TwitterProviderConfig = {
 	maxTweetsPerPage: number; // Max tweets to fetch per API call (max 100)
@@ -41,25 +41,17 @@ const mapVerifiedType = (type: string | undefined): VerifiedType => {
 };
 
 const mapError = (error: unknown): ProviderError => {
-	if (error && typeof error === "object") {
-		if ("status" in error && typeof error.status === "number") {
-			const status = error.status;
-			const message = "message" in error ? String(error.message) : "Unknown error";
+	if (error && typeof error === "object" && "status" in error && typeof error.status === "number") {
+		const status = error.status;
+		const message = "message" in error ? String(error.message) : "Unknown error";
 
-			if (status === 429) {
-				const retryAfter =
-					"rateLimit" in error && typeof error.rateLimit === "object" && error.rateLimit !== null && "reset" in error.rateLimit && typeof error.rateLimit.reset === "number"
-						? Math.max(0, error.rateLimit.reset - Math.floor(Date.now() / 1000))
-						: 900;
-				return { kind: "rate_limited", retry_after: retryAfter };
-			}
-
-			if (status === 401 || status === 403) {
-				return { kind: "auth_expired", message: `Twitter auth error: ${message}` };
-			}
-
-			return { kind: "api_error", status, message };
+		// Twitter XDK may include rateLimit.reset for 429 responses
+		if (status === 429 && "rateLimit" in error && typeof error.rateLimit === "object" && error.rateLimit !== null && "reset" in error.rateLimit && typeof error.rateLimit.reset === "number") {
+			const retryAfter = Math.max(0, error.rateLimit.reset - Math.floor(Date.now() / 1000));
+			return { kind: "rate_limited", retry_after: retryAfter };
 		}
+
+		return mapHttpError(status, message);
 	}
 
 	if (error instanceof Error) {

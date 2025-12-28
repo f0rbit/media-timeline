@@ -1,7 +1,7 @@
 import type { RedditComment, RedditCommentsStore, RedditMetaStore, RedditPost, RedditPostsStore } from "../schema";
 import type { Result } from "../utils";
 import { err, ok } from "../utils";
-import type { ProviderError } from "./types";
+import { type ProviderError, mapHttpError } from "./types";
 
 export type RedditProviderConfig = {
 	maxPosts: number;
@@ -220,14 +220,7 @@ export class RedditProvider {
 	}
 
 	private handleResponse(response: Response): ProviderError {
-		if (response.status === 401) {
-			return { kind: "auth_expired", message: "Reddit token expired or invalid" };
-		}
-		if (response.status === 429) {
-			const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "60", 10);
-			return { kind: "rate_limited", retry_after: retryAfter };
-		}
-		return { kind: "api_error", status: response.status, message: response.statusText };
+		return mapHttpError(response.status, response.statusText, response.headers);
 	}
 
 	private mapError(error: unknown): ProviderError {
