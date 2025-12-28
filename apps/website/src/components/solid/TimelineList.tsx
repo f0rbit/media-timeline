@@ -381,7 +381,7 @@ function RedditCommentRow(props: { item: TimelineItem }) {
 
 	const ExpandLink = () => (
 		<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
-			<button type="button" class="reddit-expand-label" onClick={() => setExpanded(!expanded())} style={{ "margin-top": "-0.15rem"}}>
+			<button type="button" class="reddit-expand-label" onClick={() => setExpanded(!expanded())} style={{ "margin-top": "-0.15rem" }}>
 				{expanded() ? "show less" : "show more"}
 			</button>
 			<Show when={props.item.url}>
