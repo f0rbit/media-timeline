@@ -1,4 +1,5 @@
 import type { Backend } from "@f0rbit/corpus";
+import { mergeByKey } from "./merge";
 import type { RedditFetchResult } from "./platforms/reddit";
 import type { ProviderError } from "./platforms/types";
 import type { RedditCommentsStore, RedditPostsStore } from "./schema";
@@ -20,53 +21,31 @@ export type RedditProcessResult = {
 
 type ProcessError = { kind: "fetch_failed"; message: string } | { kind: "store_failed"; store_id: string };
 
-type MergeResult<T> = { merged: T; newCount: number };
-
-const mergePosts = (existing: RedditPostsStore | null, incoming: RedditPostsStore): MergeResult<RedditPostsStore> => {
-	if (!existing) {
-		return { merged: incoming, newCount: incoming.posts.length };
-	}
-
-	const existingIds = new Set(existing.posts.map(p => p.id));
-	const newPosts = incoming.posts.filter(p => !existingIds.has(p.id));
-
-	const updatedExisting = existing.posts.map(existingPost => {
-		const incomingPost = incoming.posts.find(p => p.id === existingPost.id);
-		return incomingPost ?? existingPost;
-	});
+const mergePosts = (existing: RedditPostsStore | null, incoming: RedditPostsStore): { merged: RedditPostsStore; newCount: number } => {
+	const { merged: posts, newCount } = mergeByKey(existing?.posts, incoming.posts, p => p.id);
 
 	return {
 		merged: {
 			username: incoming.username,
-			posts: [...updatedExisting, ...newPosts],
-			total_posts: updatedExisting.length + newPosts.length,
+			posts,
+			total_posts: posts.length,
 			fetched_at: incoming.fetched_at,
 		},
-		newCount: newPosts.length,
+		newCount,
 	};
 };
 
-const mergeComments = (existing: RedditCommentsStore | null, incoming: RedditCommentsStore): MergeResult<RedditCommentsStore> => {
-	if (!existing) {
-		return { merged: incoming, newCount: incoming.comments.length };
-	}
-
-	const existingIds = new Set(existing.comments.map(c => c.id));
-	const newComments = incoming.comments.filter(c => !existingIds.has(c.id));
-
-	const updatedExisting = existing.comments.map(existingComment => {
-		const incomingComment = incoming.comments.find(c => c.id === existingComment.id);
-		return incomingComment ?? existingComment;
-	});
+const mergeComments = (existing: RedditCommentsStore | null, incoming: RedditCommentsStore): { merged: RedditCommentsStore; newCount: number } => {
+	const { merged: comments, newCount } = mergeByKey(existing?.comments, incoming.comments, c => c.id);
 
 	return {
 		merged: {
 			username: incoming.username,
-			comments: [...updatedExisting, ...newComments],
-			total_comments: updatedExisting.length + newComments.length,
+			comments,
+			total_comments: comments.length,
 			fetched_at: incoming.fetched_at,
 		},
-		newCount: newComments.length,
+		newCount,
 	};
 };
 

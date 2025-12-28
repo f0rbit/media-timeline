@@ -1,4 +1,5 @@
 import type { Backend } from "@f0rbit/corpus";
+import { mergeByKey } from "./merge";
 import type { TwitterFetchResult } from "./platforms/twitter";
 import type { ProviderError } from "./platforms/types";
 import type { TwitterTweetsStore } from "./schema";
@@ -17,39 +18,22 @@ export type TwitterProcessResult = {
 
 type ProcessError = { kind: "fetch_failed"; message: string } | { kind: "store_failed"; store_id: string };
 
-type MergeResult = { merged: TwitterTweetsStore; newCount: number };
-
-const mergeTweets = (existing: TwitterTweetsStore | null, incoming: TwitterTweetsStore): MergeResult => {
-	if (!existing) {
-		return { merged: incoming, newCount: incoming.tweets.length };
-	}
-
-	const existingIds = new Set(existing.tweets.map(t => t.id));
-	const newTweets = incoming.tweets.filter(t => !existingIds.has(t.id));
-
-	const updatedExisting = existing.tweets.map(existingTweet => {
-		const incomingTweet = incoming.tweets.find(t => t.id === existingTweet.id);
-		if (incomingTweet) {
-			return { ...existingTweet, public_metrics: incomingTweet.public_metrics };
-		}
-		return existingTweet;
-	});
-
-	const existingMediaKeys = new Set(existing.media.map(m => m.media_key));
-	const newMedia = incoming.media.filter(m => !existingMediaKeys.has(m.media_key));
+const mergeTweets = (existing: TwitterTweetsStore | null, incoming: TwitterTweetsStore): { merged: TwitterTweetsStore; newCount: number } => {
+	const { merged: tweets, newCount } = mergeByKey(existing?.tweets, incoming.tweets, t => t.id);
+	const { merged: media } = mergeByKey(existing?.media, incoming.media, m => m.media_key);
 
 	return {
 		merged: {
 			user_id: incoming.user_id,
 			username: incoming.username,
-			tweets: [...updatedExisting, ...newTweets].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
-			media: [...existing.media, ...newMedia],
-			total_tweets: updatedExisting.length + newTweets.length,
-			oldest_tweet_id: existing.oldest_tweet_id ?? incoming.oldest_tweet_id,
-			newest_tweet_id: incoming.newest_tweet_id ?? existing.newest_tweet_id,
+			tweets: tweets.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+			media,
+			total_tweets: tweets.length,
+			oldest_tweet_id: existing?.oldest_tweet_id ?? incoming.oldest_tweet_id,
+			newest_tweet_id: incoming.newest_tweet_id ?? existing?.newest_tweet_id,
 			fetched_at: incoming.fetched_at,
 		},
-		newCount: newTweets.length,
+		newCount,
 	};
 };
 

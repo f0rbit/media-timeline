@@ -11,7 +11,7 @@ import type { AppContext } from "./infrastructure";
 import { RedditProvider } from "./platforms/reddit";
 import { DateGroupSchema, accountMembers, accountSettings, accounts } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
-import { type Result, decrypt, encrypt, err, match, ok, pipe } from "./utils";
+import { type FetchError, type Result, decrypt, encrypt, err, fetchResult, match, ok, pipe, tryCatchAsync } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -189,10 +189,12 @@ export const connectionRoutes = new Hono<{ Bindings: Bindings; Variables: Variab
 
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-// Reddit OAuth token refresh helper
-export const refreshRedditToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<{ access_token: string; refresh_token?: string; expires_in: number } | null> => {
-	try {
-		const response = await fetch("https://www.reddit.com/api/v1/access_token", {
+type OAuthTokenResponse = { access_token: string; refresh_token?: string; expires_in: number };
+
+export const refreshRedditToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
+	fetchResult<OAuthTokenResponse, FetchError>(
+		"https://www.reddit.com/api/v1/access_token",
+		{
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
@@ -203,14 +205,9 @@ export const refreshRedditToken = async (refreshToken: string, clientId: string,
 				grant_type: "refresh_token",
 				refresh_token: refreshToken,
 			}),
-		});
-
-		if (!response.ok) return null;
-		return await response.json();
-	} catch {
-		return null;
-	}
-};
+		},
+		e => e
+	);
 
 // GET /auth/reddit - Initiate Reddit OAuth
 // This route requires authentication via query param (for browser redirect flow)
@@ -307,138 +304,141 @@ authRoutes.get("/reddit/callback", async c => {
 		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_not_configured`);
 	}
 
-	try {
-		// Exchange code for tokens
-		const tokenResponse = await fetch("https://www.reddit.com/api/v1/access_token", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-				"User-Agent": "media-timeline/2.0.0",
-			},
-			body: new URLSearchParams({
-				grant_type: "authorization_code",
-				code,
-				redirect_uri: redirectUri,
-			}),
-		});
+	type TokenExchangeError = { kind: "token_exchange_failed"; message: string };
+	type UserFetchError = { kind: "user_fetch_failed"; message: string };
 
-		if (!tokenResponse.ok) {
-			console.error("[reddit-oauth] Token exchange failed:", await tokenResponse.text());
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_token_failed`);
-		}
+	const tokenResult = await tryCatchAsync(
+		async () => {
+			const response = await fetch("https://www.reddit.com/api/v1/access_token", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
+					Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+					"User-Agent": "media-timeline/2.0.0",
+				},
+				body: new URLSearchParams({
+					grant_type: "authorization_code",
+					code,
+					redirect_uri: redirectUri,
+				}),
+			});
+			if (!response.ok) throw new Error(`Token exchange failed: ${response.status}`);
+			return response.json() as Promise<{
+				access_token: string;
+				refresh_token: string;
+				expires_in: number;
+				token_type: string;
+				scope: string;
+			}>;
+		},
+		(e): TokenExchangeError => ({ kind: "token_exchange_failed", message: String(e) })
+	);
 
-		const tokens = (await tokenResponse.json()) as {
-			access_token: string;
-			refresh_token: string;
-			expires_in: number;
-			token_type: string;
-			scope: string;
-		};
+	if (!tokenResult.ok) {
+		console.error("[reddit-oauth] Token exchange failed:", tokenResult.error.message);
+		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_token_failed`);
+	}
+	const tokens = tokenResult.value;
 
-		// Get user info
-		const userResponse = await fetch("https://oauth.reddit.com/api/v1/me", {
-			headers: {
-				Authorization: `Bearer ${tokens.access_token}`,
-				"User-Agent": "media-timeline/2.0.0",
-			},
-		});
+	const userResult = await tryCatchAsync(
+		async () => {
+			const response = await fetch("https://oauth.reddit.com/api/v1/me", {
+				headers: {
+					Authorization: `Bearer ${tokens.access_token}`,
+					"User-Agent": "media-timeline/2.0.0",
+				},
+			});
+			if (!response.ok) throw new Error(`User fetch failed: ${response.status}`);
+			return response.json() as Promise<{
+				id: string;
+				name: string;
+				icon_img?: string;
+			}>;
+		},
+		(e): UserFetchError => ({ kind: "user_fetch_failed", message: String(e) })
+	);
 
-		if (!userResponse.ok) {
-			console.error("[reddit-oauth] Failed to get user info");
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_user_failed`);
-		}
+	if (!userResult.ok) {
+		console.error("[reddit-oauth] Failed to get user info:", userResult.error.message);
+		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_user_failed`);
+	}
+	const userData = userResult.value;
 
-		const userData = (await userResponse.json()) as {
-			id: string;
-			name: string;
-			icon_img?: string;
-		};
+	const existing = await db
+		.select()
+		.from(accounts)
+		.where(and(eq(accounts.platform, "reddit"), eq(accounts.platform_user_id, userData.id)))
+		.get();
 
-		// Check if connection already exists
-		const existing = await db
+	const encryptedAccessTokenResult = await encrypt(tokens.access_token, ctx.encryptionKey);
+	if (!encryptedAccessTokenResult.ok) {
+		console.error("[reddit-oauth] Failed to encrypt access token");
+		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_encryption_failed`);
+	}
+
+	const encryptedRefreshTokenResult = tokens.refresh_token ? await encrypt(tokens.refresh_token, ctx.encryptionKey) : null;
+
+	const encryptedAccessToken = encryptedAccessTokenResult.value;
+	const encryptedRefreshToken = encryptedRefreshTokenResult?.ok ? encryptedRefreshTokenResult.value : null;
+
+	const now = new Date().toISOString();
+	const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+	if (existing) {
+		const existingMembership = await db
 			.select()
-			.from(accounts)
-			.where(and(eq(accounts.platform, "reddit"), eq(accounts.platform_user_id, userData.id)))
+			.from(accountMembers)
+			.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, existing.id)))
 			.get();
 
-		const encryptedAccessTokenResult = await encrypt(tokens.access_token, ctx.encryptionKey);
-		if (!encryptedAccessTokenResult.ok) {
-			console.error("[reddit-oauth] Failed to encrypt access token");
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_encryption_failed`);
+		await db
+			.update(accounts)
+			.set({
+				access_token_encrypted: encryptedAccessToken,
+				refresh_token_encrypted: encryptedRefreshToken,
+				token_expires_at: tokenExpiresAt,
+				is_active: true,
+				updated_at: now,
+			})
+			.where(eq(accounts.id, existing.id));
+
+		if (!existingMembership) {
+			await db.insert(accountMembers).values({
+				id: crypto.randomUUID(),
+				user_id: userId,
+				account_id: existing.id,
+				role: "member",
+				created_at: now,
+			});
 		}
+	} else {
+		const accountId = crypto.randomUUID();
+		const memberId = crypto.randomUUID();
 
-		const encryptedRefreshTokenResult = tokens.refresh_token ? await encrypt(tokens.refresh_token, ctx.encryptionKey) : null;
-
-		const encryptedAccessToken = encryptedAccessTokenResult.value;
-		const encryptedRefreshToken = encryptedRefreshTokenResult?.ok ? encryptedRefreshTokenResult.value : null;
-
-		const now = new Date().toISOString();
-		const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-
-		if (existing) {
-			// Check if user is already a member
-			const existingMembership = await db
-				.select()
-				.from(accountMembers)
-				.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, existing.id)))
-				.get();
-
-			// Update existing connection
-			await db
-				.update(accounts)
-				.set({
-					access_token_encrypted: encryptedAccessToken,
-					refresh_token_encrypted: encryptedRefreshToken,
-					token_expires_at: tokenExpiresAt,
-					is_active: true,
-					updated_at: now,
-				})
-				.where(eq(accounts.id, existing.id));
-
-			// Add user as member if not already
-			if (!existingMembership) {
-				await db.insert(accountMembers).values({
-					id: crypto.randomUUID(),
-					user_id: userId,
-					account_id: existing.id,
-					role: "member",
-					created_at: now,
-				});
-			}
-		} else {
-			// Create new connection
-			const accountId = crypto.randomUUID();
-			const memberId = crypto.randomUUID();
-
-			await db.batch([
-				db.insert(accounts).values({
-					id: accountId,
-					platform: "reddit",
-					platform_user_id: userData.id,
-					platform_username: userData.name,
-					access_token_encrypted: encryptedAccessToken,
-					refresh_token_encrypted: encryptedRefreshToken,
-					token_expires_at: tokenExpiresAt,
-					is_active: true,
-					created_at: now,
-					updated_at: now,
-				}),
-				db.insert(accountMembers).values({
-					id: memberId,
-					user_id: userId,
-					account_id: accountId,
-					role: "owner",
-					created_at: now,
-				}),
-			]);
-		}
-
-		return c.redirect(`${getFrontendUrl(c)}/connections?success=reddit`);
-	} catch (error) {
-		console.error("[reddit-oauth] Error:", error);
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_exception`);
+		await db.batch([
+			db.insert(accounts).values({
+				id: accountId,
+				platform: "reddit",
+				platform_user_id: userData.id,
+				platform_username: userData.name,
+				access_token_encrypted: encryptedAccessToken,
+				refresh_token_encrypted: encryptedRefreshToken,
+				token_expires_at: tokenExpiresAt,
+				is_active: true,
+				created_at: now,
+				updated_at: now,
+			}),
+			db.insert(accountMembers).values({
+				id: memberId,
+				user_id: userId,
+				account_id: accountId,
+				role: "owner",
+				created_at: now,
+			}),
+		]);
 	}
+
+	return c.redirect(`${getFrontendUrl(c)}/connections?success=reddit`);
 });
 
 // PKCE helpers for Twitter OAuth 2.0
@@ -462,10 +462,10 @@ const generateCodeChallenge = async (verifier: string): Promise<string> => {
 	return base64UrlEncode(new Uint8Array(hash));
 };
 
-// Twitter OAuth token refresh helper
-export const refreshTwitterToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<{ access_token: string; refresh_token?: string; expires_in: number } | null> => {
-	try {
-		const response = await fetch("https://api.twitter.com/2/oauth2/token", {
+export const refreshTwitterToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
+	fetchResult<OAuthTokenResponse, FetchError>(
+		"https://api.twitter.com/2/oauth2/token",
+		{
 			method: "POST",
 			headers: {
 				"Content-Type": "application/x-www-form-urlencoded",
@@ -476,14 +476,9 @@ export const refreshTwitterToken = async (refreshToken: string, clientId: string
 				refresh_token: refreshToken,
 				client_id: clientId,
 			}),
-		});
-
-		if (!response.ok) return null;
-		return await response.json();
-	} catch {
-		return null;
-	}
-};
+		},
+		e => e
+	);
 
 // GET /auth/twitter - Initiate Twitter OAuth with PKCE
 authRoutes.get("/twitter", async c => {
@@ -579,135 +574,142 @@ authRoutes.get("/twitter/callback", async c => {
 		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_not_configured`);
 	}
 
-	try {
-		// Exchange code for tokens with PKCE
-		const tokenResponse = await fetch("https://api.twitter.com/2/oauth2/token", {
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-			},
-			body: new URLSearchParams({
-				grant_type: "authorization_code",
-				code,
-				redirect_uri: redirectUri,
-				code_verifier: codeVerifier,
-			}),
-		});
+	type TokenExchangeError = { kind: "token_exchange_failed"; message: string };
+	type UserFetchError = { kind: "user_fetch_failed"; message: string };
 
-		if (!tokenResponse.ok) {
-			console.error("[twitter-oauth] Token exchange failed:", await tokenResponse.text());
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_token_failed`);
-		}
+	const tokenResult = await tryCatchAsync(
+		async () => {
+			const response = await fetch("https://api.twitter.com/2/oauth2/token", {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
+					Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+				},
+				body: new URLSearchParams({
+					grant_type: "authorization_code",
+					code,
+					redirect_uri: redirectUri,
+					code_verifier: codeVerifier,
+				}),
+			});
+			if (!response.ok) throw new Error(`Token exchange failed: ${response.status}`);
+			return response.json() as Promise<{
+				access_token: string;
+				refresh_token?: string;
+				expires_in: number;
+				token_type: string;
+				scope: string;
+			}>;
+		},
+		(e): TokenExchangeError => ({ kind: "token_exchange_failed", message: String(e) })
+	);
 
-		const tokens = (await tokenResponse.json()) as {
-			access_token: string;
-			refresh_token?: string;
-			expires_in: number;
-			token_type: string;
-			scope: string;
-		};
+	if (!tokenResult.ok) {
+		console.error("[twitter-oauth] Token exchange failed:", tokenResult.error.message);
+		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_token_failed`);
+	}
+	const tokens = tokenResult.value;
 
-		// Get user info
-		const userResponse = await fetch("https://api.twitter.com/2/users/me", {
-			headers: {
-				Authorization: `Bearer ${tokens.access_token}`,
-			},
-		});
+	const userResult = await tryCatchAsync(
+		async () => {
+			const response = await fetch("https://api.twitter.com/2/users/me", {
+				headers: {
+					Authorization: `Bearer ${tokens.access_token}`,
+				},
+			});
+			if (!response.ok) throw new Error(`User fetch failed: ${response.status}`);
+			return response.json() as Promise<{
+				data: {
+					id: string;
+					username: string;
+					name: string;
+				};
+			}>;
+		},
+		(e): UserFetchError => ({ kind: "user_fetch_failed", message: String(e) })
+	);
 
-		if (!userResponse.ok) {
-			console.error("[twitter-oauth] Failed to get user info");
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_user_failed`);
-		}
+	if (!userResult.ok) {
+		console.error("[twitter-oauth] Failed to get user info:", userResult.error.message);
+		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_user_failed`);
+	}
+	const userData = userResult.value;
 
-		const userData = (await userResponse.json()) as {
-			data: {
-				id: string;
-				username: string;
-				name: string;
-			};
-		};
+	const existing = await db
+		.select()
+		.from(accounts)
+		.where(and(eq(accounts.platform, "twitter"), eq(accounts.platform_user_id, userData.data.id)))
+		.get();
 
-		// Check if connection already exists
-		const existing = await db
+	const encryptedAccessTokenResult = await encrypt(tokens.access_token, ctx.encryptionKey);
+	if (!encryptedAccessTokenResult.ok) {
+		console.error("[twitter-oauth] Failed to encrypt access token");
+		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_encryption_failed`);
+	}
+
+	const encryptedRefreshTokenResult = tokens.refresh_token ? await encrypt(tokens.refresh_token, ctx.encryptionKey) : null;
+
+	const encryptedAccessToken = encryptedAccessTokenResult.value;
+	const encryptedRefreshToken = encryptedRefreshTokenResult?.ok ? encryptedRefreshTokenResult.value : null;
+
+	const now = new Date().toISOString();
+	const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+
+	if (existing) {
+		const existingMembership = await db
 			.select()
-			.from(accounts)
-			.where(and(eq(accounts.platform, "twitter"), eq(accounts.platform_user_id, userData.data.id)))
+			.from(accountMembers)
+			.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, existing.id)))
 			.get();
 
-		const encryptedAccessTokenResult = await encrypt(tokens.access_token, ctx.encryptionKey);
-		if (!encryptedAccessTokenResult.ok) {
-			console.error("[twitter-oauth] Failed to encrypt access token");
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_encryption_failed`);
+		await db
+			.update(accounts)
+			.set({
+				access_token_encrypted: encryptedAccessToken,
+				refresh_token_encrypted: encryptedRefreshToken,
+				token_expires_at: tokenExpiresAt,
+				is_active: true,
+				updated_at: now,
+			})
+			.where(eq(accounts.id, existing.id));
+
+		if (!existingMembership) {
+			await db.insert(accountMembers).values({
+				id: crypto.randomUUID(),
+				user_id: userId,
+				account_id: existing.id,
+				role: "member",
+				created_at: now,
+			});
 		}
+	} else {
+		const accountId = crypto.randomUUID();
+		const memberId = crypto.randomUUID();
 
-		const encryptedRefreshTokenResult = tokens.refresh_token ? await encrypt(tokens.refresh_token, ctx.encryptionKey) : null;
-
-		const encryptedAccessToken = encryptedAccessTokenResult.value;
-		const encryptedRefreshToken = encryptedRefreshTokenResult?.ok ? encryptedRefreshTokenResult.value : null;
-
-		const now = new Date().toISOString();
-		const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-
-		if (existing) {
-			const existingMembership = await db
-				.select()
-				.from(accountMembers)
-				.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, existing.id)))
-				.get();
-
-			await db
-				.update(accounts)
-				.set({
-					access_token_encrypted: encryptedAccessToken,
-					refresh_token_encrypted: encryptedRefreshToken,
-					token_expires_at: tokenExpiresAt,
-					is_active: true,
-					updated_at: now,
-				})
-				.where(eq(accounts.id, existing.id));
-
-			if (!existingMembership) {
-				await db.insert(accountMembers).values({
-					id: crypto.randomUUID(),
-					user_id: userId,
-					account_id: existing.id,
-					role: "member",
-					created_at: now,
-				});
-			}
-		} else {
-			const accountId = crypto.randomUUID();
-			const memberId = crypto.randomUUID();
-
-			await db.batch([
-				db.insert(accounts).values({
-					id: accountId,
-					platform: "twitter",
-					platform_user_id: userData.data.id,
-					platform_username: userData.data.username,
-					access_token_encrypted: encryptedAccessToken,
-					refresh_token_encrypted: encryptedRefreshToken,
-					token_expires_at: tokenExpiresAt,
-					is_active: true,
-					created_at: now,
-					updated_at: now,
-				}),
-				db.insert(accountMembers).values({
-					id: memberId,
-					user_id: userId,
-					account_id: accountId,
-					role: "owner",
-					created_at: now,
-				}),
-			]);
-		}
-
-		return c.redirect(`${getFrontendUrl(c)}/connections?success=twitter`);
-	} catch (error) {
-		console.error("[twitter-oauth] Error:", error);
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_exception`);
+		await db.batch([
+			db.insert(accounts).values({
+				id: accountId,
+				platform: "twitter",
+				platform_user_id: userData.data.id,
+				platform_username: userData.data.username,
+				access_token_encrypted: encryptedAccessToken,
+				refresh_token_encrypted: encryptedRefreshToken,
+				token_expires_at: tokenExpiresAt,
+				is_active: true,
+				created_at: now,
+				updated_at: now,
+			}),
+			db.insert(accountMembers).values({
+				id: memberId,
+				user_id: userId,
+				account_id: accountId,
+				role: "owner",
+				created_at: now,
+			}),
+		]);
 	}
+
+	return c.redirect(`${getFrontendUrl(c)}/connections?success=twitter`);
 });
 
 connectionRoutes.get("/", async c => {

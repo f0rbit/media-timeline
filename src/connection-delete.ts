@@ -21,7 +21,7 @@ import {
 	redditMetaStoreId,
 	redditPostsStoreId,
 } from "./storage";
-import { type Result, err, ok } from "./utils";
+import { type Result, err, ok, tryCatchAsync } from "./utils";
 
 export type DeleteConnectionResult = {
 	account_id: string;
@@ -175,37 +175,35 @@ const getAffectedUsers = async (db: Database, accountId: string): Promise<string
 	return members.map(m => m.user_id);
 };
 
+type TableDeletion = {
+	name: string;
+	execute: () => Promise<unknown>;
+};
+
+const deleteTable = async (deletion: TableDeletion, accountId: string): Promise<Result<void, DeleteConnectionError>> => {
+	log("db", `Deleting ${deletion.name}`, { accountId });
+	return tryCatchAsync(
+		async () => {
+			await deletion.execute();
+		},
+		(e): DeleteConnectionError => {
+			log("db", `Failed to delete ${deletion.name}`, { error: String(e) });
+			return { kind: "database_error", message: `Failed to delete ${deletion.name}: ${String(e)}` };
+		}
+	);
+};
+
 const deleteDbRecords = async (db: Database, accountId: string): Promise<Result<void, DeleteConnectionError>> => {
-	log("db", "Deleting rate_limits", { accountId });
-	try {
-		await db.delete(rateLimits).where(eq(rateLimits.account_id, accountId));
-	} catch (e) {
-		log("db", "Failed to delete rate_limits", { error: String(e) });
-		return err({ kind: "database_error", message: `Failed to delete rate_limits: ${String(e)}` });
-	}
+	const deletions: TableDeletion[] = [
+		{ name: "rate_limits", execute: () => db.delete(rateLimits).where(eq(rateLimits.account_id, accountId)) },
+		{ name: "account_settings", execute: () => db.delete(accountSettings).where(eq(accountSettings.account_id, accountId)) },
+		{ name: "account_members", execute: () => db.delete(accountMembers).where(eq(accountMembers.account_id, accountId)) },
+		{ name: "account", execute: () => db.delete(accounts).where(eq(accounts.id, accountId)) },
+	];
 
-	log("db", "Deleting account_settings", { accountId });
-	try {
-		await db.delete(accountSettings).where(eq(accountSettings.account_id, accountId));
-	} catch (e) {
-		log("db", "Failed to delete account_settings", { error: String(e) });
-		return err({ kind: "database_error", message: `Failed to delete account_settings: ${String(e)}` });
-	}
-
-	log("db", "Deleting account_members", { accountId });
-	try {
-		await db.delete(accountMembers).where(eq(accountMembers.account_id, accountId));
-	} catch (e) {
-		log("db", "Failed to delete account_members", { error: String(e) });
-		return err({ kind: "database_error", message: `Failed to delete account_members: ${String(e)}` });
-	}
-
-	log("db", "Deleting account", { accountId });
-	try {
-		await db.delete(accounts).where(eq(accounts.id, accountId));
-	} catch (e) {
-		log("db", "Failed to delete account", { error: String(e) });
-		return err({ kind: "database_error", message: `Failed to delete account: ${String(e)}` });
+	for (const deletion of deletions) {
+		const result = await deleteTable(deletion, accountId);
+		if (!result.ok) return result;
 	}
 
 	log("db", "All database records deleted", { accountId });

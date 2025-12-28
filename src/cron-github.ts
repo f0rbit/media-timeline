@@ -1,4 +1,5 @@
 import type { Backend } from "@f0rbit/corpus";
+import { mergeByKey } from "./merge";
 import type { GitHubFetchResult } from "./platforms/github";
 import type { ProviderError } from "./platforms/types";
 import type { GitHubRepoCommitsStore, GitHubRepoPRsStore } from "./schema";
@@ -21,53 +22,31 @@ export type GitHubProcessResult = {
 
 type ProcessError = { kind: "fetch_failed"; message: string } | { kind: "store_failed"; store_id: string };
 
-type MergeResult<T> = { merged: T; newCount: number };
-
-const mergeCommits = (existing: GitHubRepoCommitsStore | null, incoming: GitHubRepoCommitsStore): MergeResult<GitHubRepoCommitsStore> => {
-	if (!existing) {
-		return { merged: incoming, newCount: incoming.commits.length };
-	}
-
-	const existingShas = new Set(existing.commits.map(c => c.sha));
-	const newCommits = incoming.commits.filter(c => !existingShas.has(c.sha));
-
-	const merged: GitHubRepoCommitsStore = {
-		owner: incoming.owner,
-		repo: incoming.repo,
-		branches: [...new Set([...existing.branches, ...incoming.branches])],
-		commits: [...existing.commits, ...newCommits],
-		total_commits: existing.commits.length + newCommits.length,
-		fetched_at: incoming.fetched_at,
-	};
-
-	return { merged, newCount: newCommits.length };
-};
-
-const mergePRs = (existing: GitHubRepoPRsStore | null, incoming: GitHubRepoPRsStore): MergeResult<GitHubRepoPRsStore> => {
-	if (!existing) {
-		return { merged: incoming, newCount: incoming.pull_requests.length };
-	}
-
-	const existingByNumber = new Map(existing.pull_requests.map(pr => [pr.number, pr]));
-	const mergedPRs = [...existing.pull_requests];
-	let newCount = 0;
-
-	for (const pr of incoming.pull_requests) {
-		if (existingByNumber.has(pr.number)) {
-			const idx = mergedPRs.findIndex(p => p.number === pr.number);
-			if (idx >= 0) mergedPRs[idx] = pr;
-		} else {
-			mergedPRs.push(pr);
-			newCount++;
-		}
-	}
+const mergeCommits = (existing: GitHubRepoCommitsStore | null, incoming: GitHubRepoCommitsStore): { merged: GitHubRepoCommitsStore; newCount: number } => {
+	const { merged: commits, newCount } = mergeByKey(existing?.commits, incoming.commits, c => c.sha);
 
 	return {
 		merged: {
 			owner: incoming.owner,
 			repo: incoming.repo,
-			pull_requests: mergedPRs,
-			total_prs: mergedPRs.length,
+			branches: [...new Set([...(existing?.branches ?? []), ...incoming.branches])],
+			commits,
+			total_commits: commits.length,
+			fetched_at: incoming.fetched_at,
+		},
+		newCount,
+	};
+};
+
+const mergePRs = (existing: GitHubRepoPRsStore | null, incoming: GitHubRepoPRsStore): { merged: GitHubRepoPRsStore; newCount: number } => {
+	const { merged: pull_requests, newCount } = mergeByKey(existing?.pull_requests, incoming.pull_requests, pr => String(pr.number));
+
+	return {
+		merged: {
+			owner: incoming.owner,
+			repo: incoming.repo,
+			pull_requests,
+			total_prs: pull_requests.length,
 			fetched_at: incoming.fetched_at,
 		},
 		newCount,
