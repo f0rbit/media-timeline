@@ -212,18 +212,11 @@ export const refreshRedditToken = async (refreshToken: string, clientId: string,
 // GET /auth/reddit - Initiate Reddit OAuth
 // This route requires authentication via query param (for browser redirect flow)
 authRoutes.get("/reddit", async c => {
-	console.log("[reddit-oauth] ROUTE HIT - /auth/reddit");
-	console.log(`[reddit-oauth] Full URL: ${c.req.url}`);
-	console.log(`[reddit-oauth] Path: ${c.req.path}`);
-	console.log("[reddit-oauth] Query params:", c.req.query());
-
 	const ctx = getContext(c);
 
 	// Get API key from query param (since this is a browser redirect, not an API call)
 	const apiKey = c.req.query("key");
-	console.log(`[reddit-oauth] API key from query: ${apiKey ? "present" : "MISSING"}`);
 	if (!apiKey) {
-		console.log("[reddit-oauth] Redirecting - no auth key");
 		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_no_auth`);
 	}
 
@@ -482,7 +475,6 @@ export const refreshTwitterToken = async (refreshToken: string, clientId: string
 
 // GET /auth/twitter - Initiate Twitter OAuth with PKCE
 authRoutes.get("/twitter", async c => {
-	console.log("[twitter-oauth] ROUTE HIT - /auth/twitter");
 	const ctx = getContext(c);
 
 	const apiKey = c.req.query("key");
@@ -831,8 +823,6 @@ connectionRoutes.delete("/:account_id", async c => {
 		const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 		for (const userId of affected_users) {
-			console.log("[delete] Regenerating timeline for user:", userId);
-
 			const userAccounts = await ctx.db
 				.select({
 					id: accounts.id,
@@ -848,7 +838,6 @@ connectionRoutes.delete("/:account_id", async c => {
 
 			const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
 			await combineUserTimeline(ctx.backend, userId, snapshots);
-			console.log("[delete] Timeline regenerated for user:", userId);
 		}
 	};
 
@@ -856,7 +845,6 @@ connectionRoutes.delete("/:account_id", async c => {
 	try {
 		c.executionCtx.waitUntil(regenerateTimelines());
 	} catch {
-		console.log("[delete] No ExecutionContext available (dev mode), awaiting regeneration");
 		await regenerateTimelines();
 	}
 
@@ -922,9 +910,6 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	console.log("[refresh] Refresh endpoint hit with account_id:", accountId);
-	console.log("[refresh] User:", auth.user_id);
-
 	const accountWithUser = await ctx.db
 		.select({
 			id: accounts.id,
@@ -940,44 +925,22 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
 		.get();
 
-	console.log(
-		"[refresh] Account data from DB:",
-		accountWithUser
-			? {
-					id: accountWithUser.id,
-					platform: accountWithUser.platform,
-					platform_user_id: accountWithUser.platform_user_id,
-					is_active: accountWithUser.is_active,
-					user_id: accountWithUser.user_id,
-					hasAccessToken: !!accountWithUser.access_token_encrypted,
-					hasRefreshToken: !!accountWithUser.refresh_token_encrypted,
-				}
-			: "null"
-	);
-
 	if (!accountWithUser) {
-		console.log("[refresh] Account not found in DB");
 		return c.json({ error: "Not found", message: "Account not found" }, 404);
 	}
 
 	if (!accountWithUser.is_active) {
-		console.log("[refresh] Account is not active");
 		return c.json({ error: "Bad request", message: "Account is not active" }, 400);
 	}
 
 	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	if (accountWithUser.platform === "github") {
-		console.log("[refresh] Starting GitHub background sync for account:", accountId);
-
 		const backgroundTask = (async () => {
 			try {
-				console.log("[refresh:bg] Background task started for:", accountId);
 				const snapshot = await processAccount(ctx, accountWithUser);
-				console.log("[refresh:bg] processAccount completed:", snapshot ? "success" : "no changes");
 
 				if (snapshot) {
-					console.log("[refresh:bg] Generating timeline for user:", auth.user_id);
 					const allUserAccounts = await ctx.db
 						.select({
 							id: accounts.id,
@@ -992,35 +955,28 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 						.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
 
 					const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
-					console.log("[refresh:bg] Gathered snapshots:", snapshots.length);
 					await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-					console.log("[refresh:bg] Timeline generation complete");
 				}
 			} catch (error) {
-				console.error("[refresh:bg] Background task failed:", error);
+				console.error("[refresh] GitHub background task failed:", error);
 			}
 		})();
 
-		// Use waitUntil if available (Cloudflare Workers), otherwise just let it run
 		try {
 			c.executionCtx.waitUntil(backgroundTask);
 		} catch {
-			// Dev server doesn't have ExecutionContext, task will run anyway
-			console.log("[refresh] No ExecutionContext available (dev mode), task running in background");
+			// Dev server doesn't have ExecutionContext
 		}
 
 		return c.json({ status: "processing", message: "GitHub sync started in background" });
 	}
 
 	if (accountWithUser.platform === "reddit") {
-		console.log("[refresh] Starting Reddit background sync for account:", accountId);
-
 		const backgroundTask = (async () => {
 			try {
-				console.log("[refresh:bg] Reddit background task started for:", accountId);
 				const decryptResult = await decrypt(accountWithUser.access_token_encrypted, ctx.encryptionKey);
 				if (!decryptResult.ok) {
-					console.error("[refresh:bg] Reddit token decryption failed");
+					console.error("[refresh] Reddit token decryption failed");
 					return;
 				}
 
@@ -1028,8 +984,6 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 				const result = await processRedditAccount(ctx.backend, accountId, decryptResult.value, provider);
 
 				if (result.ok) {
-					console.log("[refresh:bg] Reddit refresh completed:", result.value.stats);
-					console.log("[refresh:bg] Generating timeline for user:", auth.user_id);
 					const allUserAccounts = await ctx.db
 						.select({
 							id: accounts.id,
@@ -1044,33 +998,27 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 						.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
 
 					const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
-					console.log("[refresh:bg] Gathered snapshots:", snapshots.length);
 					await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-					console.log("[refresh:bg] Timeline generation complete");
 				} else {
-					console.error("[refresh:bg] Reddit refresh failed:", result.error);
+					console.error("[refresh] Reddit refresh failed:", result.error);
 				}
 			} catch (error) {
-				console.error("[refresh:bg] Reddit background task failed:", error);
+				console.error("[refresh] Reddit background task failed:", error);
 			}
 		})();
 
 		try {
 			c.executionCtx.waitUntil(backgroundTask);
 		} catch {
-			console.log("[refresh] No ExecutionContext available (dev mode), task running in background");
+			// Dev server doesn't have ExecutionContext
 		}
 
 		return c.json({ status: "processing", message: "Reddit sync started in background" });
 	}
 
-	console.log("[refresh] Before calling processAccount (sync)");
 	const snapshot = await processAccount(ctx, accountWithUser);
 
-	console.log("[refresh] processAccount result:", snapshot ? "snapshot created" : "null");
-
 	if (snapshot) {
-		console.log("[refresh] Generating timeline for user:", auth.user_id);
 		const allUserAccounts = await ctx.db
 			.select({
 				id: accounts.id,
@@ -1085,9 +1033,7 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 			.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
 
 		const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
-		console.log("[refresh] Gathered snapshots:", snapshots.length);
 		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-		console.log("[refresh] Timeline generated");
 
 		return c.json({ status: "refreshed", account_id: accountId });
 	}
@@ -1098,8 +1044,6 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 connectionRoutes.post("/refresh-all", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-
-	console.log("[refresh-all] Refresh-all endpoint hit for user:", auth.user_id);
 
 	const userAccounts = await ctx.db
 		.select({
@@ -1114,17 +1058,7 @@ connectionRoutes.post("/refresh-all", async c => {
 		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
 		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
 
-	console.log(
-		"[refresh-all] Found accounts:",
-		userAccounts.map(a => ({
-			id: a.id,
-			platform: a.platform,
-			platform_user_id: a.platform_user_id,
-		}))
-	);
-
 	if (userAccounts.length === 0) {
-		console.log("[refresh-all] No accounts found");
 		return c.json({ status: "completed", succeeded: 0, failed: 0, total: 0 });
 	}
 
@@ -1135,86 +1069,61 @@ connectionRoutes.post("/refresh-all", async c => {
 	const otherAccounts = userAccounts.filter(a => a.platform !== "github" && a.platform !== "reddit");
 
 	if (githubAccounts.length > 0) {
-		console.log("[refresh-all] Starting background sync for", githubAccounts.length, "GitHub account(s)");
-
 		const backgroundTask = (async () => {
 			let bgSucceeded = 0;
-			let bgFailed = 0;
 
 			for (const account of githubAccounts) {
-				console.log("[refresh-all:bg] Processing GitHub account:", { id: account.id });
 				try {
 					const snapshot = await processAccount(ctx, account);
-					console.log("[refresh-all:bg] GitHub account result:", { id: account.id, success: !!snapshot });
 					if (snapshot) bgSucceeded++;
 				} catch (e) {
-					console.error(`[refresh-all:bg] Failed to refresh GitHub account ${account.id}:`, e);
-					bgFailed++;
+					console.error(`[refresh-all] Failed to refresh GitHub account ${account.id}:`, e);
 				}
 			}
 
 			if (bgSucceeded > 0) {
-				console.log("[refresh-all:bg] Generating timeline for user:", auth.user_id);
 				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
-				console.log("[refresh-all:bg] Gathered snapshots:", snapshots.length);
 				await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-				console.log("[refresh-all:bg] Timeline generation complete");
 			}
-
-			console.log("[refresh-all:bg] GitHub sync complete:", { succeeded: bgSucceeded, failed: bgFailed });
 		})();
 
-		// Use waitUntil if available (Cloudflare Workers), otherwise just let it run
 		try {
 			c.executionCtx.waitUntil(backgroundTask);
 		} catch {
-			console.log("[refresh-all] No ExecutionContext available (dev mode), task running in background");
+			// Dev server doesn't have ExecutionContext
 		}
 	}
 
 	if (redditAccounts.length > 0) {
-		console.log("[refresh-all] Starting background sync for", redditAccounts.length, "Reddit account(s)");
-
 		const redditBackgroundTask = (async () => {
 			let bgSucceeded = 0;
-			let bgFailed = 0;
 
 			for (const account of redditAccounts) {
-				console.log("[refresh-all:bg] Processing Reddit account:", { id: account.id });
 				try {
 					const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
 					if (!decryptResult.ok) {
-						console.error("[refresh-all:bg] Reddit token decryption failed for account:", account.id);
-						bgFailed++;
+						console.error("[refresh-all] Reddit token decryption failed for account:", account.id);
 						continue;
 					}
 
 					const provider = new RedditProvider();
 					const result = await processRedditAccount(ctx.backend, account.id, decryptResult.value, provider);
-					console.log("[refresh-all:bg] Reddit account result:", { id: account.id, success: result.ok });
 					if (result.ok) bgSucceeded++;
-					else bgFailed++;
 				} catch (e) {
-					console.error(`[refresh-all:bg] Failed to refresh Reddit account ${account.id}:`, e);
-					bgFailed++;
+					console.error(`[refresh-all] Failed to refresh Reddit account ${account.id}:`, e);
 				}
 			}
 
 			if (bgSucceeded > 0) {
-				console.log("[refresh-all:bg] Generating timeline for user:", auth.user_id);
 				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
-				console.log("[refresh-all:bg] Gathered snapshots:", snapshots.length);
 				await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-				console.log("[refresh-all:bg] Timeline generation complete");
 			}
-
-			console.log("[refresh-all:bg] Reddit sync complete:", { succeeded: bgSucceeded, failed: bgFailed });
 		})();
 
 		try {
 			c.executionCtx.waitUntil(redditBackgroundTask);
 		} catch {
-			console.log("[refresh-all] No ExecutionContext available (dev mode), task running in background");
+			// Dev server doesn't have ExecutionContext
 		}
 	}
 
@@ -1222,10 +1131,8 @@ connectionRoutes.post("/refresh-all", async c => {
 	let failed = 0;
 
 	for (const account of otherAccounts) {
-		console.log("[refresh-all] Processing account:", { id: account.id, platform: account.platform });
 		try {
 			const snapshot = await processAccount(ctx, account);
-			console.log("[refresh-all] Account result:", { id: account.id, success: !!snapshot });
 			if (snapshot) {
 				succeeded++;
 			}
@@ -1236,15 +1143,11 @@ connectionRoutes.post("/refresh-all", async c => {
 	}
 
 	if (succeeded > 0) {
-		console.log("[refresh-all] Generating timeline for user:", auth.user_id);
 		const snapshots = await gatherLatestSnapshots(ctx.backend, otherAccounts);
-		console.log("[refresh-all] Gathered snapshots:", snapshots.length);
 		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-		console.log("[refresh-all] Timeline generated");
 	}
 
 	const hasBackgroundTasks = githubAccounts.length > 0 || redditAccounts.length > 0;
-	console.log("[refresh-all] Final result:", { succeeded, failed, total: otherAccounts.length, background_processing: hasBackgroundTasks });
 
 	return c.json({
 		status: hasBackgroundTasks ? "processing" : "completed",

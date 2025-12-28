@@ -69,8 +69,6 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 	const prs = items.filter(isPRItem);
 	const otherItems = items.filter(i => !isCommitItem(i) && !isPRItem(i));
 
-	console.log("[dedup] Input:", { commits: commits.length, prs: prs.length, other: otherItems.length });
-
 	// Build a map of commit SHA -> commit item for quick lookup
 	const commitBySha = new Map<string, CommitItem>();
 	for (const commit of commits) {
@@ -95,8 +93,6 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 		}
 	}
 
-	console.log("[dedup] Total commit SHAs claimed by PRs:", prCommitShas.size);
-
 	// Separate orphan commits (not in any PR) from PR-owned commits
 	const orphanCommits: CommitItem[] = [];
 	for (const commit of commits) {
@@ -104,8 +100,6 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 			orphanCommits.push(commit);
 		}
 	}
-
-	console.log("[dedup] Orphan commits (not in any PR):", orphanCommits.length);
 
 	// Enrich PRs with their commit details
 	const enrichedPRs = prs.map(pr => {
@@ -123,9 +117,6 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 			}
 		}
 
-		// Sort commits by... well, we don't have timestamps in the SHA list
-		// They should already be in order from the API
-
 		return {
 			...pr,
 			payload: {
@@ -134,9 +125,6 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 			},
 		} as PRItem;
 	});
-
-	console.log("[dedup] Enriched PRs:", enrichedPRs.length);
-	console.log("[dedup] PRs with commits:", enrichedPRs.filter(pr => (pr.payload.commits?.length ?? 0) > 0).length);
 
 	return { orphanCommits, enrichedPRs, otherItems };
 };
@@ -155,18 +143,8 @@ export const combineTimelines = (items: TimelineItem[]): TimelineItem[] => [...i
  * 4. PRs get enriched with their commit details
  */
 export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
-	console.log("[groupCommits] Input items count:", items.length);
-	console.log(
-		"[groupCommits] Input item types:",
-		items.map(i => i.type)
-	);
-
 	// Step 1: Deduplicate commits that belong to PRs
 	const { orphanCommits, enrichedPRs, otherItems } = deduplicateCommitsFromPRs(items);
-
-	console.log("[groupCommits] After dedup - orphan commits:", orphanCommits.length);
-	console.log("[groupCommits] After dedup - enriched PRs:", enrichedPRs.length);
-	console.log("[groupCommits] After dedup - other items:", otherItems.length);
 
 	// Step 2: Group only orphan commits by repo/branch/date
 	const groupedByRepoBranchDate = orphanCommits.reduce<Map<string, CommitItem[]>>((acc, commit) => {
@@ -177,8 +155,6 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 		return acc;
 	}, new Map());
 
-	console.log("[groupCommits] Unique repo:branch:date groups:", groupedByRepoBranchDate.size);
-
 	const commitGroups = Array.from(groupedByRepoBranchDate.entries()).map(([key, groupCommits]) => {
 		const parts = key.split(":");
 		const repo = parts[0] as string;
@@ -187,26 +163,11 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 		return buildCommitGroup(repo, branch, date, groupCommits);
 	});
 
-	console.log("[groupCommits] Commit groups created:", commitGroups.length);
-
 	// Step 3: Combine all entries
-	const result = [...commitGroups, ...enrichedPRs, ...otherItems];
-	console.log("[groupCommits] Final output count:", result.length);
-	console.log(
-		"[groupCommits] Output types:",
-		result.map(e => e.type)
-	);
-
-	return result;
+	return [...commitGroups, ...enrichedPRs, ...otherItems];
 };
 
 export const groupByDate = (entries: TimelineEntry[]): DateGroup[] => {
-	console.log("[groupByDate] Input entries count:", entries.length);
-	console.log(
-		"[groupByDate] Input entry types:",
-		entries.map(e => e.type)
-	);
-
 	const sorted = [...entries].sort(compareTimestampDesc);
 
 	const grouped = sorted.reduce<Map<string, TimelineEntry[]>>((acc, entry) => {
@@ -216,15 +177,9 @@ export const groupByDate = (entries: TimelineEntry[]): DateGroup[] => {
 		return acc;
 	}, new Map());
 
-	console.log("[groupByDate] Unique dates found:", grouped.size);
-
-	const result = Array.from(grouped.entries())
+	return Array.from(grouped.entries())
 		.sort(([a], [b]) => b.localeCompare(a))
 		.map(([date, items]) => ({ date, items }));
-
-	console.log("[groupByDate] Final groups count:", result.length);
-
-	return result;
 };
 
 export type { TimelineEntry };
