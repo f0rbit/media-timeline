@@ -1,15 +1,16 @@
 # Media Timeline
 
-A self-hosted service that aggregates your activity across multiple platforms (GitHub, Bluesky, YouTube, Devpad) into a unified, chronological timeline. Built with TypeScript, Cloudflare Workers, and a functional programming approach.
+A self-hosted service that aggregates your activity across multiple platforms (GitHub, Reddit, Twitter/X, Bluesky, YouTube, Devpad) into a unified, chronological timeline. Built with TypeScript, Cloudflare Workers, and a functional programming approach.
 
 ## Features
 
-- **Multi-platform aggregation**: GitHub commits, Bluesky posts, YouTube videos, Devpad tasks
+- **Multi-platform aggregation**: GitHub commits, Reddit posts/comments, Twitter/X tweets, Bluesky posts, YouTube videos, Devpad tasks
 - **Intelligent grouping**: Commits to the same repository on the same day are grouped together
 - **Versioned storage**: Full history of raw data and generated timelines with content-addressed deduplication
 - **Multi-tenant**: Support for shared accounts across users with role-based access
 - **Rate limit aware**: Circuit breaker pattern prevents hammering rate-limited APIs
 - **Encrypted tokens**: Platform access tokens encrypted at rest with AES-GCM-256
+- **OAuth integration**: Reddit and Twitter support full OAuth 2.0 flows
 
 ## Architecture
 
@@ -17,67 +18,65 @@ A self-hosted service that aggregates your activity across multiple platforms (G
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              Cloudflare Worker                              │
 ├─────────────────────────────────────────────────────────────────────────────┤
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐         │
-│  │   GitHub    │  │   Bluesky   │  │   YouTube   │  │   Devpad    │         │
-│  │  Provider   │  │  Provider   │  │  Provider   │  │  Provider   │         │
-│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘         │
-│         │                │                │                │                │
-│         └────────────────┴────────────────┴────────────────┘                │
-│                                   │                                         │
-│                                   ▼                                         │
-│                          ┌───────────────┐                                  │
-│                          │  Normalizers  │  Platform-specific → TimelineItem│
-│                          └───────┬───────┘                                  │
-│                                  │                                          │
-│                                  ▼                                          │
-│                          ┌───────────────┐                                  │
-│                          │   Groupers    │  Commits grouped by repo/day     │
-│                          └───────┬───────┘                                  │
-│                                  │                                          │
-│                                  ▼                                          │
-│  ┌───────────────────────────────────────────────────────────────────────┐  │
-│  │                         @f0rbit/corpus                                │  │
-│  │  Versioned, content-addressed storage with lineage tracking           │  │
-│  └───────────────────────────────────────────────────────────────────────┘  │
-│                    │                              │                         │
-│                    ▼                              ▼                         │
-│           ┌───────────────┐              ┌───────────────┐                  │
-│           │  Cloudflare   │              │  Cloudflare   │                  │
-│           │      D1       │              │      R2       │                  │
-│           │  (metadata)   │              │    (data)     │                  │
-│           └───────────────┘              └───────────────┘                  │
+│  ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐ ┌─────────┐   │
+│  │ GitHub  │ │ Reddit  │ │ Twitter │ │ Bluesky │ │ YouTube │ │ Devpad  │   │
+│  │Provider │ │Provider │ │Provider │ │Provider │ │Provider │ │Provider │   │
+│  └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘ └────┬────┘   │
+│       │          │          │          │          │          │            │
+│       └──────────┴──────────┴──────────┴──────────┴──────────┘            │
+│                                  │                                         │
+│                                  ▼                                         │
+│                          ┌───────────────┐                                 │
+│                          │  Normalizers  │  Platform-specific → TimelineItem
+│                          └───────┬───────┘                                 │
+│                                  │                                         │
+│                                  ▼                                         │
+│                          ┌───────────────┐                                 │
+│                          │   Groupers    │  Commits grouped by repo/day    │
+│                          └───────┬───────┘                                 │
+│                                  │                                         │
+│                                  ▼                                         │
+│  ┌───────────────────────────────────────────────────────────────────────┐ │
+│  │                         @f0rbit/corpus                                │ │
+│  │  Versioned, content-addressed storage with lineage tracking          │ │
+│  └───────────────────────────────────────────────────────────────────────┘ │
+│                    │                              │                        │
+│                    ▼                              ▼                        │
+│           ┌───────────────┐              ┌───────────────┐                 │
+│           │  Cloudflare   │              │  Cloudflare   │                 │
+│           │      D1       │              │      R2       │                 │
+│           │  (metadata)   │              │    (data)     │                 │
+│           └───────────────┘              └───────────────┘                 │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### Package Structure
+### Project Structure
 
 ```
-packages/
-├── core/           # Business logic, Result pattern, utilities
-│   ├── normalizer  # Platform data → TimelineItem conversion
-│   ├── grouper     # Commit grouping, date grouping
-│   ├── encryption  # AES-GCM-256 token encryption
-│   ├── rate-limit  # Circuit breaker state machine
-│   └── utils       # Result type, functional combinators
-│
-├── schema/         # Type definitions and validation
-│   ├── timeline    # Zod schemas for timeline types
-│   ├── platforms   # Platform-specific raw data schemas
-│   └── database    # Drizzle ORM table definitions
-│
-├── providers/      # Platform API clients
-│   ├── github      # GitHub Events API
-│   ├── bluesky     # AT Protocol
-│   ├── youtube     # YouTube Data API
-│   ├── devpad      # Devpad API
-│   └── memory/     # In-memory implementations for testing
-│
-└── worker/         # Cloudflare Worker
-    ├── routes/     # Hono HTTP handlers
-    ├── middleware/ # Authentication
-    ├── cron        # Scheduled data fetching
-    └── corpus      # Storage abstraction
+├── apps/
+│   └── website/          # Astro + SolidJS frontend
+├── src/
+│   ├── platforms/        # Platform API clients
+│   ├── schema/           # Zod schemas + Drizzle tables
+│   └── ...               # Worker routes, cron, utils
+├── scripts/
+│   └── dev-server.ts     # Local development server
+├── __tests__/
+│   └── integration/      # Integration tests
+└── migrations/           # Drizzle migrations
 ```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `EncryptionKey` | Yes | 32-byte key for AES-GCM-256 token encryption (SST secret) |
+| `REDDIT_CLIENT_ID` | For Reddit | Reddit app client ID |
+| `REDDIT_CLIENT_SECRET` | For Reddit | Reddit app client secret |
+| `TWITTER_CLIENT_ID` | For Twitter | Twitter/X app client ID |
+| `TWITTER_CLIENT_SECRET` | For Twitter | Twitter/X app client secret |
+| `APP_URL` | For OAuth | API base URL for OAuth callbacks |
+| `FRONTEND_URL` | For OAuth | Frontend URL for redirects |
 
 ## Types & Schema
 
@@ -85,17 +84,17 @@ packages/
 
 ```typescript
 // Supported platforms
-type Platform = "github" | "bluesky" | "youtube" | "devpad";
+type Platform = "github" | "reddit" | "twitter" | "bluesky" | "youtube" | "devpad";
 
 // Unified timeline item
 type TimelineItem = {
   id: string;                    // Unique identifier
   platform: Platform;
-  type: "commit" | "post" | "video" | "task";
+  type: "commit" | "post" | "video" | "task" | "tweet" | "comment";
   timestamp: string;             // ISO 8601
   title: string;
   url?: string;
-  payload: CommitPayload | PostPayload | VideoPayload | TaskPayload;
+  payload: CommitPayload | PostPayload | VideoPayload | TaskPayload | TweetPayload;
 };
 
 // Commits grouped by repository and day
@@ -114,39 +113,6 @@ type DateGroup = {
 };
 ```
 
-### Payload Types (Discriminated Union)
-
-```typescript
-type CommitPayload = {
-  type: "commit";
-  sha: string;
-  message: string;
-  repo: string;
-};
-
-type PostPayload = {
-  type: "post";
-  content: string;
-  author_handle: string;
-  like_count?: number;
-  repost_count?: number;
-};
-
-type VideoPayload = {
-  type: "video";
-  channel_id: string;
-  channel_title: string;
-  thumbnail_url?: string;
-};
-
-type TaskPayload = {
-  type: "task";
-  status: "todo" | "in_progress" | "done" | "archived";
-  priority?: "low" | "medium" | "high";
-  project?: string;
-};
-```
-
 ### Database Schema
 
 ```sql
@@ -162,7 +128,7 @@ CREATE TABLE users (
 -- Platform accounts (tokens encrypted)
 CREATE TABLE accounts (
   id TEXT PRIMARY KEY,
-  platform TEXT NOT NULL,           -- "github" | "bluesky" | "youtube" | "devpad"
+  platform TEXT NOT NULL,
   platform_user_id TEXT,
   platform_username TEXT,
   access_token_encrypted TEXT NOT NULL,
@@ -245,91 +211,6 @@ matchResult(result,
 )
 ```
 
-### Pipeline Builders
-
-Fluent API for chaining multiple operations:
-
-```typescript
-// Synchronous pipeline
-const result = pipeResult(initialResult)
-  .map(x => x + 1)
-  .flatMap(x => validate(x))
-  .mapErr(e => ({ ...e, context: "validation" }))
-  .tap(x => console.log("Valid:", x))
-  .result();
-
-// Asynchronous pipeline
-const result = await pipeResultAsync(fetchData())
-  .mapAsync(data => processAsync(data))
-  .flatMapAsync(data => saveAsync(data))
-  .tapErr(e => logError(e))
-  .tapAsync(data => notifyAsync(data))
-  .result();
-```
-
-### Error Handling Utilities
-
-```typescript
-// Wrap throwing functions
-const result = tryCatch(
-  () => JSON.parse(input),
-  e => ({ kind: "parse_error", message: String(e) })
-);
-
-// Wrap async throwing functions
-const result = await tryCatchAsync(
-  () => fetch(url).then(r => r.json()),
-  e => ({ kind: "fetch_error", cause: e })
-);
-
-// Specialized fetch with automatic error handling
-const result = await fetchResult(
-  "https://api.example.com/data",
-  { headers: { Authorization: `Bearer ${token}` } },
-  e => e.type === "http" 
-    ? { kind: "api_error", status: e.status }
-    : { kind: "network_error", message: String(e.cause) }
-);
-```
-
-### Real-World Example
-
-From the cron job, processing an account:
-
-```typescript
-const result = await pipeResultAsync(decrypt(account.access_token_encrypted, env.ENCRYPTION_KEY))
-  .mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
-  .flatMapAsync(token => 
-    pipeResultAsync(providerFactory.create(account.platform, token))
-      .mapErr(toProcessError)
-      .tapErrAsync(() => recordFailure(env, account.id))
-      .result()
-  )
-  .flatMap(rawData =>
-    pipeResult(createRawStore(account.platform, account.id, env))
-      .mapErr((e): ProcessError => ({ kind: "store_failed", store_id: e.store_id }))
-      .map(({ store }) => ({ rawData, store }))
-      .result()
-  )
-  .flatMapAsync(({ rawData, store }) =>
-    pipeResultAsync(store.put(rawData, { tags: [`platform:${account.platform}`] }))
-      .mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
-      .map(({ version }) => ({ rawData, version }))
-      .result()
-  )
-  .tapErr(logProcessError(account.id))
-  .tapAsync(() => recordSuccess(env, account.id))
-  .map(({ rawData, version }): RawSnapshot => ({
-    account_id: account.id,
-    platform: account.platform,
-    version,
-    data: rawData,
-  }))
-  .result();
-
-return matchResult(result, snapshot => snapshot, () => null);
-```
-
 ## API
 
 ### Authentication
@@ -337,7 +218,7 @@ return matchResult(result, snapshot => snapshot, () => null);
 All API requests require a Bearer token:
 
 ```bash
-curl -H "Authorization: Bearer mtl_your_api_key_here" \
+curl -H "Authorization: Bearer mt_your_api_key_here" \
   https://your-worker.workers.dev/api/v1/timeline/user-123
 ```
 
@@ -350,39 +231,6 @@ GET /api/v1/timeline/:user_id?from=2024-01-01&to=2024-12-31
 ```
 
 Returns the user's aggregated timeline, optionally filtered by date range.
-
-**Response:**
-```json
-{
-  "meta": {
-    "version": "v1_abc123",
-    "created_at": "2024-01-15T10:30:00Z"
-  },
-  "data": {
-    "groups": [
-      {
-        "date": "2024-01-15",
-        "entries": [
-          {
-            "type": "commit_group",
-            "repo": "user/project",
-            "date": "2024-01-15",
-            "commits": [...]
-          },
-          {
-            "id": "bluesky:post:abc123",
-            "platform": "bluesky",
-            "type": "post",
-            "timestamp": "2024-01-15T09:00:00Z",
-            "title": "Hello world!",
-            "payload": { "type": "post", "content": "...", ... }
-          }
-        ]
-      }
-    ]
-  }
-}
-```
 
 #### List Connections
 
@@ -409,44 +257,14 @@ Content-Type: application/json
 DELETE /api/v1/connections/:account_id
 ```
 
-## Data Flow
+#### OAuth Flows
 
-### Cron Job (every 5 minutes)
-
-1. **Query active accounts** from D1 with user associations
-2. **Check rate limits** and circuit breaker state
-3. **Decrypt access tokens** using AES-GCM-256
-4. **Fetch raw data** from each platform's API
-5. **Store raw snapshots** in corpus (content-addressed, versioned)
-6. **Normalize** platform-specific data to `TimelineItem[]`
-7. **Group commits** by repository and date
-8. **Group by date** for final timeline structure
-9. **Store combined timeline** with references to source snapshots
-
-### Rate Limiting
-
-The system respects platform rate limits and implements a circuit breaker:
-
-```typescript
-type RateLimitState = {
-  remaining: number | null;       // Requests remaining
-  reset_at: Date | null;          // When limit resets
-  consecutive_failures: number;   // Circuit breaker counter
-  circuit_open_until: Date | null; // When circuit closes
-};
-
-// Circuit opens after 3 consecutive failures
-// Stays open for 5 minutes before retrying
+```http
+GET /api/auth/reddit/login        # Initiate Reddit OAuth
+GET /api/auth/reddit/callback     # Reddit OAuth callback
+GET /api/auth/twitter/login       # Initiate Twitter OAuth
+GET /api/auth/twitter/callback    # Twitter OAuth callback
 ```
-
-### Encryption
-
-Access tokens are encrypted at rest:
-
-- **Algorithm**: AES-GCM-256
-- **Key derivation**: PBKDF2 with 100,000 iterations
-- **IV**: 12 random bytes, prepended to ciphertext
-- **Output**: Base64-encoded (IV || ciphertext)
 
 ## Development
 
@@ -455,21 +273,51 @@ Access tokens are encrypted at rest:
 - [Bun](https://bun.sh) >= 1.0
 - Cloudflare account (for deployment)
 
-### Setup
+### Local Development
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 bun install
 
-# Run tests
-bun test
+# 2. Apply database migrations (creates local/dev.db)
+bun db:migrate:local
 
-# Type check
-bun run typecheck
+# 3. Start the API server (uses local SQLite + file-based corpus)
+bun dev:api
+# API runs at http://localhost:8787
+# Dev API key is printed on startup (mt_dev_xxxxx)
 
-# Format code
-bunx @biomejs/biome check --write .
+# 4. In a separate terminal, start the frontend
+bun dev:app
+# Frontend runs at http://localhost:4321
+
+# OR start both concurrently
+bun dev:all
 ```
+
+To authenticate in the browser:
+1. Open browser console on http://localhost:4321
+2. Run: `localStorage.setItem('apiKey', 'mt_dev_xxxxx')` (use key from dev:api output)
+3. Refresh the page
+
+The local dev server uses:
+- **Database**: `local/dev.db` (SQLite)
+- **Corpus storage**: `local/corpus/` (file-based)
+
+### Available Scripts
+
+| Script | Description |
+|--------|-------------|
+| `bun dev:api` | Start API server with local SQLite |
+| `bun dev:app` | Start frontend dev server |
+| `bun dev:all` | Start both API and frontend |
+| `bun dev:sst` | Start with SST (uses Cloudflare) |
+| `bun build` | Build frontend for production |
+| `bun test` | Run tests |
+| `bun lint` | Lint with Biome |
+| `bun typecheck` | TypeScript type checking |
+| `bun db:generate` | Generate Drizzle migrations |
+| `bun db:migrate:local` | Apply migrations to local SQLite |
 
 ### Database Migrations
 
@@ -489,26 +337,6 @@ The schema is defined in `src/schema/database.ts`. When you make changes:
 2. Run `bun db:generate` to create a new migration
 3. Run `bun db:migrate:local` to apply to local dev database
 
-### Local Development
-
-```bash
-# Apply database migrations (creates local/dev.db if needed)
-bun db:migrate:local
-
-# Start API server (uses local SQLite + file-based corpus)
-bun dev:api
-
-# Start frontend dev server
-bun dev:app
-
-# Start both concurrently
-bun dev:all
-```
-
-The local dev server uses:
-- **Database**: `local/dev.db` (SQLite)
-- **Corpus storage**: `local/corpus/` (file-based)
-
 ### Testing
 
 The test suite uses in-memory implementations:
@@ -519,10 +347,10 @@ The test suite uses in-memory implementations:
 
 ```bash
 # Run all tests
-bun run test
+bun test
 
 # Run with coverage
-bun run test --coverage
+bun test:coverage
 ```
 
 ## Deployment
@@ -547,18 +375,6 @@ For production:
 npx sst secret set EncryptionKey your-32-byte-key-here --stage production
 ```
 
-### Development
-
-```bash
-# Start local development server
-bun run dev
-```
-
-This runs `sst dev` which:
-- Creates development D1 database and R2 bucket
-- Deploys the worker with live reload
-- Enables local testing at the provided URL
-
 ### Deploy
 
 ```bash
@@ -580,7 +396,7 @@ bun db:generate
 # Apply to local SQLite (development)
 bun db:migrate:local
 
-# Apply to Cloudflare D1 (coming soon - use wrangler for now)
+# Apply to Cloudflare D1 (use wrangler)
 bunx wrangler d1 migrations apply <database-name> --remote
 ```
 
@@ -591,19 +407,42 @@ After deployment, SST outputs:
 - `databaseId`: D1 database ID  
 - `bucketName`: R2 bucket name
 
+## Platform Setup
+
+### GitHub
+Requires a Personal Access Token with `repo` and `read:user` scopes.
+
+### Reddit
+1. Create app at https://www.reddit.com/prefs/apps
+2. Select "web app" type
+3. Set redirect URI to `http://localhost:8787/api/auth/reddit/callback`
+4. Set `REDDIT_CLIENT_ID` and `REDDIT_CLIENT_SECRET`
+
+### Twitter/X
+1. Create app at https://developer.twitter.com
+2. Enable OAuth 2.0 with PKCE
+3. Set callback URL to `http://localhost:8787/api/auth/twitter/callback`
+4. Set `TWITTER_CLIENT_ID` and `TWITTER_CLIENT_SECRET`
+5. Note: Requires Basic API tier ($100/month) for user tweet access
+
+### Bluesky
+Requires app password from Bluesky settings.
+
+### YouTube
+Requires YouTube Data API key or OAuth credentials.
+
 ## Extensions & TODOs
 
 ### Planned Platforms
 
 - [ ] **Mastodon**: ActivityPub posts
 - [ ] **LinkedIn**: Posts and articles
-- [ ] **Twitter/X**: Tweets (if API access available)
 - [ ] **Notion**: Page updates
 - [ ] **Linear**: Issue updates
 
 ### Planned Features
 
-- [ ] **OAuth flows**: Web UI for connecting accounts
+- [ ] **OAuth flows**: GitHub and YouTube OAuth (Reddit/Twitter done)
 - [ ] **Webhooks**: Real-time updates instead of polling
 - [ ] **Filters**: Exclude certain repos, channels, etc.
 - [ ] **Search**: Full-text search across timeline
