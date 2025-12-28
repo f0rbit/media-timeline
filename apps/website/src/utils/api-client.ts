@@ -8,11 +8,11 @@ let config: ApiClientConfig = {
 	apiKey: null,
 };
 
-export function configureApi(newConfig: Partial<ApiClientConfig>) {
+export function configureApi(newConfig: Partial<ApiClientConfig>): void {
 	config = { ...config, ...newConfig };
 }
 
-export function setApiKey(key: string) {
+export function setApiKey(key: string): void {
 	config.apiKey = key;
 }
 
@@ -31,7 +31,7 @@ export function getMockUserId(): string {
 	return MOCK_USER_ID;
 }
 
-export function initMockAuth() {
+export function initMockAuth(): void {
 	if (import.meta.env.DEV) {
 		setApiKey(MOCK_API_KEY);
 	}

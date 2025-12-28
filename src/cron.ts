@@ -205,7 +205,7 @@ const recordSuccess = async (db: Database, accountId: string): Promise<void> => 
 };
 
 const logProcessError =
-	(accountId: string) =>
+	(accountId: string): ((e: ProcessError) => void) =>
 	(e: ProcessError): void => {
 		switch (e.kind) {
 			case "decryption_failed":

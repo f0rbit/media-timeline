@@ -1,6 +1,7 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { RedditComment, RedditPost, TimelineItem } from "./schema";
 import { createRedditCommentsStore, createRedditPostsStore } from "./storage";
+import { truncate } from "./utils";
 
 export type RedditTimelineData = {
 	posts: RedditPost[];
@@ -34,12 +35,6 @@ export async function loadRedditDataForAccount(backend: Backend, accountId: stri
 const truncateContent = (content: string, maxLength = 200): string => {
 	if (content.length <= maxLength) return content;
 	return `${content.slice(0, maxLength - 3)}...`;
-};
-
-const truncateTitle = (text: string, maxLength = 72): string => {
-	const singleLine = text.replace(/\s+/g, " ").trim();
-	if (singleLine.length <= maxLength) return singleLine;
-	return `${singleLine.slice(0, maxLength - 3)}...`;
 };
 
 export function normalizeReddit(data: RedditTimelineData, _username: string): TimelineItem[] {
@@ -83,7 +78,7 @@ export function normalizeReddit(data: RedditTimelineData, _username: string): Ti
 			platform: "reddit",
 			type: "comment",
 			timestamp,
-			title: truncateTitle(comment.body),
+			title: truncate(comment.body),
 			url: `https://reddit.com${comment.permalink}`,
 			payload: {
 				type: "comment",

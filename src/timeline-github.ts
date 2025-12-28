@@ -1,6 +1,7 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { GitHubRaw, GitHubRepoCommit, GitHubRepoPR, TimelineItem } from "./schema";
 import { createGitHubCommitsStore, createGitHubPRsStore, listGitHubCommitStores, listGitHubPRStores } from "./storage";
+import { truncate } from "./utils";
 
 type CommitWithRepo = GitHubRepoCommit & { _repo: string };
 type PRWithRepo = GitHubRepoPR & { _repo: string };
@@ -52,11 +53,6 @@ export async function loadGitHubDataForAccount(backend: Backend, accountId: stri
 	return { commits, prs };
 }
 
-const truncateMessage = (message: string): string => {
-	const firstLine = message.split("\n")[0] ?? "";
-	return firstLine.length > 72 ? `${firstLine.slice(0, 69)}...` : firstLine;
-};
-
 export function normalizeGitHub(data: GitHubTimelineData): TimelineItem[] {
 	const items: TimelineItem[] = [];
 
@@ -68,7 +64,7 @@ export function normalizeGitHub(data: GitHubTimelineData): TimelineItem[] {
 			platform: "github",
 			type: "commit",
 			timestamp: commit.author_date,
-			title: truncateMessage(commit.message),
+			title: truncate(commit.message),
 			url: commit.url,
 			payload: {
 				type: "commit",
@@ -127,7 +123,7 @@ export function normalizeGitHubLegacy(raw: GitHubRaw): TimelineItem[] {
 			platform: "github",
 			type: "commit",
 			timestamp: commit.date,
-			title: truncateMessage(commit.message),
+			title: truncate(commit.message),
 			url: commit.url,
 			payload: {
 				type: "commit",

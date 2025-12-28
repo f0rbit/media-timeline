@@ -257,6 +257,16 @@ export const last = <T>(array: readonly T[]): Result<T, { kind: "empty_array" }>
 	return ok(array[array.length - 1] as T);
 };
 
+// String utilities
+/**
+ * Truncate text to a maximum length, taking only the first line and replacing whitespace.
+ */
+export const truncate = (text: string, maxLength = 72): string => {
+	const firstLine = text.split("\n")[0] ?? "";
+	const singleLine = firstLine.replace(/\s+/g, " ").trim();
+	return singleLine.length <= maxLength ? singleLine : `${singleLine.slice(0, maxLength - 3)}...`;
+};
+
 // Other utilities
 export const uuid = (): string => crypto.randomUUID();
 export const randomSha = (): string => Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");

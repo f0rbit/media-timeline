@@ -1,6 +1,7 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { TimelineItem, TweetMedia, TwitterMetaStore, TwitterTweet } from "./schema";
 import { createTwitterMetaStore, createTwitterTweetsStore } from "./storage";
+import { truncate } from "./utils";
 
 export type TwitterTimelineData = {
 	tweets: TwitterTweet[];
@@ -34,12 +35,6 @@ export async function loadTwitterDataForAccount(backend: Backend, accountId: str
 	return { tweets, media, meta };
 }
 
-const truncateTitle = (text: string, maxLength = 72): string => {
-	const singleLine = text.replace(/\s+/g, " ").trim();
-	if (singleLine.length <= maxLength) return singleLine;
-	return `${singleLine.slice(0, maxLength - 3)}...`;
-};
-
 export function normalizeTwitter(data: TwitterTimelineData): TimelineItem[] {
 	const items: TimelineItem[] = [];
 
@@ -55,7 +50,7 @@ export function normalizeTwitter(data: TwitterTimelineData): TimelineItem[] {
 			platform: "twitter",
 			type: "post",
 			timestamp: tweet.created_at,
-			title: truncateTitle(tweet.text),
+			title: truncate(tweet.text),
 			url: `https://twitter.com/${data.meta?.username ?? "i"}/status/${tweet.id}`,
 			payload: {
 				type: "post",
