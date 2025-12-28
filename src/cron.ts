@@ -1,12 +1,12 @@
 import type { Backend } from "@f0rbit/corpus";
 import { eq, sql } from "drizzle-orm";
-import { type GitHubProcessResult, processGitHubAccount } from "./cron-github";
-import { type RedditProcessResult, processRedditAccount } from "./cron-reddit";
-import { type TwitterProcessResult, processTwitterAccount } from "./cron-twitter";
+import { processGitHubAccount } from "./cron-github";
+import { processRedditAccount } from "./cron-reddit";
+import { processTwitterAccount } from "./cron-twitter";
 import type { Database } from "./db";
-import type { AppContext, GitHubProviderLike, TwitterProviderLike } from "./infrastructure";
+import type { AppContext } from "./infrastructure";
 import { GitHubProvider, type ProviderError, type ProviderFactory, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
-import { type RedditFetchResult, RedditProvider } from "./platforms/reddit";
+import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
 import { BlueskyRawSchema, type CommitGroup, DevpadRawSchema, type Platform, type TimelineItem, YouTubeRawSchema, accountMembers, accounts, rateLimits } from "./schema";
 import { type RateLimitState, type RawData, createRawStore, createTimelineStore, rawStoreId, shouldFetch } from "./storage";
@@ -16,12 +16,8 @@ import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
 import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
 import { type Result, decrypt, pipe, to_nullable, tryCatch } from "./utils";
 
-type RedditProviderLike = {
-	fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>>;
-};
-
-export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline };
-export type { ProviderFactory, RawSnapshot, PlatformGroups };
+export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline, platformProcessors };
+export type { ProviderFactory, RawSnapshot, PlatformGroups, PlatformProcessor };
 
 type RawSnapshot = {
 	account_id: string;
@@ -232,25 +228,55 @@ type PlatformProcessResult = {
 	stats: Record<string, unknown>;
 };
 
-type PlatformFlowConfig<TProvider, TResult extends PlatformProcessResult> = {
-	platform: string;
-	snapshotType: string;
-	createProvider: (ctx: AppContext) => TProvider;
-	processAccount: (backend: Backend, accountId: string, token: string, provider: TProvider) => Promise<Result<TResult, { kind: string; message?: string }>>;
+type PlatformProcessor = {
+	platform: Platform;
+	shouldFetch: (account: AccountWithUser, lastFetchedAt: string | null) => boolean;
+	createProvider: (ctx: AppContext) => unknown;
+	processAccount: (backend: Backend, accountId: string, token: string, provider: unknown) => Promise<Result<PlatformProcessResult, { kind: string; message?: string }>>;
 };
 
-const processPlatformAccountFlow = async <TProvider, TResult extends PlatformProcessResult>(ctx: AppContext, account: AccountWithUser, config: PlatformFlowConfig<TProvider, TResult>): Promise<RawSnapshot | null> => {
+const platformProcessors = new Map<Platform, PlatformProcessor>([
+	[
+		"github",
+		{
+			platform: "github" as const,
+			shouldFetch: () => true,
+			createProvider: (ctx: AppContext) => ctx.gitHubProvider ?? new GitHubProvider(),
+			processAccount: processGitHubAccount as PlatformProcessor["processAccount"],
+		},
+	],
+	[
+		"reddit",
+		{
+			platform: "reddit" as const,
+			shouldFetch: () => true,
+			createProvider: () => new RedditProvider(),
+			processAccount: processRedditAccount as PlatformProcessor["processAccount"],
+		},
+	],
+	[
+		"twitter",
+		{
+			platform: "twitter" as const,
+			shouldFetch: (_account: AccountWithUser, lastFetched: string | null) => shouldFetchTwitter(lastFetched),
+			createProvider: (ctx: AppContext) => ctx.twitterProvider ?? new TwitterProvider(),
+			processAccount: processTwitterAccount as PlatformProcessor["processAccount"],
+		},
+	],
+]);
+
+const processPlatformAccountWithProcessor = async (ctx: AppContext, account: AccountWithUser, processor: PlatformProcessor): Promise<RawSnapshot | null> => {
 	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
 	if (!decryptResult.ok) {
-		console.error(`[cron] ${config.platform} decryption failed for account:`, account.id);
+		console.error(`[cron] ${processor.platform} decryption failed for account:`, account.id);
 		return null;
 	}
 
-	const provider = config.createProvider(ctx);
-	const result = await config.processAccount(ctx.backend, account.id, decryptResult.value, provider);
+	const provider = processor.createProvider(ctx);
+	const result = await processor.processAccount(ctx.backend, account.id, decryptResult.value, provider);
 
 	if (!result.ok) {
-		console.error(`[cron] ${config.platform} processing failed:`, account.id, result.error);
+		console.error(`[cron] ${processor.platform} processing failed:`, account.id, result.error);
 		await recordFailure(ctx.db, account.id);
 		return null;
 	}
@@ -259,41 +285,14 @@ const processPlatformAccountFlow = async <TProvider, TResult extends PlatformPro
 
 	return {
 		account_id: account.id,
-		platform: config.platform.toLowerCase(),
+		platform: processor.platform,
 		version: result.value.meta_version,
 		data: {
-			type: config.snapshotType,
+			type: `${processor.platform}_multi_store`,
 			...result.value.stats,
 		},
 	};
 };
-
-const githubFlowConfig: PlatformFlowConfig<GitHubProviderLike, GitHubProcessResult> = {
-	platform: "GitHub",
-	snapshotType: "github_multi_store",
-	createProvider: ctx => ctx.gitHubProvider ?? new GitHubProvider(),
-	processAccount: processGitHubAccount,
-};
-
-const redditFlowConfig: PlatformFlowConfig<RedditProviderLike, RedditProcessResult> = {
-	platform: "Reddit",
-	snapshotType: "reddit_multi_store",
-	createProvider: () => new RedditProvider(),
-	processAccount: processRedditAccount,
-};
-
-const twitterFlowConfig: PlatformFlowConfig<TwitterProviderLike, TwitterProcessResult> = {
-	platform: "Twitter",
-	snapshotType: "twitter_multi_store",
-	createProvider: ctx => ctx.twitterProvider ?? new TwitterProvider(),
-	processAccount: processTwitterAccount,
-};
-
-const processGitHubAccountFlow = (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => processPlatformAccountFlow(ctx, account, githubFlowConfig);
-
-const processRedditAccountFlow = (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => processPlatformAccountFlow(ctx, account, redditFlowConfig);
-
-const processTwitterAccountFlow = (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => processPlatformAccountFlow(ctx, account, twitterFlowConfig);
 
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
@@ -347,22 +346,17 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		return null;
 	}
 
-	if (account.platform === "github") {
-		return processGitHubAccountFlow(ctx, account);
+	const processor = platformProcessors.get(account.platform as Platform);
+
+	if (!processor) {
+		return processGenericAccount(ctx, account);
 	}
 
-	if (account.platform === "reddit") {
-		return processRedditAccountFlow(ctx, account);
+	if (!processor.shouldFetch(account, account.last_fetched_at ?? null)) {
+		return null;
 	}
 
-	if (account.platform === "twitter") {
-		if (!shouldFetchTwitter(account.last_fetched_at ?? null)) {
-			return null;
-		}
-		return processTwitterAccountFlow(ctx, account);
-	}
-
-	return processGenericAccount(ctx, account);
+	return processPlatformAccountWithProcessor(ctx, account, processor);
 };
 
 const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {
