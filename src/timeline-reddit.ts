@@ -69,6 +69,7 @@ export function normalizeReddit(data: RedditTimelineData, _username: string): Ti
 				has_media: hasMedia,
 				is_reply: false,
 				is_repost: false,
+				subreddit: post.subreddit,
 			},
 		});
 	}

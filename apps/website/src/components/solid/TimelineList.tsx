@@ -1,9 +1,12 @@
 import { type ApiResult, type CommitGroup, type PRCommit, type PullRequestPayload, type TimelineGroup, type TimelineItem, type TimelineResponse, getMockUserId, initMockAuth, timeline } from "@/utils/api-client";
 import { formatRelativeTime } from "@/utils/formatters";
+import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import ChevronRight from "lucide-solid/icons/chevron-right";
 import GitCommit from "lucide-solid/icons/git-commit-horizontal";
 import GitPullRequest from "lucide-solid/icons/git-pull-request";
+import MessageSquareText from "lucide-solid/icons/message-square-text";
+import Reply from "lucide-solid/icons/reply";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
 
 const GithubUsernamesContext = createContext<string[]>([]);
@@ -103,6 +106,12 @@ function TimelineEntry(props: TimelineEntryProps) {
 			</Match>
 			<Match when={props.item.type === "commit"}>
 				<CommitRow item={props.item as TimelineItem} />
+			</Match>
+			<Match when={props.item.type === "post" && props.item.platform === "reddit"}>
+				<RedditPostRow item={props.item as TimelineItem} />
+			</Match>
+			<Match when={props.item.type === "comment" && props.item.platform === "reddit"}>
+				<RedditCommentRow item={props.item as TimelineItem} />
 			</Match>
 			<Match when={true}>
 				<GenericRow item={props.item as TimelineItem} />
@@ -296,6 +305,105 @@ function CommitRow(props: { item: TimelineItem }) {
 				<Show when={displayRepo()}>
 					<span class="text-xs muted">{displayRepo()}</span>
 				</Show>
+			</div>
+		</div>
+	);
+}
+
+function RedditPostRow(props: { item: TimelineItem }) {
+	const payload = () =>
+		props.item.payload as {
+			type: "post";
+			content: string;
+			subreddit?: string;
+			like_count?: number;
+			reply_count?: number;
+			has_media?: boolean;
+		};
+	const score = () => payload().like_count ?? 0;
+	const commentCount = () => payload().reply_count ?? 0;
+
+	return (
+		<div class="timeline-row">
+			<div class="timeline-icon timeline-icon-reddit">
+				<MessageSquareText size={16} />
+			</div>
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<span class="text-xs muted nowrap">{formatRelativeTime(props.item.timestamp)}</span>
+				<div class="flex-row items-start" style={{ gap: "0.5rem" }}>
+					<Show when={props.item.url} fallback={<span class="secondary font-medium">{props.item.title}</span>}>
+						<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="secondary font-medium">
+							{props.item.title}
+						</a>
+					</Show>
+				</div>
+				<div class="flex-row items-center text-xs muted" style={{ gap: "0.5rem" }}>
+					<Show when={payload().subreddit}>
+						<span>r/{payload().subreddit}</span>
+						<span>·</span>
+					</Show>
+					<span class="inline-flex items-center" style={{ gap: "0.25rem" }}>
+						<ArrowBigUp size={12} />
+						<span>{score()}</span>
+					</span>
+					<span>·</span>
+					<span>
+						{commentCount()} {commentCount() === 1 ? "comment" : "comments"}
+					</span>
+					<Show when={payload().has_media}>
+						<span>·</span>
+						<span class="reddit-media-badge">media</span>
+					</Show>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function RedditCommentRow(props: { item: TimelineItem }) {
+	const payload = () =>
+		props.item.payload as {
+			type: "comment";
+			content: string;
+			parent_title: string;
+			parent_url: string;
+			subreddit: string;
+			score: number;
+			is_op: boolean;
+		};
+
+	return (
+		<div class="timeline-row">
+			<div class="timeline-icon timeline-icon-reddit-comment">
+				<Reply size={16} />
+			</div>
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
+					<span class="muted nowrap shrink-0">{formatRelativeTime(props.item.timestamp)}</span>
+					<Show when={payload().is_op}>
+						<span class="reddit-op-badge">OP</span>
+					</Show>
+				</div>
+				<div class="reddit-comment-text">
+					<Show when={props.item.url} fallback={<span class="reddit-comment-content">{payload().content}</span>}>
+						<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="reddit-comment-content">
+							{payload().content}
+						</a>
+					</Show>
+				</div>
+				<div class="flex-row items-center text-xs muted" style={{ gap: "0.5rem", "flex-wrap": "wrap" }}>
+					<span>r/{payload().subreddit}</span>
+					<span>·</span>
+					<span>on</span>
+					<a href={payload().parent_url} target="_blank" rel="noopener noreferrer" class="muted truncate" style={{ "max-width": "250px" }}>
+						{payload().parent_title}
+					</a>
+					<span>·</span>
+					<span class="inline-flex items-center" style={{ gap: "0.25rem" }}>
+						<ArrowBigUp size={12} />
+						<span>{payload().score}</span>
+					</span>
+				</div>
 			</div>
 		</div>
 	);

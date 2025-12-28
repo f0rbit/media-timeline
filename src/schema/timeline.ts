@@ -26,6 +26,7 @@ export const PostPayloadSchema = z.object({
 	has_media: z.boolean().default(false),
 	is_reply: z.boolean().default(false),
 	is_repost: z.boolean().default(false),
+	subreddit: z.string().optional(),
 });
 
 export const VideoPayloadSchema = z.object({

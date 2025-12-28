@@ -697,6 +697,59 @@ form section label {
 	color: var(--text-tertiary);
 }
 
+/* Reddit Timeline Icons */
+.timeline-icon-reddit {
+	color: #ff4500;
+}
+
+.timeline-icon-reddit-comment {
+	color: var(--text-muted);
+}
+
+/* Reddit Comment Text - prose/quote style */
+.reddit-comment-text {
+	font-size: 0.875rem;
+	line-height: 1.4;
+	color: var(--text-secondary);
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.reddit-comment-text a {
+	color: var(--text-secondary);
+}
+
+.reddit-comment-text a:hover {
+	color: var(--text-primary);
+}
+
+/* Reddit OP Badge */
+.reddit-op-badge {
+	font-size: 0.625rem;
+	font-weight: 600;
+	padding: 0.0625rem 0.25rem;
+	border-radius: 0.125rem;
+	background: rgba(0, 135, 220, 0.15);
+	color: #0087dc;
+	text-transform: uppercase;
+}
+
+@media (prefers-color-scheme: dark) {
+	.reddit-op-badge {
+		background: rgba(0, 135, 220, 0.25);
+		color: #52a8ec;
+	}
+}
+
+/* Reddit Media Badge */
+.reddit-media-badge {
+	font-size: 0.625rem;
+	padding: 0.0625rem 0.25rem;
+	border-radius: 0.125rem;
+	background: var(--input-background);
+	border: 1px solid var(--input-border);
+}
+
 .timeline-dot {
 	width: 0.5rem;
 	height: 0.5rem;
