@@ -6,12 +6,11 @@ import { z } from "zod";
 import { getAuth } from "./auth";
 import type { Bindings } from "./bindings";
 import { deleteConnection } from "./connection-delete";
-import { processRedditAccount } from "./cron-reddit";
 import type { AppContext } from "./infrastructure";
-import { RedditProvider } from "./platforms/reddit";
+import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
 import { DateGroupSchema, accountMembers, accountSettings, accounts } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
-import { type FetchError, type Result, decrypt, encrypt, err, fetchResult, match, ok, pipe, tryCatchAsync } from "./utils";
+import { type FetchError, type Result, encrypt, err, fetchResult, match, ok, pipe, tryCatchAsync } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -191,6 +190,61 @@ export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>
 
 type OAuthTokenResponse = { access_token: string; refresh_token?: string; expires_in: number };
 
+// === OAuth Shared Helpers ===
+
+type OAuthStateBase = { user_id: string; nonce: string };
+type OAuthState<T extends Record<string, unknown> = Record<string, never>> = OAuthStateBase & T;
+
+const validateOAuthQueryKey = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, ctx: AppContext, platform: string): Promise<Result<string, Response>> => {
+	const apiKey = c.req.query("key");
+	if (!apiKey) {
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_auth`));
+	}
+
+	const { hashApiKey } = await import("./utils");
+	const { apiKeys } = await import("./schema");
+	const keyHash = await hashApiKey(apiKey);
+	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
+
+	if (!keyResult) {
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_auth`));
+	}
+
+	return ok(keyResult.user_id);
+};
+
+const encodeOAuthState = <T extends Record<string, unknown>>(userId: string, extra?: T): string => {
+	const stateData: OAuthState<T> = {
+		user_id: userId,
+		nonce: crypto.randomUUID(),
+		...(extra as T),
+	};
+	return btoa(JSON.stringify(stateData));
+};
+
+const decodeOAuthState = <T extends Record<string, unknown> = Record<string, never>>(
+	c: Context<{ Bindings: Bindings; Variables: Variables }>,
+	state: string | undefined,
+	platform: string,
+	requiredKeys: (keyof T)[] = []
+): Result<OAuthState<T>, Response> => {
+	if (!state) {
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_state`));
+	}
+
+	try {
+		const stateData = JSON.parse(atob(state)) as OAuthState<T>;
+		if (!stateData.user_id) throw new Error("No user_id in state");
+		for (const key of requiredKeys) {
+			if (!stateData[key]) throw new Error(`Missing ${String(key)} in state`);
+		}
+		return ok(stateData);
+	} catch {
+		console.error(`[${platform}-oauth] Invalid state parameter`);
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_state`));
+	}
+};
+
 export const refreshRedditToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
 	fetchResult<OAuthTokenResponse, FetchError>(
 		"https://www.reddit.com/api/v1/access_token",
@@ -210,25 +264,12 @@ export const refreshRedditToken = async (refreshToken: string, clientId: string,
 	);
 
 // GET /auth/reddit - Initiate Reddit OAuth
-// This route requires authentication via query param (for browser redirect flow)
 authRoutes.get("/reddit", async c => {
 	const ctx = getContext(c);
 
-	// Get API key from query param (since this is a browser redirect, not an API call)
-	const apiKey = c.req.query("key");
-	if (!apiKey) {
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_no_auth`);
-	}
-
-	// Validate the API key
-	const { hashApiKey } = await import("./utils");
-	const { apiKeys } = await import("./schema");
-	const keyHash = await hashApiKey(apiKey);
-	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
-
-	if (!keyResult) {
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_invalid_auth`);
-	}
+	const keyValidation = await validateOAuthQueryKey(c, ctx, "reddit");
+	if (!keyValidation.ok) return keyValidation.error;
+	const userId = keyValidation.value;
 
 	const clientId = c.env.REDDIT_CLIENT_ID;
 	if (!clientId) {
@@ -236,22 +277,15 @@ authRoutes.get("/reddit", async c => {
 	}
 
 	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/reddit/callback`;
+	const state = encodeOAuthState(userId);
 
-	// Encode user_id in state (base64 encoded JSON with nonce for security)
-	const stateData = {
-		user_id: keyResult.user_id,
-		nonce: crypto.randomUUID(),
-	};
-	const state = btoa(JSON.stringify(stateData));
-
-	const scope = "identity,history,read";
 	const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
 	authUrl.searchParams.set("client_id", clientId);
 	authUrl.searchParams.set("response_type", "code");
 	authUrl.searchParams.set("state", state);
 	authUrl.searchParams.set("redirect_uri", redirectUri);
 	authUrl.searchParams.set("duration", "permanent");
-	authUrl.searchParams.set("scope", scope);
+	authUrl.searchParams.set("scope", "identity,history,read");
 
 	return c.redirect(authUrl.toString());
 });
@@ -262,7 +296,6 @@ authRoutes.get("/reddit/callback", async c => {
 	const db = ctx.db;
 
 	const code = c.req.query("code");
-	const state = c.req.query("state");
 	const error = c.req.query("error");
 
 	if (error) {
@@ -274,20 +307,9 @@ authRoutes.get("/reddit/callback", async c => {
 		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_no_code`);
 	}
 
-	if (!state) {
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_no_state`);
-	}
-
-	// Decode user_id from state
-	let userId: string;
-	try {
-		const stateData = JSON.parse(atob(state)) as { user_id: string; nonce: string };
-		userId = stateData.user_id;
-		if (!userId) throw new Error("No user_id in state");
-	} catch {
-		console.error("[reddit-oauth] Invalid state parameter");
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_invalid_state`);
-	}
+	const stateResult = decodeOAuthState(c, c.req.query("state"), "reddit");
+	if (!stateResult.ok) return stateResult.error;
+	const { user_id: userId } = stateResult.value;
 
 	const clientId = c.env.REDDIT_CLIENT_ID;
 	const clientSecret = c.env.REDDIT_CLIENT_SECRET;
@@ -477,19 +499,9 @@ export const refreshTwitterToken = async (refreshToken: string, clientId: string
 authRoutes.get("/twitter", async c => {
 	const ctx = getContext(c);
 
-	const apiKey = c.req.query("key");
-	if (!apiKey) {
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_no_auth`);
-	}
-
-	const { hashApiKey } = await import("./utils");
-	const { apiKeys } = await import("./schema");
-	const keyHash = await hashApiKey(apiKey);
-	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
-
-	if (!keyResult) {
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_invalid_auth`);
-	}
+	const keyValidation = await validateOAuthQueryKey(c, ctx, "twitter");
+	if (!keyValidation.ok) return keyValidation.error;
+	const userId = keyValidation.value;
 
 	const clientId = c.env.TWITTER_CLIENT_ID;
 	if (!clientId) {
@@ -498,25 +510,16 @@ authRoutes.get("/twitter", async c => {
 
 	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/twitter/callback`;
 
-	// Generate PKCE verifier and challenge
 	const codeVerifier = generateCodeVerifier();
 	const codeChallenge = await generateCodeChallenge(codeVerifier);
+	const state = encodeOAuthState(userId, { code_verifier: codeVerifier });
 
-	// Encode user_id and code_verifier in state
-	const stateData = {
-		user_id: keyResult.user_id,
-		code_verifier: codeVerifier,
-		nonce: crypto.randomUUID(),
-	};
-	const state = btoa(JSON.stringify(stateData));
-
-	const scope = "tweet.read users.read offline.access";
 	const authUrl = new URL("https://twitter.com/i/oauth2/authorize");
 	authUrl.searchParams.set("client_id", clientId);
 	authUrl.searchParams.set("response_type", "code");
 	authUrl.searchParams.set("state", state);
 	authUrl.searchParams.set("redirect_uri", redirectUri);
-	authUrl.searchParams.set("scope", scope);
+	authUrl.searchParams.set("scope", "tweet.read users.read offline.access");
 	authUrl.searchParams.set("code_challenge", codeChallenge);
 	authUrl.searchParams.set("code_challenge_method", "S256");
 
@@ -529,7 +532,6 @@ authRoutes.get("/twitter/callback", async c => {
 	const db = ctx.db;
 
 	const code = c.req.query("code");
-	const state = c.req.query("state");
 	const error = c.req.query("error");
 
 	if (error) {
@@ -541,22 +543,9 @@ authRoutes.get("/twitter/callback", async c => {
 		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_no_code`);
 	}
 
-	if (!state) {
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_no_state`);
-	}
-
-	// Decode state to get user_id and code_verifier
-	let userId: string;
-	let codeVerifier: string;
-	try {
-		const stateData = JSON.parse(atob(state)) as { user_id: string; code_verifier: string; nonce: string };
-		userId = stateData.user_id;
-		codeVerifier = stateData.code_verifier;
-		if (!userId || !codeVerifier) throw new Error("Invalid state");
-	} catch {
-		console.error("[twitter-oauth] Invalid state parameter");
-		return c.redirect(`${getFrontendUrl(c)}/connections?error=twitter_invalid_state`);
-	}
+	const stateResult = decodeOAuthState<{ code_verifier: string }>(c, c.req.query("state"), "twitter", ["code_verifier"]);
+	if (!stateResult.ok) return stateResult.error;
+	const { user_id: userId, code_verifier: codeVerifier } = stateResult.value;
 
 	const clientId = c.env.TWITTER_CLIENT_ID;
 	const clientSecret = c.env.TWITTER_CLIENT_SECRET;
@@ -910,254 +899,49 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	const accountWithUser = await ctx.db
-		.select({
-			id: accounts.id,
-			platform: accounts.platform,
-			platform_user_id: accounts.platform_user_id,
-			access_token_encrypted: accounts.access_token_encrypted,
-			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			is_active: accounts.is_active,
-			user_id: accountMembers.user_id,
-		})
-		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
-		.get();
+	const { result, backgroundTask } = await refreshSingleAccount(ctx, accountId, auth.user_id);
 
-	if (!accountWithUser) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
+	if (!result.ok) {
+		const error = result.error;
+		if (error.kind === "not_found") {
+			return c.json({ error: "Not found", message: error.message }, 404);
+		}
+		if (error.kind === "inactive") {
+			return c.json({ error: "Bad request", message: error.message }, 400);
+		}
+		return c.json({ error: "Internal error", message: error.message }, 500);
 	}
 
-	if (!accountWithUser.is_active) {
-		return c.json({ error: "Bad request", message: "Account is not active" }, 400);
-	}
-
-	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
-
-	if (accountWithUser.platform === "github") {
-		const backgroundTask = (async () => {
-			try {
-				const snapshot = await processAccount(ctx, accountWithUser);
-
-				if (snapshot) {
-					const allUserAccounts = await ctx.db
-						.select({
-							id: accounts.id,
-							platform: accounts.platform,
-							platform_user_id: accounts.platform_user_id,
-							access_token_encrypted: accounts.access_token_encrypted,
-							refresh_token_encrypted: accounts.refresh_token_encrypted,
-							user_id: accountMembers.user_id,
-						})
-						.from(accounts)
-						.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-						.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
-
-					const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
-					await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-				}
-			} catch (error) {
-				console.error("[refresh] GitHub background task failed:", error);
-			}
-		})();
-
+	if (backgroundTask) {
 		try {
-			c.executionCtx.waitUntil(backgroundTask);
+			c.executionCtx.waitUntil(backgroundTask());
 		} catch {
 			// Dev server doesn't have ExecutionContext
 		}
-
-		return c.json({ status: "processing", message: "GitHub sync started in background" });
 	}
 
-	if (accountWithUser.platform === "reddit") {
-		const backgroundTask = (async () => {
-			try {
-				const decryptResult = await decrypt(accountWithUser.access_token_encrypted, ctx.encryptionKey);
-				if (!decryptResult.ok) {
-					console.error("[refresh] Reddit token decryption failed");
-					return;
-				}
-
-				const provider = new RedditProvider();
-				const result = await processRedditAccount(ctx.backend, accountId, decryptResult.value, provider);
-
-				if (result.ok) {
-					const allUserAccounts = await ctx.db
-						.select({
-							id: accounts.id,
-							platform: accounts.platform,
-							platform_user_id: accounts.platform_user_id,
-							access_token_encrypted: accounts.access_token_encrypted,
-							refresh_token_encrypted: accounts.refresh_token_encrypted,
-							user_id: accountMembers.user_id,
-						})
-						.from(accounts)
-						.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-						.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
-
-					const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
-					await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-				} else {
-					console.error("[refresh] Reddit refresh failed:", result.error);
-				}
-			} catch (error) {
-				console.error("[refresh] Reddit background task failed:", error);
-			}
-		})();
-
-		try {
-			c.executionCtx.waitUntil(backgroundTask);
-		} catch {
-			// Dev server doesn't have ExecutionContext
-		}
-
-		return c.json({ status: "processing", message: "Reddit sync started in background" });
-	}
-
-	const snapshot = await processAccount(ctx, accountWithUser);
-
-	if (snapshot) {
-		const allUserAccounts = await ctx.db
-			.select({
-				id: accounts.id,
-				platform: accounts.platform,
-				platform_user_id: accounts.platform_user_id,
-				access_token_encrypted: accounts.access_token_encrypted,
-				refresh_token_encrypted: accounts.refresh_token_encrypted,
-				user_id: accountMembers.user_id,
-			})
-			.from(accounts)
-			.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-			.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
-
-		const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
-		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-
-		return c.json({ status: "refreshed", account_id: accountId });
-	}
-
-	return c.json({ status: "skipped", message: "Rate limited or no changes" });
+	return c.json(result.value);
 });
 
 connectionRoutes.post("/refresh-all", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
 
-	const userAccounts = await ctx.db
-		.select({
-			id: accounts.id,
-			platform: accounts.platform,
-			platform_user_id: accounts.platform_user_id,
-			access_token_encrypted: accounts.access_token_encrypted,
-			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			user_id: accountMembers.user_id,
-		})
-		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.is_active, true)));
+	const { result, backgroundTasks } = await refreshAllAccounts(ctx, auth.user_id);
 
-	if (userAccounts.length === 0) {
-		return c.json({ status: "completed", succeeded: 0, failed: 0, total: 0 });
+	if (!result.ok) {
+		return c.json({ error: "Internal error", message: "Failed to refresh accounts" }, 500);
 	}
 
-	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
-
-	const githubAccounts = userAccounts.filter(a => a.platform === "github");
-	const redditAccounts = userAccounts.filter(a => a.platform === "reddit");
-	const otherAccounts = userAccounts.filter(a => a.platform !== "github" && a.platform !== "reddit");
-
-	if (githubAccounts.length > 0) {
-		const backgroundTask = (async () => {
-			let bgSucceeded = 0;
-
-			for (const account of githubAccounts) {
-				try {
-					const snapshot = await processAccount(ctx, account);
-					if (snapshot) bgSucceeded++;
-				} catch (e) {
-					console.error(`[refresh-all] Failed to refresh GitHub account ${account.id}:`, e);
-				}
-			}
-
-			if (bgSucceeded > 0) {
-				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
-				await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-			}
-		})();
-
+	for (const task of backgroundTasks) {
 		try {
-			c.executionCtx.waitUntil(backgroundTask);
+			c.executionCtx.waitUntil(task());
 		} catch {
 			// Dev server doesn't have ExecutionContext
 		}
 	}
 
-	if (redditAccounts.length > 0) {
-		const redditBackgroundTask = (async () => {
-			let bgSucceeded = 0;
-
-			for (const account of redditAccounts) {
-				try {
-					const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
-					if (!decryptResult.ok) {
-						console.error("[refresh-all] Reddit token decryption failed for account:", account.id);
-						continue;
-					}
-
-					const provider = new RedditProvider();
-					const result = await processRedditAccount(ctx.backend, account.id, decryptResult.value, provider);
-					if (result.ok) bgSucceeded++;
-				} catch (e) {
-					console.error(`[refresh-all] Failed to refresh Reddit account ${account.id}:`, e);
-				}
-			}
-
-			if (bgSucceeded > 0) {
-				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
-				await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-			}
-		})();
-
-		try {
-			c.executionCtx.waitUntil(redditBackgroundTask);
-		} catch {
-			// Dev server doesn't have ExecutionContext
-		}
-	}
-
-	let succeeded = 0;
-	let failed = 0;
-
-	for (const account of otherAccounts) {
-		try {
-			const snapshot = await processAccount(ctx, account);
-			if (snapshot) {
-				succeeded++;
-			}
-		} catch (e) {
-			console.error(`[refresh-all] Failed to refresh account ${account.id}:`, e);
-			failed++;
-		}
-	}
-
-	if (succeeded > 0) {
-		const snapshots = await gatherLatestSnapshots(ctx.backend, otherAccounts);
-		await combineUserTimeline(ctx.backend, auth.user_id, snapshots);
-	}
-
-	const hasBackgroundTasks = githubAccounts.length > 0 || redditAccounts.length > 0;
-
-	return c.json({
-		status: hasBackgroundTasks ? "processing" : "completed",
-		message: hasBackgroundTasks ? "GitHub/Reddit accounts syncing in background" : undefined,
-		succeeded,
-		failed,
-		total: userAccounts.length,
-		github_accounts: githubAccounts.length,
-		reddit_accounts: redditAccounts.length,
-	});
+	return c.json(result.value);
 });
 
 connectionRoutes.patch("/:account_id", async c => {

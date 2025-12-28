@@ -1,20 +1,23 @@
 import { connections } from "@/utils/api-client";
 import { For, Show, createResource, createSignal } from "solid-js";
 import ChevronIcon from "../ChevronIcon";
+import { useSettings } from "./useSettings";
+
+type RedditSettingsData = {
+	hidden_subreddits?: string[];
+	hide_comments?: boolean;
+	hide_nsfw?: boolean;
+};
 
 type Props = {
 	accountId: string;
-	settings: {
-		hidden_subreddits?: string[];
-		hide_comments?: boolean;
-		hide_nsfw?: boolean;
-	} | null;
+	settings: RedditSettingsData | null;
 	onUpdate: () => void;
 };
 
 export default function RedditSettings(props: Props) {
-	const [updating, setUpdating] = createSignal<string | null>(null);
-	const [expanded, setExpanded] = createSignal(false);
+	const { expanded, setExpanded, updateSetting } = useSettings(props.accountId, props.onUpdate);
+	const [subredditUpdating, setSubredditUpdating] = createSignal<string | null>(null);
 
 	const [subreddits] = createResource(async () => {
 		const result = await connections.getSubreddits(props.accountId);
@@ -26,13 +29,8 @@ export default function RedditSettings(props: Props) {
 	const hideComments = () => props.settings?.hide_comments ?? false;
 	const hideNsfw = () => props.settings?.hide_nsfw ?? true;
 
-	const updateSettings = async (updates: Record<string, unknown>) => {
-		await connections.updateSettings(props.accountId, updates);
-		props.onUpdate();
-	};
-
 	const toggleSubreddit = async (subreddit: string) => {
-		setUpdating(subreddit);
+		setSubredditUpdating(subreddit);
 		const hidden = new Set(hiddenSubreddits());
 
 		if (hidden.has(subreddit)) {
@@ -41,17 +39,13 @@ export default function RedditSettings(props: Props) {
 			hidden.add(subreddit);
 		}
 
-		await updateSettings({ hidden_subreddits: Array.from(hidden) });
-		setUpdating(null);
+		await updateSetting<RedditSettingsData>("hidden_subreddits", Array.from(hidden), props.settings);
+		setSubredditUpdating(null);
 	};
 
-	const toggleHideComments = async () => {
-		await updateSettings({ hide_comments: !hideComments() });
-	};
+	const toggleHideComments = () => updateSetting<RedditSettingsData>("hide_comments", !hideComments(), props.settings);
 
-	const toggleHideNsfw = async () => {
-		await updateSettings({ hide_nsfw: !hideNsfw() });
-	};
+	const toggleHideNsfw = () => updateSetting<RedditSettingsData>("hide_nsfw", !hideNsfw(), props.settings);
 
 	const visibleCount = () => {
 		const allSubreddits = subreddits() ?? [];
@@ -107,7 +101,7 @@ export default function RedditSettings(props: Props) {
 										<For each={subredditList}>
 											{subreddit => {
 												const isHidden = () => hiddenSubreddits().has(subreddit);
-												const isUpdating = () => updating() === subreddit;
+												const isUpdating = () => subredditUpdating() === subreddit;
 												return (
 													<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
 														<input type="checkbox" checked={!isHidden()} onChange={() => toggleSubreddit(subreddit)} disabled={isUpdating()} />

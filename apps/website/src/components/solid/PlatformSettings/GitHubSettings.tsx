@@ -1,16 +1,19 @@
 import { type GitHubRepo, connections } from "@/utils/api-client";
 import { For, Show, createResource, createSignal } from "solid-js";
 import ChevronIcon from "../ChevronIcon";
+import { useSettings } from "./useSettings";
+
+type GitHubSettingsData = { hidden_repos?: string[] };
 
 type Props = {
 	accountId: string;
-	settings: { hidden_repos?: string[] } | null;
+	settings: GitHubSettingsData | null;
 	onUpdate: () => void;
 };
 
 export default function GitHubSettings(props: Props) {
-	const [updating, setUpdating] = createSignal<string | null>(null);
-	const [expanded, setExpanded] = createSignal(false);
+	const { expanded, setExpanded, updateSetting } = useSettings(props.accountId, props.onUpdate);
+	const [repoUpdating, setRepoUpdating] = createSignal<string | null>(null);
 
 	const [repos] = createResource(async () => {
 		const result = await connections.getRepos(props.accountId);
@@ -21,7 +24,7 @@ export default function GitHubSettings(props: Props) {
 	const hiddenRepos = () => new Set(props.settings?.hidden_repos ?? []);
 
 	const toggleRepo = async (repoFullName: string) => {
-		setUpdating(repoFullName);
+		setRepoUpdating(repoFullName);
 		const hidden = new Set(hiddenRepos());
 
 		if (hidden.has(repoFullName)) {
@@ -30,12 +33,8 @@ export default function GitHubSettings(props: Props) {
 			hidden.add(repoFullName);
 		}
 
-		await connections.updateSettings(props.accountId, {
-			hidden_repos: Array.from(hidden),
-		});
-
-		setUpdating(null);
-		props.onUpdate();
+		await updateSetting<GitHubSettingsData>("hidden_repos", Array.from(hidden), props.settings);
+		setRepoUpdating(null);
 	};
 
 	const visibleCount = () => {
@@ -75,7 +74,7 @@ export default function GitHubSettings(props: Props) {
 									<For each={repoList}>
 										{repo => {
 											const isHidden = () => hiddenRepos().has(repo.full_name);
-											const isUpdating = () => updating() === repo.full_name;
+											const isUpdating = () => repoUpdating() === repo.full_name;
 											return (
 												<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
 													<input type="checkbox" checked={!isHidden()} onChange={() => toggleRepo(repo.full_name)} disabled={isUpdating()} />
