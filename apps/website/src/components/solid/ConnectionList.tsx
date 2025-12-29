@@ -7,10 +7,6 @@ const ALL_PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad", "re
 const HIDDEN_PLATFORMS: Platform[] = ["bluesky", "youtube", "devpad"];
 const PLATFORMS = ALL_PLATFORMS.filter(p => !HIDDEN_PLATFORMS.includes(p));
 
-type ConnectionListProps = {
-	profileSlug?: string | null;
-};
-
 type VisibilityMap = Map<string, AccountVisibility>;
 
 function VisibilityBadge(props: { isVisible: boolean; loading?: boolean; onToggle?: () => void }) {
@@ -23,8 +19,25 @@ function VisibilityBadge(props: { isVisible: boolean; loading?: boolean; onToggl
 	);
 }
 
-export default function ConnectionList(props: ConnectionListProps) {
+function NoProfileSelectedError() {
+	return (
+		<div class="error-state">
+			<p class="error-icon">No profile selected. Please select a profile or create one.</p>
+			<a href="/connections" class="btn btn-primary">
+				Manage Profiles
+			</a>
+		</div>
+	);
+}
+
+export default function ConnectionList() {
 	initMockAuth();
+
+	const profileSlug = () => {
+		if (typeof window === "undefined") return null;
+		const params = new URLSearchParams(window.location.search);
+		return params.get("profile");
+	};
 
 	const [profileId, setProfileId] = createSignal<string | null>(null);
 	const [visibilityMap, setVisibilityMap] = createSignal<VisibilityMap>(new Map());
@@ -42,9 +55,16 @@ export default function ConnectionList(props: ConnectionListProps) {
 		return result.data.profiles;
 	});
 
+	const currentProfile = () => {
+		const slug = profileSlug();
+		const list = profileList();
+		if (!slug || !list) return null;
+		return list.find(p => p.slug === slug) ?? null;
+	};
+
 	createEffect(
 		on(
-			() => [props.profileSlug, profileList()] as const,
+			() => [profileSlug(), profileList()] as const,
 			async ([slug, list]) => {
 				if (!slug || !list) {
 					setProfileId(null);
@@ -126,71 +146,78 @@ export default function ConnectionList(props: ConnectionListProps) {
 		});
 	};
 
+	const hasValidProfile = () => !!profileSlug() && !!currentProfile();
+
 	return (
 		<div class="flex-col">
-			<Show when={props.profileSlug}>
+			<Show when={!profileSlug()}>
+				<NoProfileSelectedError />
+			</Show>
+
+			<Show when={profileSlug() && !profileList.loading && !currentProfile()}>
+				<NoProfileSelectedError />
+			</Show>
+
+			<Show when={hasValidProfile()}>
 				<div class="visibility-mode-banner">
 					<span class="text-sm tertiary">
-						Editing visibility for profile: <strong class="secondary">{props.profileSlug}</strong>
+						Editing visibility for: <strong class="secondary">{currentProfile()?.name ?? profileSlug()}</strong>
 					</span>
-					<a href="/connections" class="text-sm">
-						Clear
-					</a>
 				</div>
-			</Show>
 
-			<Show when={data.loading}>
-				<p class="tertiary">Loading connections...</p>
-			</Show>
+				<Show when={data.loading}>
+					<p class="tertiary">Loading connections...</p>
+				</Show>
 
-			<Show when={data.error}>
-				<p class="error-icon">Failed to load connections: {data.error.message}</p>
-			</Show>
+				<Show when={data.error}>
+					<p class="error-icon">Failed to load connections: {data.error.message}</p>
+				</Show>
 
-			<Show when={!data.loading && !data.error}>
-				<For each={sortedPlatforms()}>
-					{platform => {
-						const connection = (): ConnectionWithSettings | null => getConnection(platform);
+				<Show when={!data.loading && !data.error}>
+					<For each={sortedPlatforms()}>
+						{platform => {
+							const connection = (): ConnectionWithSettings | null => getConnection(platform);
 
-						const getAccountId = (): string | null => {
-							const conn = connection();
-							return conn ? conn.account_id : null;
-						};
+							const getAccountId = (): string | null => {
+								const conn = connection();
+								return conn ? conn.account_id : null;
+							};
 
-						const visibility = (): AccountVisibility | null => {
-							const accountId = getAccountId();
-							return accountId ? getVisibility(accountId) : null;
-						};
+							const visibility = (): AccountVisibility | null => {
+								const accountId = getAccountId();
+								return accountId ? getVisibility(accountId) : null;
+							};
 
-						const isToggling = (): boolean => {
-							const accountId = getAccountId();
-							return accountId !== null && togglingAccount() === accountId;
-						};
+							const isToggling = (): boolean => {
+								const accountId = getAccountId();
+								return accountId !== null && togglingAccount() === accountId;
+							};
 
-						const isVisible = (): boolean => {
-							const vis = visibility();
-							return vis?.is_visible ?? true;
-						};
+							const isVisible = (): boolean => {
+								const vis = visibility();
+								return vis?.is_visible ?? true;
+							};
 
-						const handleToggle = () => {
-							const accountId = getAccountId();
-							if (accountId) {
-								toggleVisibility(accountId);
-							}
-						};
+							const handleToggle = () => {
+								const accountId = getAccountId();
+								if (accountId) {
+									toggleVisibility(accountId);
+								}
+							};
 
-						return (
-							<div class="connection-with-visibility">
-								<PlatformCard platform={platform} connection={connection()} onConnectionChange={refetch} />
-								<Show when={props.profileSlug && connection()}>
-									<div class="visibility-overlay">
-										<VisibilityBadge isVisible={isVisible()} loading={isToggling()} onToggle={handleToggle} />
-									</div>
-								</Show>
-							</div>
-						);
-					}}
-				</For>
+							return (
+								<div class="connection-with-visibility">
+									<PlatformCard platform={platform} connection={connection()} onConnectionChange={refetch} />
+									<Show when={connection()}>
+										<div class="visibility-overlay">
+											<VisibilityBadge isVisible={isVisible()} loading={isToggling()} onToggle={handleToggle} />
+										</div>
+									</Show>
+								</div>
+							);
+						}}
+					</For>
+				</Show>
 			</Show>
 		</div>
 	);

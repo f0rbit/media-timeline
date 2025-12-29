@@ -1,5 +1,6 @@
 import { api, initMockAuth } from "@/utils/api-client";
 import { For, Show, createResource, createSignal } from "solid-js";
+import { isServer } from "solid-js/web";
 
 type ProfileVisibility = {
 	account_id: string;
@@ -39,13 +40,13 @@ type CreateProfileResponse = {
 const API_BASE_URL = "https://media.devpad.tools";
 
 const fetchProfiles = async (): Promise<Profile[]> => {
-	console.log("[ProfileList] Fetching profiles...");
+	// Skip fetch during SSR
+	if (isServer) return [];
 	const result = await api.get<ProfilesResponse>("/profiles");
 	if (!result.ok) {
 		console.error("[ProfileList] Failed to fetch profiles:", result.error);
 		throw new Error(result.error.message);
 	}
-	console.log("[ProfileList] Got profiles:", result.data.profiles.length);
 	return result.data.profiles;
 };
 
@@ -66,15 +67,15 @@ const updateProfile = async (id: string, data: { slug?: string; name?: string; d
 	return result.data.profile;
 };
 
-type ProfileListProps = {
-	currentSlug?: string | null;
-};
-
-export default function ProfileList(props: ProfileListProps) {
-	if (typeof window !== "undefined") {
-		console.log("[ProfileList] Component mounted in browser");
-	}
+export default function ProfileList() {
 	initMockAuth();
+
+	// Read profile slug from URL (client-side only)
+	const currentSlug = () => {
+		if (typeof window === "undefined") return null;
+		const params = new URLSearchParams(window.location.search);
+		return params.get("profile");
+	};
 
 	const [profiles, { refetch }] = createResource(fetchProfiles);
 	const [editingProfile, setEditingProfile] = createSignal<Profile | null>(null);
@@ -151,7 +152,7 @@ export default function ProfileList(props: ProfileListProps) {
 							fallback={
 								<ProfileCard
 									profile={profile}
-									isCurrent={props.currentSlug === profile.slug}
+									isCurrent={currentSlug() === profile.slug}
 									onView={() => handleViewTimeline(profile.slug)}
 									onEdit={() => setEditingProfile(profile)}
 									onDelete={() => handleDelete(profile)}

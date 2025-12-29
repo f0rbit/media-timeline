@@ -1,13 +1,8 @@
-import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
-import { isServer } from "solid-js/web";
+import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
 import { initMockAuth, profiles, type ProfileSummary } from "../../utils/api-client";
 
-type ProfileSelectorProps = {
-	currentSlug: string | null;
-};
-
 const fetchProfiles = async (): Promise<ProfileSummary[]> => {
-	if (isServer) return [];
+	if (typeof window === "undefined") return [];
 	const result = await profiles.list();
 	if (!result.ok) {
 		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
@@ -16,26 +11,51 @@ const fetchProfiles = async (): Promise<ProfileSummary[]> => {
 	return result.data.profiles;
 };
 
-export default function ProfileSelector(props: ProfileSelectorProps) {
+export default function ProfileSelector() {
 	initMockAuth();
-	console.log("[ProfileSelector] Initialized, DEV mode:", import.meta.env.DEV);
+
+	const currentSlug = () => {
+		if (typeof window === "undefined") return null;
+		const params = new URLSearchParams(window.location.search);
+		return params.get("profile");
+	};
 
 	const [isOpen, setIsOpen] = createSignal(false);
 	const [profileList] = createResource(fetchProfiles);
 	let containerRef: HTMLDivElement | undefined;
 
 	const currentProfile = () => {
-		if (!props.currentSlug) return null;
-		return profileList()?.find(p => p.slug === props.currentSlug) ?? null;
+		const slug = currentSlug();
+		if (!slug) return null;
+		return profileList()?.find(p => p.slug === slug) ?? null;
 	};
 
-	const handleSelect = (slug: string | null) => {
+	const buttonLabel = () => {
+		if (profileList.loading) return "Loading...";
+		const profile = currentProfile();
+		return profile?.name ?? "Loading...";
+	};
+
+	createEffect(
+		on(
+			() => profileList(),
+			list => {
+				if (!list || list.length === 0) return;
+				if (currentSlug()) return;
+
+				const firstProfile = list[0];
+				if (!firstProfile) return;
+
+				const url = new URL(window.location.href);
+				url.searchParams.set("profile", firstProfile.slug);
+				window.location.href = url.toString();
+			}
+		)
+	);
+
+	const handleSelect = (slug: string) => {
 		const url = new URL(window.location.href);
-		if (slug) {
-			url.searchParams.set("profile", slug);
-		} else {
-			url.searchParams.delete("profile");
-		}
+		url.searchParams.set("profile", slug);
 		window.location.href = url.toString();
 		setIsOpen(false);
 	};
@@ -60,49 +80,56 @@ export default function ProfileSelector(props: ProfileSelectorProps) {
 		});
 	});
 
+	const hasNoProfiles = () => {
+		if (profileList.loading) return false;
+		const list = profileList();
+		return list !== undefined && list.length === 0;
+	};
+
 	return (
-		<div class="profile-selector" ref={containerRef}>
-			<button class="profile-selector-button" onClick={() => setIsOpen(!isOpen())} aria-expanded={isOpen()} aria-haspopup="menu" type="button">
-				<ProfileIcon />
-				<span class="profile-selector-label">{currentProfile()?.name ?? "All Accounts"}</span>
-				<ChevronDownIcon />
-			</button>
+		<Show
+			when={!hasNoProfiles()}
+			fallback={
+				<a href="/connections" class="profile-selector-create-link">
+					<PlusIcon />
+					<span>Create Profile</span>
+				</a>
+			}
+		>
+			<div class="profile-selector" ref={containerRef}>
+				<button class="profile-selector-button" onClick={() => setIsOpen(!isOpen())} aria-expanded={isOpen()} aria-haspopup="menu" type="button">
+					<ProfileIcon />
+					<span class="profile-selector-label">{buttonLabel()}</span>
+					<ChevronDownIcon />
+				</button>
 
-			<Show when={isOpen()}>
-				<div class="profile-selector-dropdown">
-					<Show when={profileList.loading}>
-						<div class="profile-selector-item profile-selector-loading">Loading...</div>
-					</Show>
+				<Show when={isOpen()}>
+					<div class="profile-selector-dropdown">
+						<Show when={profileList.loading}>
+							<div class="profile-selector-item profile-selector-loading">Loading...</div>
+						</Show>
 
-					<Show when={!profileList.loading}>
-						<button class={`profile-selector-item ${!props.currentSlug ? "active" : ""}`} onClick={() => handleSelect(null)} type="button">
-							<span class="profile-selector-radio">{!props.currentSlug ? <CheckIcon /> : null}</span>
-							<span>All Accounts</span>
-						</button>
-
-						<Show when={(profileList()?.length ?? 0) > 0}>
-							<div class="profile-selector-divider" />
-
+						<Show when={!profileList.loading && (profileList()?.length ?? 0) > 0}>
 							<For each={profileList()}>
 								{profile => (
-									<button class={`profile-selector-item ${props.currentSlug === profile.slug ? "active" : ""}`} onClick={() => handleSelect(profile.slug)} type="button">
-										<span class="profile-selector-radio">{props.currentSlug === profile.slug ? <CheckIcon /> : null}</span>
+									<button class={`profile-selector-item ${currentSlug() === profile.slug ? "active" : ""}`} onClick={() => handleSelect(profile.slug)} type="button">
+										<span class="profile-selector-radio">{currentSlug() === profile.slug ? <CheckIcon /> : null}</span>
 										<span>{profile.name}</span>
 									</button>
 								)}
 							</For>
+
+							<div class="profile-selector-divider" />
+
+							<a href="/connections" class="profile-selector-item profile-selector-create">
+								<PlusIcon />
+								<span>Manage Profiles</span>
+							</a>
 						</Show>
-
-						<div class="profile-selector-divider" />
-
-						<a href="/connections" class="profile-selector-item profile-selector-create">
-							<PlusIcon />
-							<span>Create Profile</span>
-						</a>
-					</Show>
-				</div>
-			</Show>
-		</div>
+					</div>
+				</Show>
+			</div>
+		</Show>
 	);
 }
 

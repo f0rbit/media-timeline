@@ -1,17 +1,4 @@
-import {
-	type ApiResult,
-	type CommitGroup,
-	type PRCommit,
-	type ProfileTimelineResponse,
-	type PullRequestPayload,
-	type TimelineGroup,
-	type TimelineItem,
-	type TimelineResponse,
-	getMockUserId,
-	initMockAuth,
-	profiles,
-	timeline,
-} from "@/utils/api-client";
+import { type ApiResult, type CommitGroup, type PRCommit, type ProfileTimelineResponse, type PullRequestPayload, type TimelineGroup, type TimelineItem, initMockAuth, profiles } from "@/utils/api-client";
 import { formatRelativeTime } from "@/utils/formatters";
 import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
@@ -38,34 +25,33 @@ type TimelineData = {
 	profileName?: string;
 };
 
-type TimelineListProps = {
-	profileSlug?: string | null;
+const getProfileSlug = () => {
+	if (typeof window === "undefined") return null;
+	const params = new URLSearchParams(window.location.search);
+	return params.get("profile");
 };
 
-export default function TimelineList(props: TimelineListProps) {
+export default function TimelineList() {
 	initMockAuth();
-	const userId = getMockUserId();
+
+	const profileSlug = getProfileSlug();
 
 	const [data] = createResource(
-		() => ({ profileSlug: props.profileSlug, userId }),
-		async ({ profileSlug, userId }): Promise<TimelineData> => {
-			if (profileSlug) {
-				const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(profileSlug);
-				if (!result.ok) throw new Error(result.error.message);
-				return {
-					groups: result.data.data.groups,
-					githubUsernames: [],
-					profileName: result.data.meta.profile_name,
-				};
-			}
-			const result: ApiResult<TimelineResponse> = await timeline.get(userId);
+		() => profileSlug,
+		async (slug): Promise<TimelineData> => {
+			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
 			if (!result.ok) throw new Error(result.error.message);
 			return {
 				groups: result.data.data.groups,
-				githubUsernames: result.data.meta.github_usernames ?? [],
+				githubUsernames: [],
+				profileName: result.data.meta.profile_name,
 			};
 		}
 	);
+
+	if (!profileSlug) {
+		return <NoProfileSelected />;
+	}
 
 	return (
 		<div class="timeline">
@@ -87,6 +73,17 @@ export default function TimelineList(props: TimelineListProps) {
 					</>
 				)}
 			</Show>
+		</div>
+	);
+}
+
+function NoProfileSelected() {
+	return (
+		<div class="timeline">
+			<div class="empty-state">
+				<p>No profile selected. Please select a profile to view your timeline.</p>
+				<a href="/connections">Go to Connections</a>
+			</div>
 		</div>
 	);
 }
