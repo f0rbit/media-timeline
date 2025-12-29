@@ -10,29 +10,25 @@ export type TwitterTimelineData = {
 };
 
 export async function loadTwitterDataForAccount(backend: Backend, accountId: string): Promise<TwitterTimelineData> {
-	let tweets: TwitterTweet[] = [];
-	let media: TweetMedia[] = [];
-	let meta: TwitterMetaStore | null = null;
+	const [tweetsData, meta] = await Promise.all([
+		(async (): Promise<{ tweets: TwitterTweet[]; media: TweetMedia[] }> => {
+			const storeResult = createTwitterTweetsStore(backend, accountId);
+			if (!storeResult.ok) return { tweets: [], media: [] };
+			const snapshotResult = await storeResult.value.store.get_latest();
+			if (!snapshotResult.ok) return { tweets: [], media: [] };
+			return { tweets: snapshotResult.value.data.tweets, media: snapshotResult.value.data.media };
+		})(),
+		(async (): Promise<TwitterMetaStore | null> => {
+			const storeResult = createTwitterMetaStore(backend, accountId);
+			if (!storeResult.ok) return null;
+			const snapshotResult = await storeResult.value.store.get_latest();
+			if (!snapshotResult.ok) return null;
+			return snapshotResult.value.data;
+		})(),
+	]);
 
-	const tweetsStoreResult = createTwitterTweetsStore(backend, accountId);
-	if (tweetsStoreResult.ok) {
-		const snapshotResult = await tweetsStoreResult.value.store.get_latest();
-		if (snapshotResult.ok && snapshotResult.value) {
-			tweets = snapshotResult.value.data.tweets;
-			media = snapshotResult.value.data.media;
-		}
-	}
-
-	const metaStoreResult = createTwitterMetaStore(backend, accountId);
-	if (metaStoreResult.ok) {
-		const snapshotResult = await metaStoreResult.value.store.get_latest();
-		if (snapshotResult.ok && snapshotResult.value) {
-			meta = snapshotResult.value.data;
-		}
-	}
-
-	console.log(`[loadTwitterDataForAccount] Loaded: ${tweets.length} tweets, ${media.length} media`);
-	return { tweets, media, meta };
+	console.log(`[loadTwitterDataForAccount] Loaded: ${tweetsData.tweets.length} tweets, ${tweetsData.media.length} media`);
+	return { tweets: tweetsData.tweets, media: tweetsData.media, meta };
 }
 
 export function normalizeTwitter(data: TwitterTimelineData): TimelineItem[] {
