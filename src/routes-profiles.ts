@@ -1,12 +1,14 @@
 import { and, eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { Hono } from "hono";
+import { z } from "zod";
 import { type AuthContext, getAuth } from "./auth";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { accountMembers, accounts, profileFilters, profileVisibility, profiles } from "./schema/database";
 import { AddFilterSchema, CreateProfileSchema, UpdateProfileSchema, UpdateVisibilitySchema } from "./schema/profiles";
+import { generateProfileTimeline } from "./timeline-profile";
 import { type Result, err, ok, uuid } from "./utils";
 
 type Variables = {
@@ -471,4 +473,57 @@ profileRoutes.delete("/:id/filters/:filter_id", async c => {
 	await ctx.db.delete(profileFilters).where(eq(profileFilters.id, filterId));
 
 	return new Response(null, { status: 204 });
+});
+
+const ProfileTimelineQuerySchema = z.object({
+	limit: z.coerce.number().int().min(1).max(500).optional().default(100),
+	before: z.string().datetime().optional(),
+});
+
+profileRoutes.get("/:slug/timeline", async c => {
+	const auth = getAuth(c);
+	const ctx = getContext(c);
+	const { slug } = c.req.param();
+
+	const queryResult = ProfileTimelineQuerySchema.safeParse({
+		limit: c.req.query("limit"),
+		before: c.req.query("before"),
+	});
+
+	if (!queryResult.success) {
+		return c.json({ error: "Bad request", details: queryResult.error.flatten() }, 400);
+	}
+
+	const { limit, before } = queryResult.data;
+
+	const profile = await ctx.db
+		.select({ id: profiles.id, slug: profiles.slug, name: profiles.name, user_id: profiles.user_id })
+		.from(profiles)
+		.where(and(eq(profiles.slug, slug), eq(profiles.user_id, auth.user_id)))
+		.get();
+
+	if (!profile) {
+		return c.json({ error: "Not found", message: "Profile not found" }, 404);
+	}
+
+	const result = await generateProfileTimeline({
+		db: ctx.db,
+		backend: ctx.backend,
+		profileId: profile.id,
+		limit,
+		before,
+	});
+
+	if (!result.ok) {
+		const error = result.error;
+		if (error.kind === "profile_not_found") {
+			return c.json({ error: "Not found", message: "Profile not found" }, 404);
+		}
+		if (error.kind === "timeline_generation_failed") {
+			return c.json({ error: "Internal error", message: error.message }, 500);
+		}
+		return c.json({ error: "Internal error", message: "Timeline generation failed" }, 500);
+	}
+
+	return c.json(result.value);
 });
