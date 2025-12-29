@@ -161,3 +161,74 @@ export const timeline = {
 	get: (userId: string) => api.get<TimelineResponse>(`/timeline/${userId}`),
 	getRaw: (userId: string, platform: string, accountId: string) => api.get<unknown>(`/timeline/${userId}/raw/${platform}?account_id=${accountId}`),
 };
+
+export type ProfileSummary = {
+	id: string;
+	slug: string;
+	name: string;
+	description: string | null;
+	created_at: string;
+};
+
+export type ProfilesListResponse = {
+	profiles: ProfileSummary[];
+};
+
+export type ProfileTimelineResponse = {
+	meta: {
+		profile_id: string;
+		profile_slug: string;
+		profile_name: string;
+		generated_at: string;
+	};
+	data: {
+		groups: TimelineGroup[];
+	};
+};
+
+export type AccountVisibility = {
+	account_id: string;
+	platform: string;
+	platform_username: string | null;
+	is_visible: boolean;
+};
+
+export type VisibilityResponse = {
+	visibility: AccountVisibility[];
+};
+
+export type ProfileWithRelations = {
+	id: string;
+	slug: string;
+	name: string;
+	description: string | null;
+	theme: string | null;
+	created_at: string;
+	updated_at: string;
+	visibility: AccountVisibility[];
+	filters: Array<{
+		id: string;
+		account_id: string;
+		filter_type: "include" | "exclude";
+		filter_key: string;
+		filter_value: string;
+	}>;
+};
+
+export type ProfileDetailResponse = {
+	profile: ProfileWithRelations;
+};
+
+export const profiles = {
+	list: () => api.get<ProfilesListResponse>("/profiles"),
+	get: (id: string) => api.get<ProfileDetailResponse>(`/profiles/${id}`),
+	getVisibility: (id: string) => api.get<VisibilityResponse>(`/profiles/${id}/visibility`),
+	updateVisibility: (id: string, visibility: Array<{ account_id: string; is_visible: boolean }>) => api.put<{ updated: boolean; count: number }>(`/profiles/${id}/visibility`, { visibility }),
+	getTimeline: (slug: string, params?: { limit?: number; before?: string }) => {
+		const query = new URLSearchParams();
+		if (params?.limit) query.set("limit", String(params.limit));
+		if (params?.before) query.set("before", params.before);
+		const queryString = query.toString();
+		return api.get<ProfileTimelineResponse>(`/profiles/${slug}/timeline${queryString ? `?${queryString}` : ""}`);
+	},
+};
