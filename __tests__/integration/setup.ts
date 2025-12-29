@@ -7,7 +7,7 @@ import { authMiddleware } from "../../src/auth";
 import type { ProviderFactory } from "../../src/cron";
 import type { AppContext } from "../../src/infrastructure";
 import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, TwitterMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
-import { connectionRoutes, timelineRoutes } from "../../src/routes";
+import { connectionRoutes, profileRoutes, timelineRoutes } from "../../src/routes";
 import type { Platform } from "../../src/schema";
 import * as schema from "../../src/schema/database";
 import { encrypt, err, hash_api_key, ok, unwrap, unwrap_err, uuid } from "../../src/utils";
@@ -46,6 +46,14 @@ export type RateLimitSeed = {
 	consecutive_failures?: number;
 	last_failure_at?: Date | null;
 	circuit_open_until?: Date | null;
+};
+
+export type ProfileSeed = {
+	id: string;
+	slug: string;
+	name: string;
+	description?: string;
+	theme?: string;
 };
 
 export type TestProviders = {
@@ -208,6 +216,46 @@ const SCHEMA = `
     FOREIGN KEY (child_store_id, child_version) REFERENCES corpus_snapshots(store_id, version),
     FOREIGN KEY (parent_store_id, parent_version) REFERENCES corpus_snapshots(store_id, version)
   );
+
+  CREATE TABLE IF NOT EXISTS profiles (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    slug TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    theme TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_user_slug ON profiles(user_id, slug);
+
+  CREATE TABLE IF NOT EXISTS profile_visibility (
+    id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    is_visible INTEGER DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_profile_visibility_profile ON profile_visibility(profile_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_visibility_unique ON profile_visibility(profile_id, account_id);
+
+  CREATE TABLE IF NOT EXISTS profile_filters (
+    id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    filter_type TEXT NOT NULL,
+    filter_key TEXT NOT NULL,
+    filter_value TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_profile_filters_profile ON profile_filters(profile_id);
+  CREATE INDEX IF NOT EXISTS idx_profile_filters_account ON profile_filters(account_id);
 `;
 
 export const encryptToken = async (plaintext: string, key: string = ENCRYPTION_KEY): Promise<string> => {
@@ -461,6 +509,7 @@ export const createTestApp = (ctx: TestContext) => {
 
 	app.route("/api/v1/timeline", timelineRoutes);
 	app.route("/api/v1/connections", connectionRoutes);
+	app.route("/api/v1/profiles", profileRoutes);
 
 	app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 
@@ -637,6 +686,28 @@ export const seedApiKey = async (ctx: TestContext, userId: string, keyValue: str
 export const addAccountMember = async (ctx: TestContext, userId: string, accountId: string, role: MemberRole): Promise<void> => {
 	const timestamp = now();
 	await ctx.d1.prepare("INSERT INTO account_members (id, user_id, account_id, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(uuid(), userId, accountId, role, timestamp).run();
+};
+
+export const seedProfile = async (ctx: TestContext, userId: string, profile: ProfileSeed): Promise<void> => {
+	const timestamp = now();
+	await ctx.d1
+		.prepare(`
+      INSERT INTO profiles (id, user_id, slug, name, description, theme, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+		.bind(profile.id, userId, profile.slug, profile.name, profile.description ?? null, profile.theme ?? null, timestamp, timestamp)
+		.run();
+};
+
+export const seedProfileVisibility = async (ctx: TestContext, profileId: string, accountId: string, isVisible: boolean): Promise<void> => {
+	const timestamp = now();
+	await ctx.d1
+		.prepare(`
+      INSERT INTO profile_visibility (id, profile_id, account_id, is_visible, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `)
+		.bind(uuid(), profileId, accountId, isVisible ? 1 : 0, timestamp, timestamp)
+		.run();
 };
 
 export const getUser = async (ctx: TestContext, userId: string) => ctx.d1.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();

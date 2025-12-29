@@ -520,6 +520,26 @@ export const API_KEYS = {
 	bob_primary: "mtl_bob_primary_key_ghi789",
 };
 
+export const PROFILES = {
+	alice_main: {
+		id: "profile-alice-main",
+		slug: "main",
+		name: "Alice Main Profile",
+		description: "My main public profile",
+	},
+	alice_work: {
+		id: "profile-alice-work",
+		slug: "work",
+		name: "Alice Work Profile",
+		description: "Work-related activity only",
+	},
+	bob_main: {
+		id: "profile-bob-main",
+		slug: "main",
+		name: "Bob Main Profile",
+	},
+};
+
 export const makeTimelineItem = (
 	overrides: Partial<{
 		id: string;
