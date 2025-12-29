@@ -23,7 +23,7 @@ import {
 	TwitterTweetsStoreSchema,
 	YouTubeRawSchema,
 } from "./schema";
-import { type Result, err, ok } from "./utils";
+import { type Result, err, ok, pipe } from "./utils";
 
 export type CorpusError = { kind: "store_not_found"; store_id: string };
 

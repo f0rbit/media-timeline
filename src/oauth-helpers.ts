@@ -4,7 +4,7 @@ import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { accountMembers, accounts, apiKeys } from "./schema";
-import { type Result, encrypt, err, hash_api_key, ok, pipe, try_catch_async } from "./utils";
+import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch_async } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -165,32 +165,30 @@ export const encryptTokens = (tokens: TokenResponse, encryptionKey: string): Pro
 	pipe(encrypt(tokens.access_token, encryptionKey))
 		.map_err((): OAuthError => ({ kind: "encryption_failed", message: "Failed to encrypt access token" }))
 		.flat_map(async encryptedAccessToken => {
-			const encryptedRefreshToken = tokens.refresh_token ? await encrypt(tokens.refresh_token, encryptionKey).then(r => (r.ok ? r.value : null)) : null;
+			const encryptedRefreshToken = tokens.refresh_token ? to_nullable(await encrypt(tokens.refresh_token, encryptionKey)) : null;
 			return ok({ encryptedAccessToken, encryptedRefreshToken });
 		})
 		.result();
 
-export const upsertOAuthAccount = async (db: Database, encryptionKey: string, userId: string, platform: Platform, user: OAuthUser, tokens: TokenResponse): Promise<Result<string, OAuthError>> => {
-	const encryptedResult = await encryptTokens(tokens, encryptionKey);
-	if (!encryptedResult.ok) return encryptedResult;
+export const upsertOAuthAccount = (db: Database, encryptionKey: string, userId: string, platform: Platform, user: OAuthUser, tokens: TokenResponse): Promise<Result<string, OAuthError>> =>
+	pipe(encryptTokens(tokens, encryptionKey))
+		.flat_map(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
+			const now = new Date().toISOString();
+			const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
 
-	const { encryptedAccessToken, encryptedRefreshToken } = encryptedResult.value;
+			const existing = await db
+				.select()
+				.from(accounts)
+				.where(and(eq(accounts.platform, platform), eq(accounts.platform_user_id, user.id)))
+				.get();
 
-	const now = new Date().toISOString();
-	const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+			if (existing) {
+				return updateExistingAccount(db, existing.id, userId, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
+			}
 
-	const existing = await db
-		.select()
-		.from(accounts)
-		.where(and(eq(accounts.platform, platform), eq(accounts.platform_user_id, user.id)))
-		.get();
-
-	if (existing) {
-		return updateExistingAccount(db, existing.id, userId, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
-	}
-
-	return createNewAccount(db, userId, platform, user, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
-};
+			return createNewAccount(db, userId, platform, user, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
+		})
+		.result();
 
 const updateExistingAccount = async (db: Database, accountId: string, userId: string, encryptedAccessToken: string, encryptedRefreshToken: string | null, tokenExpiresAt: string, now: string): Promise<Result<string, OAuthError>> => {
 	const existingMembership = await db
