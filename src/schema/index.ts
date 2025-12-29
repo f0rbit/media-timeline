@@ -1,7 +1,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { z } from "zod";
 
-export { accountMembers, accountSettings, accounts, apiKeys, rateLimits, users } from "./database";
+export { accountMembers, accountSettings, accounts, apiKeys, profileFilters, profileVisibility, profiles, rateLimits, users } from "./database";
 export {
 	type GitHubRepoCommit,
 	GitHubRepoCommitSchema,
@@ -106,6 +106,21 @@ export {
 	type TwitterUserMetrics,
 	TwitterUserMetricsSchema,
 } from "./twitter-meta";
+export {
+	AddFilterSchema,
+	CreateProfileSchema,
+	FilterKeySchema,
+	FilterTypeSchema,
+	SlugSchema,
+	UpdateProfileSchema,
+	UpdateVisibilitySchema,
+	type AddFilterInput,
+	type CreateProfileInput,
+	type FilterKey,
+	type FilterType,
+	type UpdateProfileInput,
+	type UpdateVisibilityInput,
+} from "./profiles";
 export {
 	type TweetMedia,
 	TweetMediaSchema,

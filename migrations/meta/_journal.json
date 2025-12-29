@@ -15,6 +15,13 @@
       "when": 1766986106816,
       "tag": "0001_bitter_malice",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1766986514631,
+      "tag": "0002_blue_ravenous",
+      "breakpoints": true
     }
   ]
 }

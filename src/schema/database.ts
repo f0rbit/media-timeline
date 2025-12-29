@@ -142,3 +142,84 @@ export const corpusParents = sqliteTable(
 		pk: uniqueIndex("corpus_parents_pk").on(table.child_store_id, table.child_version, table.parent_store_id, table.parent_version),
 	})
 );
+
+export const profiles = sqliteTable(
+	"profiles",
+	{
+		id: text("id").primaryKey(),
+		user_id: text("user_id")
+			.notNull()
+			.references(() => users.id),
+		slug: text("slug").notNull(),
+		name: text("name").notNull(),
+		description: text("description"),
+		theme: text("theme"),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		user_idx: index("idx_profiles_user").on(table.user_id),
+		user_slug_idx: uniqueIndex("idx_profiles_user_slug").on(table.user_id, table.slug),
+	})
+);
+
+export const profileVisibility = sqliteTable(
+	"profile_visibility",
+	{
+		id: text("id").primaryKey(),
+		profile_id: text("profile_id")
+			.notNull()
+			.references(() => profiles.id, { onDelete: "cascade" }),
+		account_id: text("account_id")
+			.notNull()
+			.references(() => accounts.id, { onDelete: "cascade" }),
+		is_visible: integer("is_visible", { mode: "boolean" }).default(true),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		profile_idx: index("idx_profile_visibility_profile").on(table.profile_id),
+		profile_account_idx: uniqueIndex("idx_profile_visibility_unique").on(table.profile_id, table.account_id),
+	})
+);
+
+export const profileFilters = sqliteTable(
+	"profile_filters",
+	{
+		id: text("id").primaryKey(),
+		profile_id: text("profile_id")
+			.notNull()
+			.references(() => profiles.id, { onDelete: "cascade" }),
+		account_id: text("account_id")
+			.notNull()
+			.references(() => accounts.id, { onDelete: "cascade" }),
+		filter_type: text("filter_type").notNull().$type<"include" | "exclude">(),
+		filter_key: text("filter_key").notNull(),
+		filter_value: text("filter_value").notNull(),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		profile_idx: index("idx_profile_filters_profile").on(table.profile_id),
+		account_idx: index("idx_profile_filters_account").on(table.account_id),
+	})
+);
+
+export type User = typeof users.$inferSelect;
+export type NewUser = typeof users.$inferInsert;
+export type Account = typeof accounts.$inferSelect;
+export type NewAccount = typeof accounts.$inferInsert;
+export type AccountMember = typeof accountMembers.$inferSelect;
+export type NewAccountMember = typeof accountMembers.$inferInsert;
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type NewApiKey = typeof apiKeys.$inferInsert;
+export type RateLimit = typeof rateLimits.$inferSelect;
+export type NewRateLimit = typeof rateLimits.$inferInsert;
+export type AccountSetting = typeof accountSettings.$inferSelect;
+export type NewAccountSetting = typeof accountSettings.$inferInsert;
+export type Profile = typeof profiles.$inferSelect;
+export type NewProfile = typeof profiles.$inferInsert;
+export type ProfileVisibility = typeof profileVisibility.$inferSelect;
+export type NewProfileVisibility = typeof profileVisibility.$inferInsert;
+export type ProfileFilter = typeof profileFilters.$inferSelect;
+export type NewProfileFilter = typeof profileFilters.$inferInsert;
