@@ -1,16 +1,3 @@
-CREATE TABLE `account_members` (
-	`id` text PRIMARY KEY NOT NULL,
-	`user_id` text NOT NULL,
-	`account_id` text NOT NULL,
-	`role` text NOT NULL,
-	`created_at` text NOT NULL,
-	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action,
-	FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE no action
-);
---> statement-breakpoint
-CREATE UNIQUE INDEX `idx_user_account` ON `account_members` (`user_id`,`account_id`);--> statement-breakpoint
-CREATE INDEX `idx_account_members_user` ON `account_members` (`user_id`);--> statement-breakpoint
-CREATE INDEX `idx_account_members_account` ON `account_members` (`account_id`);--> statement-breakpoint
 CREATE TABLE `account_settings` (
 	`id` text PRIMARY KEY NOT NULL,
 	`account_id` text NOT NULL,
@@ -25,6 +12,7 @@ CREATE UNIQUE INDEX `idx_account_settings_unique` ON `account_settings` (`accoun
 CREATE INDEX `idx_account_settings_account` ON `account_settings` (`account_id`);--> statement-breakpoint
 CREATE TABLE `accounts` (
 	`id` text PRIMARY KEY NOT NULL,
+	`profile_id` text NOT NULL,
 	`platform` text NOT NULL,
 	`platform_user_id` text,
 	`platform_username` text,
@@ -34,10 +22,12 @@ CREATE TABLE `accounts` (
 	`is_active` integer DEFAULT true,
 	`last_fetched_at` text,
 	`created_at` text NOT NULL,
-	`updated_at` text NOT NULL
+	`updated_at` text NOT NULL,
+	FOREIGN KEY (`profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE cascade
 );
 --> statement-breakpoint
-CREATE INDEX `idx_accounts_platform_user` ON `accounts` (`platform`,`platform_user_id`);--> statement-breakpoint
+CREATE INDEX `idx_accounts_profile` ON `accounts` (`profile_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_accounts_profile_platform_user` ON `accounts` (`profile_id`,`platform`,`platform_user_id`);--> statement-breakpoint
 CREATE TABLE `api_keys` (
 	`id` text PRIMARY KEY NOT NULL,
 	`user_id` text NOT NULL,
@@ -71,6 +61,35 @@ CREATE TABLE `corpus_snapshots` (
 CREATE UNIQUE INDEX `corpus_snapshots_pk` ON `corpus_snapshots` (`store_id`,`version`);--> statement-breakpoint
 CREATE INDEX `idx_corpus_snapshots_store` ON `corpus_snapshots` (`store_id`);--> statement-breakpoint
 CREATE INDEX `idx_corpus_snapshots_created` ON `corpus_snapshots` (`store_id`,`created_at`);--> statement-breakpoint
+CREATE TABLE `profile_filters` (
+	`id` text PRIMARY KEY NOT NULL,
+	`profile_id` text NOT NULL,
+	`account_id` text NOT NULL,
+	`filter_type` text NOT NULL,
+	`filter_key` text NOT NULL,
+	`filter_value` text NOT NULL,
+	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	FOREIGN KEY (`profile_id`) REFERENCES `profiles`(`id`) ON UPDATE no action ON DELETE cascade,
+	FOREIGN KEY (`account_id`) REFERENCES `accounts`(`id`) ON UPDATE no action ON DELETE cascade
+);
+--> statement-breakpoint
+CREATE INDEX `idx_profile_filters_profile` ON `profile_filters` (`profile_id`);--> statement-breakpoint
+CREATE INDEX `idx_profile_filters_account` ON `profile_filters` (`account_id`);--> statement-breakpoint
+CREATE TABLE `profiles` (
+	`id` text PRIMARY KEY NOT NULL,
+	`user_id` text NOT NULL,
+	`slug` text NOT NULL,
+	`name` text NOT NULL,
+	`description` text,
+	`theme` text,
+	`created_at` text NOT NULL,
+	`updated_at` text NOT NULL,
+	FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON UPDATE no action ON DELETE no action
+);
+--> statement-breakpoint
+CREATE INDEX `idx_profiles_user` ON `profiles` (`user_id`);--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_profiles_user_slug` ON `profiles` (`user_id`,`slug`);--> statement-breakpoint
 CREATE TABLE `rate_limits` (
 	`id` text PRIMARY KEY NOT NULL,
 	`account_id` text NOT NULL,
@@ -89,8 +108,10 @@ CREATE TABLE `users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`email` text,
 	`name` text,
+	`devpad_user_id` text,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);
+CREATE UNIQUE INDEX `users_email_unique` ON `users` (`email`);--> statement-breakpoint
+CREATE UNIQUE INDEX `idx_users_devpad_user_id` ON `users` (`devpad_user_id`);

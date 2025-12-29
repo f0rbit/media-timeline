@@ -18,15 +18,6 @@ export const UpdateProfileSchema = z.object({
 	theme: z.string().max(50).nullable().optional(),
 });
 
-export const UpdateVisibilitySchema = z.object({
-	visibility: z.array(
-		z.object({
-			account_id: z.string(),
-			is_visible: z.boolean(),
-		})
-	),
-});
-
 export const FilterTypeSchema = z.enum(["include", "exclude"]);
 export const FilterKeySchema = z.enum(["repo", "subreddit", "keyword", "twitter_account"]);
 
@@ -39,7 +30,6 @@ export const AddFilterSchema = z.object({
 
 export type CreateProfileInput = z.infer<typeof CreateProfileSchema>;
 export type UpdateProfileInput = z.infer<typeof UpdateProfileSchema>;
-export type UpdateVisibilityInput = z.infer<typeof UpdateVisibilitySchema>;
 export type AddFilterInput = z.infer<typeof AddFilterSchema>;
 export type FilterType = z.infer<typeof FilterTypeSchema>;
 export type FilterKey = z.infer<typeof FilterKeySchema>;

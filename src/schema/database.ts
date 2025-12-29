@@ -17,10 +17,33 @@ export const users = sqliteTable(
 	})
 );
 
+export const profiles = sqliteTable(
+	"profiles",
+	{
+		id: text("id").primaryKey(),
+		user_id: text("user_id")
+			.notNull()
+			.references(() => users.id),
+		slug: text("slug").notNull(),
+		name: text("name").notNull(),
+		description: text("description"),
+		theme: text("theme"),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		user_idx: index("idx_profiles_user").on(table.user_id),
+		user_slug_idx: uniqueIndex("idx_profiles_user_slug").on(table.user_id, table.slug),
+	})
+);
+
 export const accounts = sqliteTable(
 	"accounts",
 	{
 		id: text("id").primaryKey(),
+		profile_id: text("profile_id")
+			.notNull()
+			.references(() => profiles.id, { onDelete: "cascade" }),
 		platform: text("platform").notNull().$type<Platform>(),
 		platform_user_id: text("platform_user_id"),
 		platform_username: text("platform_username"),
@@ -33,27 +56,8 @@ export const accounts = sqliteTable(
 		updated_at: text("updated_at").notNull(),
 	},
 	table => ({
-		platform_user_idx: index("idx_accounts_platform_user").on(table.platform, table.platform_user_id),
-	})
-);
-
-export const accountMembers = sqliteTable(
-	"account_members",
-	{
-		id: text("id").primaryKey(),
-		user_id: text("user_id")
-			.notNull()
-			.references(() => users.id),
-		account_id: text("account_id")
-			.notNull()
-			.references(() => accounts.id),
-		role: text("role").notNull().$type<"owner" | "member">(),
-		created_at: text("created_at").notNull(),
-	},
-	table => ({
-		user_account_idx: uniqueIndex("idx_user_account").on(table.user_id, table.account_id),
-		user_idx: index("idx_account_members_user").on(table.user_id),
-		account_idx: index("idx_account_members_account").on(table.account_id),
+		profile_idx: index("idx_accounts_profile").on(table.profile_id),
+		profile_platform_user_idx: uniqueIndex("idx_accounts_profile_platform_user").on(table.profile_id, table.platform, table.platform_user_id),
 	})
 );
 
@@ -143,46 +147,6 @@ export const corpusParents = sqliteTable(
 	})
 );
 
-export const profiles = sqliteTable(
-	"profiles",
-	{
-		id: text("id").primaryKey(),
-		user_id: text("user_id")
-			.notNull()
-			.references(() => users.id),
-		slug: text("slug").notNull(),
-		name: text("name").notNull(),
-		description: text("description"),
-		theme: text("theme"),
-		created_at: text("created_at").notNull(),
-		updated_at: text("updated_at").notNull(),
-	},
-	table => ({
-		user_idx: index("idx_profiles_user").on(table.user_id),
-		user_slug_idx: uniqueIndex("idx_profiles_user_slug").on(table.user_id, table.slug),
-	})
-);
-
-export const profileVisibility = sqliteTable(
-	"profile_visibility",
-	{
-		id: text("id").primaryKey(),
-		profile_id: text("profile_id")
-			.notNull()
-			.references(() => profiles.id, { onDelete: "cascade" }),
-		account_id: text("account_id")
-			.notNull()
-			.references(() => accounts.id, { onDelete: "cascade" }),
-		is_visible: integer("is_visible", { mode: "boolean" }).default(true),
-		created_at: text("created_at").notNull(),
-		updated_at: text("updated_at").notNull(),
-	},
-	table => ({
-		profile_idx: index("idx_profile_visibility_profile").on(table.profile_id),
-		profile_account_idx: uniqueIndex("idx_profile_visibility_unique").on(table.profile_id, table.account_id),
-	})
-);
-
 export const profileFilters = sqliteTable(
 	"profile_filters",
 	{
@@ -209,8 +173,6 @@ export type User = typeof users.$inferSelect;
 export type NewUser = typeof users.$inferInsert;
 export type Account = typeof accounts.$inferSelect;
 export type NewAccount = typeof accounts.$inferInsert;
-export type AccountMember = typeof accountMembers.$inferSelect;
-export type NewAccountMember = typeof accountMembers.$inferInsert;
 export type ApiKey = typeof apiKeys.$inferSelect;
 export type NewApiKey = typeof apiKeys.$inferInsert;
 export type RateLimit = typeof rateLimits.$inferSelect;
@@ -219,7 +181,5 @@ export type AccountSetting = typeof accountSettings.$inferSelect;
 export type NewAccountSetting = typeof accountSettings.$inferInsert;
 export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
-export type ProfileVisibility = typeof profileVisibility.$inferSelect;
-export type NewProfileVisibility = typeof profileVisibility.$inferInsert;
 export type ProfileFilter = typeof profileFilters.$inferSelect;
 export type NewProfileFilter = typeof profileFilters.$inferInsert;
