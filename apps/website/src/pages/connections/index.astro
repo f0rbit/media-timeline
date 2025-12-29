@@ -2,6 +2,8 @@
 import ConnectionList from "../../components/solid/ConnectionList";
 import ProfileList from "../../components/solid/ProfileList";
 import AppLayout from "../../layouts/AppLayout.astro";
+
+const profileSlug = Astro.url.searchParams.get("profile");
 ---
 
 <AppLayout 
@@ -17,13 +19,13 @@ import AppLayout from "../../layouts/AppLayout.astro";
   <section class="connections-section">
     <h2 class="section-title">Profiles</h2>
     <p class="section-description">Create profiles to share different views of your activity via API.</p>
-    <ProfileList client:load />
+    <ProfileList client:load currentSlug={profileSlug} />
   </section>
   
   <section class="connections-section">
     <h2 class="section-title">Connected Platforms</h2>
     <p class="section-description">Connect your accounts to aggregate activity.</p>
-    <ConnectionList client:load />
+    <ConnectionList client:load profileSlug={profileSlug} />
   </section>
 </AppLayout>
 

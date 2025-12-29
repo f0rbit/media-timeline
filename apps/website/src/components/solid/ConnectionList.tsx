@@ -1,5 +1,5 @@
-import { type ConnectionWithSettings, connections, initMockAuth } from "@/utils/api-client";
-import { For, Show, createResource } from "solid-js";
+import { type AccountVisibility, type ConnectionWithSettings, connections, initMockAuth, profiles } from "@/utils/api-client";
+import { For, Show, createEffect, createResource, createSignal, on } from "solid-js";
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";
 
@@ -7,8 +7,28 @@ const ALL_PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad", "re
 const HIDDEN_PLATFORMS: Platform[] = ["bluesky", "youtube", "devpad"];
 const PLATFORMS = ALL_PLATFORMS.filter(p => !HIDDEN_PLATFORMS.includes(p));
 
-export default function ConnectionList() {
+type ConnectionListProps = {
+	profileSlug?: string | null;
+};
+
+type VisibilityMap = Map<string, AccountVisibility>;
+
+function VisibilityBadge(props: { isVisible: boolean; loading?: boolean; onToggle?: () => void }) {
+	const badgeClass = () => `visibility-badge ${props.isVisible ? "visible" : "hidden"}`;
+
+	return (
+		<button type="button" class={badgeClass()} onClick={props.onToggle} disabled={props.loading}>
+			{props.loading ? "..." : props.isVisible ? "Visible" : "Hidden"}
+		</button>
+	);
+}
+
+export default function ConnectionList(props: ConnectionListProps) {
 	initMockAuth();
+
+	const [profileId, setProfileId] = createSignal<string | null>(null);
+	const [visibilityMap, setVisibilityMap] = createSignal<VisibilityMap>(new Map());
+	const [togglingAccount, setTogglingAccount] = createSignal<string | null>(null);
 
 	const [data, { refetch }] = createResource(async () => {
 		const result = await connections.listWithSettings();
@@ -16,11 +36,76 @@ export default function ConnectionList() {
 		return result.data.accounts;
 	});
 
+	const [profileList] = createResource(async () => {
+		const result = await profiles.list();
+		if (!result.ok) return [];
+		return result.data.profiles;
+	});
+
+	createEffect(
+		on(
+			() => [props.profileSlug, profileList()] as const,
+			async ([slug, list]) => {
+				if (!slug || !list) {
+					setProfileId(null);
+					setVisibilityMap(new Map());
+					return;
+				}
+
+				const profile = list.find(p => p.slug === slug);
+				if (!profile) {
+					setProfileId(null);
+					setVisibilityMap(new Map());
+					return;
+				}
+
+				setProfileId(profile.id);
+
+				const visResult = await profiles.getVisibility(profile.id);
+				if (!visResult.ok) return;
+
+				const newMap = new Map<string, AccountVisibility>();
+				for (const v of visResult.data.visibility) {
+					newMap.set(v.account_id, v);
+				}
+				setVisibilityMap(newMap);
+			}
+		)
+	);
+
 	const getConnection = (platform: Platform): ConnectionWithSettings | null => {
 		return data()?.find(c => c.platform === platform) ?? null;
 	};
 
-	// Sort platforms: connected/active first, then not configured
+	const getVisibility = (accountId: string): AccountVisibility | null => {
+		return visibilityMap().get(accountId) ?? null;
+	};
+
+	const toggleVisibility = async (accountId: string) => {
+		const id = profileId();
+		if (!id) return;
+
+		const current = visibilityMap().get(accountId);
+		const newValue = !(current?.is_visible ?? true);
+
+		setTogglingAccount(accountId);
+
+		const result = await profiles.updateVisibility(id, [{ account_id: accountId, is_visible: newValue }]);
+
+		if (result.ok) {
+			setVisibilityMap(prev => {
+				const updated = new Map(prev);
+				const existing = updated.get(accountId);
+				if (existing) {
+					updated.set(accountId, { ...existing, is_visible: newValue });
+				}
+				return updated;
+			});
+		}
+
+		setTogglingAccount(null);
+	};
+
 	const sortedPlatforms = () => {
 		const accounts = data();
 		if (!accounts) return PLATFORMS;
@@ -29,11 +114,9 @@ export default function ConnectionList() {
 			const connA = accounts.find(c => c.platform === a);
 			const connB = accounts.find(c => c.platform === b);
 
-			// Connected platforms come first
 			if (connA && !connB) return -1;
 			if (!connA && connB) return 1;
 
-			// Among connected, active comes before inactive
 			if (connA && connB) {
 				if (connA.is_active && !connB.is_active) return -1;
 				if (!connA.is_active && connB.is_active) return 1;
@@ -45,6 +128,17 @@ export default function ConnectionList() {
 
 	return (
 		<div class="flex-col">
+			<Show when={props.profileSlug}>
+				<div class="visibility-mode-banner">
+					<span class="text-sm tertiary">
+						Editing visibility for profile: <strong class="secondary">{props.profileSlug}</strong>
+					</span>
+					<a href="/connections" class="text-sm">
+						Clear
+					</a>
+				</div>
+			</Show>
+
 			<Show when={data.loading}>
 				<p class="tertiary">Loading connections...</p>
 			</Show>
@@ -54,7 +148,49 @@ export default function ConnectionList() {
 			</Show>
 
 			<Show when={!data.loading && !data.error}>
-				<For each={sortedPlatforms()}>{platform => <PlatformCard platform={platform} connection={getConnection(platform)} onConnectionChange={refetch} />}</For>
+				<For each={sortedPlatforms()}>
+					{platform => {
+						const connection = (): ConnectionWithSettings | null => getConnection(platform);
+
+						const getAccountId = (): string | null => {
+							const conn = connection();
+							return conn ? conn.account_id : null;
+						};
+
+						const visibility = (): AccountVisibility | null => {
+							const accountId = getAccountId();
+							return accountId ? getVisibility(accountId) : null;
+						};
+
+						const isToggling = (): boolean => {
+							const accountId = getAccountId();
+							return accountId !== null && togglingAccount() === accountId;
+						};
+
+						const isVisible = (): boolean => {
+							const vis = visibility();
+							return vis?.is_visible ?? true;
+						};
+
+						const handleToggle = () => {
+							const accountId = getAccountId();
+							if (accountId) {
+								toggleVisibility(accountId);
+							}
+						};
+
+						return (
+							<div class="connection-with-visibility">
+								<PlatformCard platform={platform} connection={connection()} onConnectionChange={refetch} />
+								<Show when={props.profileSlug && connection()}>
+									<div class="visibility-overlay">
+										<VisibilityBadge isVisible={isVisible()} loading={isToggling()} onToggle={handleToggle} />
+									</div>
+								</Show>
+							</div>
+						);
+					}}
+				</For>
 			</Show>
 		</div>
 	);
