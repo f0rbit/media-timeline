@@ -1,5 +1,6 @@
 import { type AccountVisibility, type ConnectionWithSettings, connections, initMockAuth, profiles } from "@/utils/api-client";
 import { For, Show, createEffect, createResource, createSignal, on } from "solid-js";
+import { isServer } from "solid-js/web";
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";
 
@@ -30,30 +31,34 @@ function NoProfileSelectedError() {
 	);
 }
 
-export default function ConnectionList() {
-	initMockAuth();
+export default function ConnectionList(props: { profileSlug?: string | null }) {
+	if (!isServer) {
+		initMockAuth();
+	}
 
-	const profileSlug = () => {
-		if (typeof window === "undefined") return null;
-		const params = new URLSearchParams(window.location.search);
-		return params.get("profile");
-	};
+	const profileSlug = () => props.profileSlug ?? null;
 
 	const [profileId, setProfileId] = createSignal<string | null>(null);
 	const [visibilityMap, setVisibilityMap] = createSignal<VisibilityMap>(new Map());
 	const [togglingAccount, setTogglingAccount] = createSignal<string | null>(null);
 
-	const [data, { refetch }] = createResource(async () => {
-		const result = await connections.listWithSettings();
-		if (!result.ok) throw new Error(result.error.message);
-		return result.data.accounts;
-	});
+	const [data, { refetch }] = createResource(
+		() => !isServer,
+		async () => {
+			const result = await connections.listWithSettings();
+			if (!result.ok) throw new Error(result.error.message);
+			return result.data.accounts;
+		}
+	);
 
-	const [profileList] = createResource(async () => {
-		const result = await profiles.list();
-		if (!result.ok) return [];
-		return result.data.profiles;
-	});
+	const [profileList] = createResource(
+		() => !isServer,
+		async () => {
+			const result = await profiles.list();
+			if (!result.ok) return [];
+			return result.data.profiles;
+		}
+	);
 
 	const currentProfile = () => {
 		const slug = profileSlug();
@@ -66,6 +71,8 @@ export default function ConnectionList() {
 		on(
 			() => [profileSlug(), profileList()] as const,
 			async ([slug, list]) => {
+				if (isServer) return;
+
 				if (!slug || !list) {
 					setProfileId(null);
 					setVisibilityMap(new Map());

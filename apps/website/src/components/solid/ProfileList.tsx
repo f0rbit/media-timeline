@@ -67,15 +67,8 @@ const updateProfile = async (id: string, data: { slug?: string; name?: string; d
 	return result.data.profile;
 };
 
-export default function ProfileList() {
+export default function ProfileList(props: { currentSlug?: string | null }) {
 	initMockAuth();
-
-	// Read profile slug from URL (client-side only)
-	const currentSlug = () => {
-		if (typeof window === "undefined") return null;
-		const params = new URLSearchParams(window.location.search);
-		return params.get("profile");
-	};
 
 	const [profiles, { refetch }] = createResource(fetchProfiles);
 	const [editingProfile, setEditingProfile] = createSignal<Profile | null>(null);
@@ -104,6 +97,7 @@ export default function ProfileList() {
 	};
 
 	const handleViewTimeline = (slug: string) => {
+		if (isServer) return;
 		window.location.href = `/timeline?profile=${encodeURIComponent(slug)}`;
 	};
 
@@ -152,7 +146,7 @@ export default function ProfileList() {
 							fallback={
 								<ProfileCard
 									profile={profile}
-									isCurrent={currentSlug() === profile.slug}
+									isCurrent={props.currentSlug === profile.slug}
 									onView={() => handleViewTimeline(profile.slug)}
 									onEdit={() => setEditingProfile(profile)}
 									onDelete={() => handleDelete(profile)}

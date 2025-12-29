@@ -19,13 +19,13 @@ const profileSlug = Astro.url.searchParams.get("profile");
   <section class="connections-section">
     <h2 class="section-title">Profiles</h2>
     <p class="section-description">Create profiles to share different views of your activity via API.</p>
-    <ProfileList client:only="solid-js" />
+    <ProfileList client:load currentSlug={profileSlug} />
   </section>
   
   <section class="connections-section">
     <h2 class="section-title">Connected Platforms</h2>
     <p class="section-description">Connect your accounts to aggregate activity.</p>
-    <ConnectionList client:only="solid-js" />
+    <ConnectionList client:load profileSlug={profileSlug} />
   </section>
 </AppLayout>
 

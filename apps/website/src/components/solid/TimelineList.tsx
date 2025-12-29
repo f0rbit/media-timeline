@@ -9,6 +9,7 @@ import MessageSquareText from "lucide-solid/icons/message-square-text";
 import Reply from "lucide-solid/icons/reply";
 import User from "lucide-solid/icons/user";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
+import { isServer } from "solid-js/web";
 
 const GithubUsernamesContext = createContext<string[]>([]);
 
@@ -25,20 +26,15 @@ type TimelineData = {
 	profileName?: string;
 };
 
-const getProfileSlug = () => {
-	if (typeof window === "undefined") return null;
-	const params = new URLSearchParams(window.location.search);
-	return params.get("profile");
-};
-
-export default function TimelineList() {
-	initMockAuth();
-
-	const profileSlug = getProfileSlug();
+export default function TimelineList(props: { profileSlug?: string | null }) {
+	if (!isServer) {
+		initMockAuth();
+	}
 
 	const [data] = createResource(
-		() => profileSlug,
-		async (slug): Promise<TimelineData> => {
+		() => props.profileSlug,
+		async (slug): Promise<TimelineData | null> => {
+			if (!slug) return null;
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
 			if (!result.ok) throw new Error(result.error.message);
 			return {
@@ -49,31 +45,29 @@ export default function TimelineList() {
 		}
 	);
 
-	if (!profileSlug) {
-		return <NoProfileSelected />;
-	}
-
 	return (
-		<div class="timeline">
-			<Show when={data.loading}>
-				<p class="tertiary">Loading timeline...</p>
-			</Show>
+		<Show when={props.profileSlug} fallback={<NoProfileSelected />}>
+			<div class="timeline">
+				<Show when={data.loading}>
+					<p class="tertiary">Loading timeline...</p>
+				</Show>
 
-			<Show when={data.error}>
-				<p class="error-icon">Failed to load timeline: {data.error.message}</p>
-			</Show>
+				<Show when={data.error}>
+					<p class="error-icon">Failed to load timeline: {data.error.message}</p>
+				</Show>
 
-			<Show when={data()} keyed>
-				{response => (
-					<>
-						<Show when={response.profileName}>{profileName => <ProfileBadge name={profileName()} />}</Show>
-						<GithubUsernamesContext.Provider value={response.githubUsernames}>
-							<TimelineGroups groups={response.groups} />
-						</GithubUsernamesContext.Provider>
-					</>
-				)}
-			</Show>
-		</div>
+				<Show when={data()} keyed>
+					{response => (
+						<>
+							<Show when={response.profileName}>{profileName => <ProfileBadge name={profileName()} />}</Show>
+							<GithubUsernamesContext.Provider value={response.githubUsernames}>
+								<TimelineGroups groups={response.groups} />
+							</GithubUsernamesContext.Provider>
+						</>
+					)}
+				</Show>
+			</div>
+		</Show>
 	);
 }
 

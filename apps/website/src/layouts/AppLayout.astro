@@ -12,6 +12,8 @@ interface Props {
 
 const { title = "Media Timeline", description, ogImage, noindex } = Astro.props;
 
+const profileSlug = Astro.url.searchParams.get("profile");
+
 const pages = [
 	{ name: "dashboard", href: "/dashboard" },
 	{ name: "timeline", href: "/timeline" },
@@ -33,8 +35,8 @@ const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
               {p.name}
             </a>
           ))}
-          <ProfileSelector client:only="solid-js" />
-          <AuthStatus client:only="solid-js" />
+          <ProfileSelector client:load currentSlug={profileSlug} />
+          <AuthStatus client:load />
         </nav>
       </header>
       <main class="flex-col">

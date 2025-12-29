@@ -1,8 +1,9 @@
 import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
+import { isServer } from "solid-js/web";
 import { initMockAuth, profiles, type ProfileSummary } from "../../utils/api-client";
 
 const fetchProfiles = async (): Promise<ProfileSummary[]> => {
-	if (typeof window === "undefined") return [];
+	if (isServer) return [];
 	const result = await profiles.list();
 	if (!result.ok) {
 		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
@@ -11,23 +12,18 @@ const fetchProfiles = async (): Promise<ProfileSummary[]> => {
 	return result.data.profiles;
 };
 
-export default function ProfileSelector() {
-	initMockAuth();
-
-	const currentSlug = () => {
-		if (typeof window === "undefined") return null;
-		const params = new URLSearchParams(window.location.search);
-		return params.get("profile");
-	};
+export default function ProfileSelector(props: { currentSlug?: string | null }) {
+	if (!isServer) {
+		initMockAuth();
+	}
 
 	const [isOpen, setIsOpen] = createSignal(false);
 	const [profileList] = createResource(fetchProfiles);
 	let containerRef: HTMLDivElement | undefined;
 
 	const currentProfile = () => {
-		const slug = currentSlug();
-		if (!slug) return null;
-		return profileList()?.find(p => p.slug === slug) ?? null;
+		if (!props.currentSlug) return null;
+		return profileList()?.find(p => p.slug === props.currentSlug) ?? null;
 	};
 
 	const buttonLabel = () => {
@@ -40,8 +36,9 @@ export default function ProfileSelector() {
 		on(
 			() => profileList(),
 			list => {
+				if (isServer) return;
 				if (!list || list.length === 0) return;
-				if (currentSlug()) return;
+				if (props.currentSlug) return;
 
 				const firstProfile = list[0];
 				if (!firstProfile) return;
@@ -54,6 +51,7 @@ export default function ProfileSelector() {
 	);
 
 	const handleSelect = (slug: string) => {
+		if (isServer) return;
 		const url = new URL(window.location.href);
 		url.searchParams.set("profile", slug);
 		window.location.href = url.toString();
@@ -71,6 +69,7 @@ export default function ProfileSelector() {
 	};
 
 	onMount(() => {
+		if (isServer) return;
 		document.addEventListener("click", handleClickOutside);
 		document.addEventListener("keydown", handleKeyDown);
 
@@ -112,8 +111,8 @@ export default function ProfileSelector() {
 						<Show when={!profileList.loading && (profileList()?.length ?? 0) > 0}>
 							<For each={profileList()}>
 								{profile => (
-									<button class={`profile-selector-item ${currentSlug() === profile.slug ? "active" : ""}`} onClick={() => handleSelect(profile.slug)} type="button">
-										<span class="profile-selector-radio">{currentSlug() === profile.slug ? <CheckIcon /> : null}</span>
+									<button class={`profile-selector-item ${props.currentSlug === profile.slug ? "active" : ""}`} onClick={() => handleSelect(profile.slug)} type="button">
+										<span class="profile-selector-radio">{props.currentSlug === profile.slug ? <CheckIcon /> : null}</span>
 										<span>{profile.name}</span>
 									</button>
 								)}
