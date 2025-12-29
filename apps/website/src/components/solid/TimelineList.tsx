@@ -1,4 +1,17 @@
-import { type ApiResult, type CommitGroup, type PRCommit, type PullRequestPayload, type TimelineGroup, type TimelineItem, type TimelineResponse, getMockUserId, initMockAuth, timeline } from "@/utils/api-client";
+import {
+	type ApiResult,
+	type CommitGroup,
+	type PRCommit,
+	type ProfileTimelineResponse,
+	type PullRequestPayload,
+	type TimelineGroup,
+	type TimelineItem,
+	type TimelineResponse,
+	getMockUserId,
+	initMockAuth,
+	profiles,
+	timeline,
+} from "@/utils/api-client";
 import { formatRelativeTime } from "@/utils/formatters";
 import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
@@ -7,6 +20,7 @@ import GitCommit from "lucide-solid/icons/git-commit-horizontal";
 import GitPullRequest from "lucide-solid/icons/git-pull-request";
 import MessageSquareText from "lucide-solid/icons/message-square-text";
 import Reply from "lucide-solid/icons/reply";
+import User from "lucide-solid/icons/user";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
 
 const GithubUsernamesContext = createContext<string[]>([]);
@@ -18,20 +32,40 @@ const stripOwnerPrefix = (repo: string, usernames: string[]): string => {
 	return repo;
 };
 
-export default function TimelineList() {
+type TimelineData = {
+	groups: TimelineGroup[];
+	githubUsernames: string[];
+	profileName?: string;
+};
+
+type TimelineListProps = {
+	profileSlug?: string | null;
+};
+
+export default function TimelineList(props: TimelineListProps) {
 	initMockAuth();
 	const userId = getMockUserId();
 
 	const [data] = createResource(
-		() => userId,
-		async id => {
-			const result: ApiResult<TimelineResponse> = await timeline.get(id);
-			if (result.ok === false) throw new Error(result.error.message);
-			return result.data;
+		() => ({ profileSlug: props.profileSlug, userId }),
+		async ({ profileSlug, userId }): Promise<TimelineData> => {
+			if (profileSlug) {
+				const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(profileSlug);
+				if (!result.ok) throw new Error(result.error.message);
+				return {
+					groups: result.data.data.groups,
+					githubUsernames: [],
+					profileName: result.data.meta.profile_name,
+				};
+			}
+			const result: ApiResult<TimelineResponse> = await timeline.get(userId);
+			if (!result.ok) throw new Error(result.error.message);
+			return {
+				groups: result.data.data.groups,
+				githubUsernames: result.data.meta.github_usernames ?? [],
+			};
 		}
 	);
-
-	const githubUsernames = () => data()?.meta.github_usernames ?? [];
 
 	return (
 		<div class="timeline">
@@ -45,11 +79,23 @@ export default function TimelineList() {
 
 			<Show when={data()} keyed>
 				{response => (
-					<GithubUsernamesContext.Provider value={response.meta.github_usernames ?? []}>
-						<TimelineGroups groups={response.data.groups} />
-					</GithubUsernamesContext.Provider>
+					<>
+						<Show when={response.profileName}>{profileName => <ProfileBadge name={profileName()} />}</Show>
+						<GithubUsernamesContext.Provider value={response.githubUsernames}>
+							<TimelineGroups groups={response.groups} />
+						</GithubUsernamesContext.Provider>
+					</>
 				)}
 			</Show>
+		</div>
+	);
+}
+
+function ProfileBadge(props: { name: string }) {
+	return (
+		<div class="profile-badge">
+			<User size={14} />
+			<span>Viewing: {props.name}</span>
 		</div>
 	);
 }

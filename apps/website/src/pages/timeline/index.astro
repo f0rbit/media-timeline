@@ -1,6 +1,8 @@
 ---
 import TimelineList from "../../components/solid/TimelineList";
 import AppLayout from "../../layouts/AppLayout.astro";
+
+const profileSlug = Astro.url.searchParams.get("profile");
 ---
 
 <AppLayout 
@@ -12,5 +14,5 @@ import AppLayout from "../../layouts/AppLayout.astro";
     <h1 class="page-title">Timeline</h1>
     <p class="description">Your aggregated activity across all connected platforms.</p>
   </section>
-  <TimelineList client:load />
+  <TimelineList client:load profileSlug={profileSlug} />
 </AppLayout>
