@@ -105,9 +105,11 @@ export default function ProfileList() {
 
 			<Show when={showCreateForm()}>
 				<CreateProfileForm
-					onSuccess={() => {
+					onSuccess={newProfile => {
 						setShowCreateForm(false);
-						refetch();
+						// Reload page to refresh SSR components (ProfileSelector in header)
+						// Navigate to the new profile
+						window.location.href = `/connections?profile=${encodeURIComponent(newProfile.slug)}`;
 					}}
 					onCancel={() => setShowCreateForm(false)}
 				/>
@@ -220,7 +222,7 @@ function ProfileCard(props: ProfileCardProps) {
 }
 
 type CreateProfileFormProps = {
-	onSuccess: () => void;
+	onSuccess: (profile: Profile) => void;
 	onCancel: () => void;
 };
 
@@ -251,12 +253,12 @@ function CreateProfileForm(props: CreateProfileFormProps) {
 		setError(null);
 
 		try {
-			await createProfile({
+			const newProfile = await createProfile({
 				name: name().trim(),
 				slug: slug().trim(),
 				description: description().trim() || undefined,
 			});
-			props.onSuccess();
+			props.onSuccess(newProfile);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to create profile");
 		} finally {
