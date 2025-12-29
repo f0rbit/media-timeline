@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "fs";
+import { mkdirSync } from "node:fs";
 import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
@@ -12,7 +12,7 @@ import type { Database as DrizzleDB } from "../src/db";
 import { type ProviderFactory, defaultProviderFactory } from "../src/platforms";
 import { authRoutes, connectionRoutes, timelineRoutes } from "../src/routes";
 import * as schema from "../src/schema/database";
-import { hashApiKey } from "../src/utils";
+import { hash_api_key } from "../src/utils";
 
 type AppContext = {
 	db: DrizzleDB;
@@ -23,7 +23,7 @@ type AppContext = {
 
 const ENCRYPTION_KEY = "dev-encryption-key-32-bytes-ok!";
 const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = "mt_dev_" + Buffer.from(MOCK_USER_ID).toString("base64").slice(0, 24);
+const MOCK_API_KEY = `mt_dev_${Buffer.from(MOCK_USER_ID).toString("base64").slice(0, 24)}`;
 
 const SCHEMA = `
   CREATE TABLE IF NOT EXISTS users (
@@ -157,7 +157,7 @@ async function startDevServer() {
 			})
 			.run();
 
-		const keyHash = await hashApiKey(MOCK_API_KEY);
+		const keyHash = await hash_api_key(MOCK_API_KEY);
 		db.insert(schema.apiKeys)
 			.values({
 				id: crypto.randomUUID(),

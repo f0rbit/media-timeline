@@ -4,6 +4,7 @@ import { processGitHubAccount } from "./cron-github";
 import { processRedditAccount } from "./cron-reddit";
 import { processTwitterAccount } from "./cron-twitter";
 import type { Database } from "./db";
+import type { CronProcessError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { GitHubProvider, type ProviderError, type ProviderFactory, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
@@ -14,10 +15,10 @@ import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
 import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
 import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
-import { type Result, decrypt, pipe, to_nullable, tryCatch } from "./utils";
+import { type Result, decrypt, pipe, to_nullable, try_catch } from "./utils";
 
-export { processAccount, gatherLatestSnapshots, combineUserTimeline };
-export type { ProviderFactory };
+export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline, platformProcessors };
+export type { ProviderFactory, RawSnapshot, PlatformGroups, PlatformProcessor };
 
 type RawSnapshot = {
 	account_id: string;
@@ -52,8 +53,6 @@ export type CronResult = {
 
 type NormalizeError = { kind: "parse_error"; platform: string; message: string };
 
-type ProcessError = { kind: "decryption_failed"; message: string } | { kind: "fetch_failed"; message: string; status?: number } | { kind: "store_failed"; store_id: string } | { kind: "put_failed"; message: string };
-
 type TimelineEntry = TimelineItem | CommitGroup;
 
 const parseDate = (iso: string | null): Date | null => (iso ? new Date(iso) : null);
@@ -62,13 +61,11 @@ const parseDate = (iso: string | null): Date | null => (iso ? new Date(iso) : nu
 const TWITTER_FETCH_INTERVAL_DAYS = 3;
 
 const shouldFetchTwitter = (lastFetchedAt: string | null): boolean => {
-	if (!lastFetchedAt) return true; // Never fetched, should fetch
+	if (!lastFetchedAt) return true;
 	const lastFetch = new Date(lastFetchedAt);
 	const now = new Date();
 	const daysSinceLastFetch = (now.getTime() - lastFetch.getTime()) / (1000 * 60 * 60 * 24);
-	const shouldFetch = daysSinceLastFetch >= TWITTER_FETCH_INTERVAL_DAYS;
-	console.log(`[shouldFetchTwitter] Last fetch: ${lastFetchedAt}, days since: ${daysSinceLastFetch.toFixed(1)}, should fetch: ${shouldFetch}`);
-	return shouldFetch;
+	return daysSinceLastFetch >= TWITTER_FETCH_INTERVAL_DAYS;
 };
 
 const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
@@ -160,7 +157,6 @@ const formatProviderError = (e: ProviderError): string => {
 };
 
 const recordFailure = async (db: Database, accountId: string): Promise<void> => {
-	console.log("[recordFailure] Recording failure for account:", accountId);
 	const now = new Date().toISOString();
 	await db
 		.insert(rateLimits)
@@ -179,11 +175,9 @@ const recordFailure = async (db: Database, accountId: string): Promise<void> => 
 				updated_at: now,
 			},
 		});
-	console.log("[recordFailure] Failure recorded successfully for account:", accountId);
 };
 
 const recordSuccess = async (db: Database, accountId: string): Promise<void> => {
-	console.log("[recordSuccess] Recording success for account:", accountId);
 	const now = new Date().toISOString();
 	await db
 		.insert(rateLimits)
@@ -201,12 +195,11 @@ const recordSuccess = async (db: Database, accountId: string): Promise<void> => 
 			},
 		});
 	await db.update(accounts).set({ last_fetched_at: now, updated_at: now }).where(eq(accounts.id, accountId));
-	console.log("[recordSuccess] Success recorded for account:", accountId);
 };
 
 const logProcessError =
-	(accountId: string) =>
-	(e: ProcessError): void => {
+	(accountId: string): ((e: CronProcessError) => void) =>
+	(e: CronProcessError): void => {
 		switch (e.kind) {
 			case "decryption_failed":
 				console.error(`Decryption failed for account ${accountId}: ${e.message}`);
@@ -223,176 +216,121 @@ const logProcessError =
 		}
 	};
 
-const toProcessError = (e: ProviderError): ProcessError => ({
+const toProcessError = (e: ProviderError): CronProcessError => ({
 	kind: "fetch_failed",
 	message: formatProviderError(e),
 	status: e.kind === "api_error" ? e.status : undefined,
 });
 
-const processGitHubAccountFlow = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
-	console.log("[processGitHubAccountFlow] Starting for account:", account.id);
-
-	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
-	if (!decryptResult.ok) {
-		console.error("[processGitHubAccountFlow] Decryption failed:", decryptResult.error.message);
-		return null;
-	}
-
-	const provider = ctx.gitHubProvider ?? new GitHubProvider();
-	const result = await processGitHubAccount(ctx.backend, account.id, decryptResult.value, provider);
-
-	if (!result.ok) {
-		console.error("[processGitHubAccountFlow] GitHub processing failed:", result.error);
-		await recordFailure(ctx.db, account.id);
-		return null;
-	}
-
-	await recordSuccess(ctx.db, account.id);
-
-	return {
-		account_id: account.id,
-		platform: "github",
-		version: result.value.meta_version,
-		data: {
-			type: "github_multi_store" as const,
-			...result.value.stats,
-		},
-	};
+type PlatformProcessResult = {
+	meta_version: string;
+	stats: Record<string, unknown>;
 };
 
-const processRedditAccountFlow = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
-	console.log("[processRedditAccountFlow] Starting for account:", account.id);
-
-	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
-	if (!decryptResult.ok) {
-		console.error("[processRedditAccountFlow] Decryption failed:", decryptResult.error.message);
-		return null;
-	}
-
-	const provider = new RedditProvider();
-	const result = await processRedditAccount(ctx.backend, account.id, decryptResult.value, provider);
-
-	if (!result.ok) {
-		console.error("[processRedditAccountFlow] Reddit processing failed:", result.error);
-		await recordFailure(ctx.db, account.id);
-		return null;
-	}
-
-	await recordSuccess(ctx.db, account.id);
-
-	return {
-		account_id: account.id,
-		platform: "reddit",
-		version: result.value.meta_version,
-		data: {
-			type: "reddit_multi_store" as const,
-			...result.value.stats,
-		},
-	};
+type PlatformProcessor = {
+	platform: Platform;
+	shouldFetch: (account: AccountWithUser, lastFetchedAt: string | null) => boolean;
+	createProvider: (ctx: AppContext) => unknown;
+	processAccount: (backend: Backend, accountId: string, token: string, provider: unknown) => Promise<Result<PlatformProcessResult, { kind: string; message?: string }>>;
 };
 
-const processTwitterAccountFlow = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
-	console.log("[processTwitterAccountFlow] Starting for account:", account.id);
-
-	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
-	if (!decryptResult.ok) {
-		console.error("[processTwitterAccountFlow] Decryption failed:", decryptResult.error.message);
-		return null;
-	}
-
-	const provider = ctx.twitterProvider ?? new TwitterProvider();
-	const result = await processTwitterAccount(ctx.backend, account.id, decryptResult.value, provider);
-
-	if (!result.ok) {
-		console.error("[processTwitterAccountFlow] Twitter processing failed:", result.error);
-		await recordFailure(ctx.db, account.id);
-		return null;
-	}
-
-	await recordSuccess(ctx.db, account.id);
-
-	return {
-		account_id: account.id,
-		platform: "twitter",
-		version: result.value.meta_version,
-		data: {
-			type: "twitter_multi_store" as const,
-			...result.value.stats,
+const platformProcessors = new Map<Platform, PlatformProcessor>([
+	[
+		"github",
+		{
+			platform: "github" as const,
+			shouldFetch: () => true,
+			createProvider: (ctx: AppContext) => ctx.gitHubProvider ?? new GitHubProvider(),
+			processAccount: processGitHubAccount as PlatformProcessor["processAccount"],
 		},
-	};
+	],
+	[
+		"reddit",
+		{
+			platform: "reddit" as const,
+			shouldFetch: () => true,
+			createProvider: () => new RedditProvider(),
+			processAccount: processRedditAccount as PlatformProcessor["processAccount"],
+		},
+	],
+	[
+		"twitter",
+		{
+			platform: "twitter" as const,
+			shouldFetch: (_account: AccountWithUser, lastFetched: string | null) => shouldFetchTwitter(lastFetched),
+			createProvider: (ctx: AppContext) => ctx.twitterProvider ?? new TwitterProvider(),
+			processAccount: processTwitterAccount as PlatformProcessor["processAccount"],
+		},
+	],
+]);
+
+type ProcessingError = { kind: string; message?: string };
+
+const processPlatformAccountWithProcessor = async (ctx: AppContext, account: AccountWithUser, processor: PlatformProcessor): Promise<RawSnapshot | null> => {
+	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
+		.map_err((e): ProcessingError => ({ kind: e.kind, message: e.message }))
+		.tap_err(() => console.error(`[cron] ${processor.platform} decryption failed for account:`, account.id))
+		.flat_map(async (token): Promise<Result<PlatformProcessResult, ProcessingError>> => {
+			const provider = processor.createProvider(ctx);
+			return processor.processAccount(ctx.backend, account.id, token, provider);
+		})
+		.tap_err(e => {
+			console.error(`[cron] ${processor.platform} processing failed:`, account.id, e);
+			recordFailure(ctx.db, account.id);
+		})
+		.tap(() => recordSuccess(ctx.db, account.id))
+		.map(
+			(result): RawSnapshot => ({
+				account_id: account.id,
+				platform: processor.platform,
+				version: result.meta_version,
+				data: {
+					type: `${processor.platform}_multi_store`,
+					...result.stats,
+				},
+			})
+		)
+		.unwrap_or(null as unknown as RawSnapshot)
+		.then(r => r as RawSnapshot | null);
 };
 
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
-	console.log("[processGenericAccount] Starting for account:", { id: account.id, platform: account.platform, user_id: account.user_id, platform_user_id: account.platform_user_id });
-
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-		.tap(() => console.log("[processGenericAccount] Decryption result: success"))
-		.mapErr((e): ProcessError => {
-			console.log("[processGenericAccount] Decryption result: failed -", e.message);
-			return { kind: "decryption_failed", message: e.message };
-		})
-		.flatMap(token => {
-			console.log("[processGenericAccount] Before calling providerFactory.create:", { platform: account.platform, platformUserId: account.platform_user_id, hasToken: !!token });
+		.map_err((e): CronProcessError => ({ kind: "decryption_failed", message: e.message }))
+		.flat_map(token => {
 			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
-			console.log("[processGenericAccount] providerFactory.create called, awaiting result...");
 			return pipe(result)
-				.tap(data => {
-					console.log("[processGenericAccount] providerFactory.create result: success, data type:", typeof data);
-					console.log("[processGenericAccount] providerFactory.create result keys:", Object.keys(data as Record<string, unknown>));
-				})
-				.mapErr(e => {
-					console.log("[processGenericAccount] providerFactory.create result: error -", e);
-					return toProcessError(e);
-				})
-				.tapErr(() => recordFailure(ctx.db, account.id))
+				.map_err(e => toProcessError(e))
+				.tap_err(() => recordFailure(ctx.db, account.id))
 				.result();
 		})
-		.flatMap(rawData => {
-			console.log("[processGenericAccount] Before creating raw store for:", { platform: account.platform, accountId: account.id });
+		.flat_map(raw_data => {
 			return pipe(createRawStore(ctx.backend, account.platform, account.id))
-				.tap(() => console.log("[processGenericAccount] Raw store creation: success"))
-				.mapErr((e): ProcessError => {
-					console.log("[processGenericAccount] Raw store creation: failed -", e);
-					return { kind: "store_failed", store_id: e.store_id };
-				})
-				.map(({ store }) => ({ rawData, store }))
+				.map_err((e): CronProcessError => ({ kind: "store_failed", store_id: e.store_id }))
+				.map(({ store }) => ({ raw_data, store }))
 				.result();
 		})
-		.flatMap(({ rawData, store }) => {
-			console.log("[processGenericAccount] Before store.put");
-			return pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
-				.tap(result => console.log("[processGenericAccount] store.put result: success, version:", result.version))
-				.mapErr((e): ProcessError => {
-					console.log("[processGenericAccount] store.put result: failed -", e);
-					return { kind: "put_failed", message: String(e) };
-				})
-				.map((result: { version: string }) => ({ rawData, version: result.version }))
+		.flat_map(({ raw_data, store }) => {
+			return pipe(store.put(raw_data as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
+				.map_err((e): CronProcessError => ({ kind: "put_failed", message: String(e) }))
+				.map((result: { version: string }) => ({ raw_data, version: result.version }))
 				.result();
 		})
-		.tapErr(logProcessError(account.id))
-		.tap(() => {
-			console.log("[processGenericAccount] All operations successful, recording success");
-			return recordSuccess(ctx.db, account.id);
-		})
-		.map((result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => {
-			console.log("[processGenericAccount] Creating final snapshot:", { account_id: account.id, platform: account.platform, version: result.version });
-			return {
+		.tap_err(logProcessError(account.id))
+		.tap(() => recordSuccess(ctx.db, account.id))
+		.map(
+			(result: { raw_data: Record<string, unknown>; version: string }): RawSnapshot => ({
 				account_id: account.id,
 				platform: account.platform,
 				version: result.version,
-				data: result.rawData,
-			};
-		})
-		.unwrapOr(null as unknown as RawSnapshot)
-		.then(r => {
-			console.log("[processGenericAccount] Final result:", r ? "snapshot created" : "null (failed or skipped)");
-			return r as RawSnapshot | null;
-		});
+				data: result.raw_data,
+			})
+		)
+		.unwrap_or(null as unknown as RawSnapshot)
+		.then(r => r as RawSnapshot | null);
 };
 
 const processAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
-	console.log("[processAccount] Starting for account:", { id: account.id, platform: account.platform, user_id: account.user_id, platform_user_id: account.platform_user_id });
-
 	const rateLimitRow = await ctx.db
 		.select({
 			remaining: rateLimits.remaining,
@@ -404,48 +342,30 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		.where(eq(rateLimits.account_id, account.id))
 		.get();
 
-	console.log("[processAccount] Rate limit state:", rateLimitRow);
-
 	if (!shouldFetch(toRateLimitState(rateLimitRow ?? null))) {
-		console.log("[processAccount] Skipping fetch due to rate limit state");
 		return null;
 	}
 
-	if (account.platform === "github") {
-		return processGitHubAccountFlow(ctx, account);
+	const processor = platformProcessors.get(account.platform as Platform);
+
+	if (!processor) {
+		return processGenericAccount(ctx, account);
 	}
 
-	if (account.platform === "reddit") {
-		return processRedditAccountFlow(ctx, account);
+	if (!processor.shouldFetch(account, account.last_fetched_at ?? null)) {
+		return null;
 	}
 
-	if (account.platform === "twitter") {
-		// Twitter has a 100 posts/month cap on Free tier, only fetch every 3 days
-		if (!shouldFetchTwitter(account.last_fetched_at ?? null)) {
-			console.log("[processAccount] Skipping Twitter fetch - not enough time since last fetch");
-			return null;
-		}
-		return processTwitterAccountFlow(ctx, account);
-	}
-
-	return processGenericAccount(ctx, account);
+	return processPlatformAccountWithProcessor(ctx, account, processor);
 };
 
 const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {
-	console.log("[getLatestSnapshot] Starting for account:", { id: account.id, platform: account.platform });
-
-	// GitHub uses multi-store format - check if there's data in GitHub stores
+	// GitHub uses multi-store format
 	if (account.platform === "github") {
 		const githubData = await loadGitHubDataForAccount(backend, account.id);
 		if (githubData.commits.length === 0 && githubData.prs.length === 0) {
-			console.log("[getLatestSnapshot] No GitHub data found for account:", account.id);
 			return null;
 		}
-		console.log("[getLatestSnapshot] GitHub data loaded:", {
-			commits: githubData.commits.length,
-			prs: githubData.prs.length,
-		});
-		// Return a marker snapshot - the actual data will be loaded in combineUserTimeline
 		return {
 			account_id: account.id,
 			platform: "github",
@@ -454,18 +374,12 @@ const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Pr
 		};
 	}
 
-	// Reddit uses multi-store format - check if there's data in Reddit stores
+	// Reddit uses multi-store format
 	if (account.platform === "reddit") {
 		const redditData = await loadRedditDataForAccount(backend, account.id);
 		if (redditData.posts.length === 0 && redditData.comments.length === 0) {
-			console.log("[getLatestSnapshot] No Reddit data found for account:", account.id);
 			return null;
 		}
-		console.log("[getLatestSnapshot] Reddit data loaded:", {
-			posts: redditData.posts.length,
-			comments: redditData.comments.length,
-		});
-		// Return a marker snapshot - the actual data will be loaded in combineUserTimeline
 		return {
 			account_id: account.id,
 			platform: "reddit",
@@ -474,17 +388,12 @@ const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Pr
 		};
 	}
 
-	// Twitter uses multi-store format - check if there's data in Twitter stores
+	// Twitter uses multi-store format
 	if (account.platform === "twitter") {
 		const twitterData = await loadTwitterDataForAccount(backend, account.id);
 		if (twitterData.tweets.length === 0) {
-			console.log("[getLatestSnapshot] No Twitter data found for account:", account.id);
 			return null;
 		}
-		console.log("[getLatestSnapshot] Twitter data loaded:", {
-			tweets: twitterData.tweets.length,
-		});
-		// Return a marker snapshot - the actual data will be loaded in combineUserTimeline
 		return {
 			account_id: account.id,
 			platform: "twitter",
@@ -494,260 +403,150 @@ const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Pr
 	}
 
 	const storeResult = createRawStore(backend, account.platform, account.id);
-	console.log("[getLatestSnapshot] Store creation result:", storeResult.ok ? "success" : "failed");
 	if (!storeResult.ok) {
-		console.log("[getLatestSnapshot] Store creation failed, returning null");
 		return null;
 	}
 
-	console.log("[getLatestSnapshot] Fetching latest snapshot from store...");
 	const snapshot = to_nullable(await storeResult.value.store.get_latest());
-	console.log("[getLatestSnapshot] Snapshot fetched:", snapshot ? "found" : "null");
-	if (snapshot) {
-		console.log("[getLatestSnapshot] Snapshot meta:", snapshot.meta);
-		console.log("[getLatestSnapshot] Snapshot data preview:", JSON.stringify(snapshot.data).slice(0, 500));
-	}
 	if (!snapshot) {
-		console.log("[getLatestSnapshot] No snapshot found, returning null");
 		return null;
 	}
 
-	const result: RawSnapshot = {
+	return {
 		account_id: account.id,
 		platform: account.platform,
 		version: snapshot.meta.version,
 		data: snapshot.data,
 	};
-	console.log("[getLatestSnapshot] Returning RawSnapshot:", { account_id: result.account_id, platform: result.platform, version: result.version });
-	return result;
 };
 
 const gatherLatestSnapshots = async (backend: Backend, accounts: AccountWithUser[]): Promise<RawSnapshot[]> => {
-	console.log(
-		"[gatherLatestSnapshots] Starting with accounts:",
-		accounts.map(a => ({ id: a.id, platform: a.platform }))
-	);
-	console.log("[gatherLatestSnapshots] Account count:", accounts.length);
-
-	const results = await Promise.all(
-		accounts.map(async (account, index) => {
-			console.log(`[gatherLatestSnapshots] Processing account ${index + 1}/${accounts.length}:`, account.id);
-			const snapshot = await getLatestSnapshot(backend, account);
-			console.log(`[gatherLatestSnapshots] Account ${account.id} result:`, snapshot ? "snapshot found" : "null");
-			return snapshot;
-		})
-	);
-
-	console.log("[gatherLatestSnapshots] All results gathered, total:", results.length);
-	const filtered = results.filter((s): s is RawSnapshot => s !== null);
-	console.log("[gatherLatestSnapshots] Filtered results (non-null):", filtered.length);
-	console.log(
-		"[gatherLatestSnapshots] Filtered snapshots:",
-		filtered.map(s => ({ account_id: s.account_id, platform: s.platform, version: s.version }))
-	);
-	return filtered;
+	const results = await Promise.all(accounts.map(account => getLatestSnapshot(backend, account)));
+	return results.filter((s): s is RawSnapshot => s !== null);
 };
 
-const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
-	console.log("[combineUserTimeline] Starting for user:", userId);
-	console.log("[combineUserTimeline] Input snapshots count:", snapshots.length);
-	console.log(
-		"[combineUserTimeline] Input snapshots platforms:",
-		snapshots.map(s => s.platform)
-	);
-	console.log(
-		"[combineUserTimeline] Input snapshots data sizes:",
-		snapshots.map(s => JSON.stringify(s.data).length)
-	);
+const MULTI_STORE_PLATFORMS = ["github", "reddit", "twitter"] as const;
 
-	if (snapshots.length === 0) {
-		console.log("[combineUserTimeline] No snapshots, creating empty timeline");
-		const emptyTimeline = {
-			user_id: userId,
-			generated_at: new Date().toISOString(),
-			groups: [],
-		};
-		await pipe(createTimelineStore(backend, userId))
-			.tap(({ id }) => console.log("[combineUserTimeline] Timeline store created:", id))
-			.tap(async ({ store }) => {
-				await store.put(emptyTimeline, { parents: [] });
-				console.log("[combineUserTimeline] Empty timeline stored");
-			})
-			.result();
-		return;
-	}
+type PlatformGroups = {
+	github: RawSnapshot[];
+	reddit: RawSnapshot[];
+	twitter: RawSnapshot[];
+	other: RawSnapshot[];
+};
 
-	// Log each snapshot's data before normalization
+const groupSnapshotsByPlatform = (snapshots: RawSnapshot[]): PlatformGroups => ({
+	github: snapshots.filter(s => s.platform === "github"),
+	reddit: snapshots.filter(s => s.platform === "reddit"),
+	twitter: snapshots.filter(s => s.platform === "twitter"),
+	other: snapshots.filter(s => !MULTI_STORE_PLATFORMS.includes(s.platform as (typeof MULTI_STORE_PLATFORMS)[number])),
+});
+
+const loadPlatformItems = async <T>(backend: Backend, snapshots: RawSnapshot[], loader: (backend: Backend, accountId: string) => Promise<T>, normalizer: (data: T) => TimelineItem[]): Promise<TimelineItem[]> => {
+	const items: TimelineItem[] = [];
 	for (const snapshot of snapshots) {
-		console.log(`[combineUserTimeline] Snapshot ${snapshot.platform} data preview:`, JSON.stringify(snapshot.data).slice(0, 200));
+		const data = await loader(backend, snapshot.account_id);
+		items.push(...normalizer(data));
 	}
+	return items;
+};
 
-	// Separate multi-store platforms from other platforms
-	const githubSnapshots = snapshots.filter(s => s.platform === "github");
-	const redditSnapshots = snapshots.filter(s => s.platform === "reddit");
-	const twitterSnapshots = snapshots.filter(s => s.platform === "twitter");
-	const otherSnapshots = snapshots.filter(s => s.platform !== "github" && s.platform !== "reddit" && s.platform !== "twitter");
+const normalizeOtherSnapshots = (snapshots: RawSnapshot[]): TimelineItem[] => {
+	const results = snapshots.map(snapshot => normalizeSnapshot(snapshot));
 
-	// Load GitHub data from multi-stores
-	const githubItems: TimelineItem[] = [];
-	for (const snapshot of githubSnapshots) {
-		console.log(`[combineUserTimeline] Loading GitHub data for account: ${snapshot.account_id}`);
-		const data = await loadGitHubDataForAccount(backend, snapshot.account_id);
-		const normalized = normalizeGitHub(data);
-		console.log(`[combineUserTimeline] GitHub normalized: ${normalized.length} items`);
-		githubItems.push(...normalized);
-	}
-
-	// Load Reddit data from multi-stores
-	const redditItems: TimelineItem[] = [];
-	for (const snapshot of redditSnapshots) {
-		console.log(`[combineUserTimeline] Loading Reddit data for account: ${snapshot.account_id}`);
-		const data = await loadRedditDataForAccount(backend, snapshot.account_id);
-		const normalized = normalizeReddit(data, "");
-		console.log(`[combineUserTimeline] Reddit normalized: ${normalized.length} items`);
-		redditItems.push(...normalized);
-	}
-
-	// Load Twitter data from multi-stores
-	const twitterItems: TimelineItem[] = [];
-	for (const snapshot of twitterSnapshots) {
-		console.log(`[combineUserTimeline] Loading Twitter data for account: ${snapshot.account_id}`);
-		const data = await loadTwitterDataForAccount(backend, snapshot.account_id);
-		const normalized = normalizeTwitter(data);
-		console.log(`[combineUserTimeline] Twitter normalized: ${normalized.length} items`);
-		twitterItems.push(...normalized);
-	}
-
-	console.log("[combineUserTimeline] Normalizing other platform snapshots...");
-	const normalizeResults = otherSnapshots.map((snapshot, index) => {
-		console.log(`[combineUserTimeline] Normalizing snapshot ${index + 1}/${otherSnapshots.length} (${snapshot.platform})...`);
-		const result = normalizeSnapshot(snapshot);
-		console.log(`[combineUserTimeline] Normalize result for ${snapshot.platform}:`, result.ok ? `ok, ${result.value.length} items` : `error: ${result.error.message}`);
-		return result;
-	});
-
-	for (const r of normalizeResults) {
+	for (const r of results) {
 		if (!r.ok) {
-			console.error(`[combineUserTimeline] Failed to normalize ${r.error.platform} data: ${r.error.message}`);
+			console.error(`[cron] Failed to normalize ${r.error.platform} data: ${r.error.message}`);
 		}
 	}
 
-	const otherItems = normalizeResults.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
-	const items = [...githubItems, ...redditItems, ...twitterItems, ...otherItems];
-	console.log("[combineUserTimeline] Items after filtering successful results:", items.length);
-	console.log(
-		"[combineUserTimeline] Items preview:",
-		items.slice(0, 3).map(i => ({ id: i.id, type: i.type, platform: i.platform }))
-	);
+	return results.filter((r): r is { ok: true; value: TimelineItem[] } => r.ok).flatMap(r => r.value);
+};
 
+const generateTimeline = (userId: string, items: TimelineItem[]) => {
 	const entries: TimelineEntry[] = groupCommits(items);
-	console.log("[combineUserTimeline] Items after groupCommits:", entries.length);
-	console.log(
-		"[combineUserTimeline] Entry types:",
-		entries.map(e => e.type)
-	);
-
 	const dateGroups = groupByDate(entries);
-	console.log("[combineUserTimeline] DateGroups after groupByDate:", dateGroups.length);
-	console.log(
-		"[combineUserTimeline] DateGroups dates:",
-		dateGroups.map(g => g.date)
-	);
-	console.log(
-		"[combineUserTimeline] DateGroups items per date:",
-		dateGroups.map(g => ({ date: g.date, count: g.items.length }))
-	);
 
-	const timeline = {
+	return {
 		user_id: userId,
 		generated_at: new Date().toISOString(),
 		groups: dateGroups,
 	};
-	console.log("[combineUserTimeline] Final timeline object:", { user_id: timeline.user_id, generated_at: timeline.generated_at, groups_count: timeline.groups.length });
-	console.log("[combineUserTimeline] Timeline JSON preview:", JSON.stringify(timeline).slice(0, 500));
+};
 
+const storeTimeline = async (backend: Backend, userId: string, timeline: ReturnType<typeof generateTimeline>, snapshots: RawSnapshot[]): Promise<void> => {
 	const parents = snapshots.map(s => ({
 		store_id: rawStoreId(s.platform, s.account_id),
 		version: s.version,
 		role: "source" as const,
 	}));
-	console.log("[combineUserTimeline] Parents for store:", parents);
 
-	console.log("[combineUserTimeline] Creating timeline store...");
 	await pipe(createTimelineStore(backend, userId))
-		.tap(({ store, id }) => console.log("[combineUserTimeline] Timeline store created:", id))
-		.tapErr(() => console.error(`[combineUserTimeline] Failed to create timeline store for user ${userId}`))
+		.tap_err(() => console.error(`[cron] Failed to create timeline store for user ${userId}`))
 		.tap(async ({ store }) => {
-			console.log("[combineUserTimeline] Putting timeline into store...");
 			await store.put(timeline, { parents });
-			console.log("[combineUserTimeline] Timeline stored successfully");
 		})
 		.result();
+};
 
-	console.log("[combineUserTimeline] Completed for user:", userId);
+const storeEmptyTimeline = async (backend: Backend, userId: string): Promise<void> => {
+	const emptyTimeline = {
+		user_id: userId,
+		generated_at: new Date().toISOString(),
+		groups: [],
+	};
+	await pipe(createTimelineStore(backend, userId))
+		.tap(async ({ store }) => {
+			await store.put(emptyTimeline, { parents: [] });
+		})
+		.result();
+};
+
+const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
+	if (snapshots.length === 0) {
+		await storeEmptyTimeline(backend, userId);
+		return;
+	}
+
+	const byPlatform = groupSnapshotsByPlatform(snapshots);
+
+	const [githubItems, redditItems, twitterItems] = await Promise.all([
+		loadPlatformItems(backend, byPlatform.github, loadGitHubDataForAccount, normalizeGitHub),
+		loadPlatformItems(backend, byPlatform.reddit, loadRedditDataForAccount, data => normalizeReddit(data, "")),
+		loadPlatformItems(backend, byPlatform.twitter, loadTwitterDataForAccount, normalizeTwitter),
+	]);
+
+	const otherItems = normalizeOtherSnapshots(byPlatform.other);
+	const allItems = [...githubItems, ...redditItems, ...twitterItems, ...otherItems];
+
+	const timeline = generateTimeline(userId, allItems);
+	await storeTimeline(backend, userId, timeline, snapshots);
 };
 
 const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> => {
-	console.log("[normalizeSnapshot] Starting for platform:", snapshot.platform);
-	console.log("[normalizeSnapshot] Raw data preview:", JSON.stringify(snapshot.data).slice(0, 500));
-
-	return tryCatch(
+	return try_catch(
 		() => {
-			console.log("[normalizeSnapshot] Matching platform case:", snapshot.platform);
-			let result: TimelineItem[];
 			switch (snapshot.platform as Platform) {
 				case "github":
-					// GitHub is handled separately via multi-store in combineUserTimeline
-					console.log("[normalizeSnapshot] Case: github - skipping (handled via multi-store)");
-					result = [];
-					break;
 				case "reddit":
-					// Reddit is handled separately via multi-store in combineUserTimeline
-					console.log("[normalizeSnapshot] Case: reddit - skipping (handled via multi-store)");
-					result = [];
-					break;
 				case "twitter":
-					// Twitter is handled separately via multi-store in combineUserTimeline
-					console.log("[normalizeSnapshot] Case: twitter - skipping (handled via multi-store)");
-					result = [];
-					break;
+					// Handled separately via multi-store in combineUserTimeline
+					return [];
 				case "bluesky": {
-					console.log("[normalizeSnapshot] Case: bluesky - parsing with BlueskyRawSchema");
 					const blueskyParsed = BlueskyRawSchema.parse(snapshot.data);
-					console.log("[normalizeSnapshot] Bluesky parsed successfully");
-					result = normalizeBluesky(blueskyParsed);
-					console.log("[normalizeSnapshot] Bluesky normalized, items count:", result.length);
-					break;
+					return normalizeBluesky(blueskyParsed);
 				}
 				case "youtube": {
-					console.log("[normalizeSnapshot] Case: youtube - parsing with YouTubeRawSchema");
 					const youtubeParsed = YouTubeRawSchema.parse(snapshot.data);
-					console.log("[normalizeSnapshot] YouTube parsed successfully");
-					result = normalizeYouTube(youtubeParsed);
-					console.log("[normalizeSnapshot] YouTube normalized, items count:", result.length);
-					break;
+					return normalizeYouTube(youtubeParsed);
 				}
 				case "devpad": {
-					console.log("[normalizeSnapshot] Case: devpad - parsing with DevpadRawSchema");
 					const devpadParsed = DevpadRawSchema.parse(snapshot.data);
-					console.log("[normalizeSnapshot] Devpad parsed successfully");
-					result = normalizeDevpad(devpadParsed);
-					console.log("[normalizeSnapshot] Devpad normalized, items count:", result.length);
-					break;
+					return normalizeDevpad(devpadParsed);
 				}
 				default:
-					console.log("[normalizeSnapshot] Case: default (unknown platform), returning empty array");
-					result = [];
+					return [];
 			}
-			console.log("[normalizeSnapshot] Final result items count:", result.length);
-			if (result.length > 0) {
-				console.log("[normalizeSnapshot] First item preview:", JSON.stringify(result[0]).slice(0, 300));
-			}
-			return result;
 		},
-		(e): NormalizeError => {
-			console.log("[normalizeSnapshot] ERROR during normalization:", String(e));
-			return { kind: "parse_error", platform: snapshot.platform, message: String(e) };
-		}
+		(e): NormalizeError => ({ kind: "parse_error", platform: snapshot.platform, message: String(e) })
 	);
 };

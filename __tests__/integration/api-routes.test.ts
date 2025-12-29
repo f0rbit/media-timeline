@@ -461,7 +461,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(403);
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Forbidden");
-			expect(data.message).toBe("Only owners can add members");
+			expect(data.message).toBe("Only owners can perform this action");
 		});
 
 		it("returns 409 when user already member", async () => {

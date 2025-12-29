@@ -1,9 +1,12 @@
 import { type ApiResult, type CommitGroup, type PRCommit, type PullRequestPayload, type TimelineGroup, type TimelineItem, type TimelineResponse, getMockUserId, initMockAuth, timeline } from "@/utils/api-client";
 import { formatRelativeTime } from "@/utils/formatters";
+import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import ChevronRight from "lucide-solid/icons/chevron-right";
 import GitCommit from "lucide-solid/icons/git-commit-horizontal";
 import GitPullRequest from "lucide-solid/icons/git-pull-request";
+import MessageSquareText from "lucide-solid/icons/message-square-text";
+import Reply from "lucide-solid/icons/reply";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
 
 const GithubUsernamesContext = createContext<string[]>([]);
@@ -40,10 +43,12 @@ export default function TimelineList() {
 				<p class="error-icon">Failed to load timeline: {data.error.message}</p>
 			</Show>
 
-			<Show when={data()}>
-				<GithubUsernamesContext.Provider value={githubUsernames()}>
-					<TimelineGroups groups={data()!.data.groups} />
-				</GithubUsernamesContext.Provider>
+			<Show when={data()} keyed>
+				{response => (
+					<GithubUsernamesContext.Provider value={response.meta.github_usernames ?? []}>
+						<TimelineGroups groups={response.data.groups} />
+					</GithubUsernamesContext.Provider>
+				)}
 			</Show>
 		</div>
 	);
@@ -101,6 +106,12 @@ function TimelineEntry(props: TimelineEntryProps) {
 			</Match>
 			<Match when={props.item.type === "commit"}>
 				<CommitRow item={props.item as TimelineItem} />
+			</Match>
+			<Match when={props.item.type === "post" && props.item.platform === "reddit"}>
+				<RedditPostRow item={props.item as TimelineItem} />
+			</Match>
+			<Match when={props.item.type === "comment" && props.item.platform === "reddit"}>
+				<RedditCommentRow item={props.item as TimelineItem} />
 			</Match>
 			<Match when={true}>
 				<GenericRow item={props.item as TimelineItem} />
@@ -294,6 +305,143 @@ function CommitRow(props: { item: TimelineItem }) {
 				<Show when={displayRepo()}>
 					<span class="text-xs muted">{displayRepo()}</span>
 				</Show>
+			</div>
+		</div>
+	);
+}
+
+function RedditPostRow(props: { item: TimelineItem }) {
+	const payload = () =>
+		props.item.payload as {
+			type: "post";
+			content: string;
+			subreddit?: string;
+			like_count?: number;
+			reply_count?: number;
+			has_media?: boolean;
+		};
+	const score = () => payload().like_count ?? 0;
+	const commentCount = () => payload().reply_count ?? 0;
+
+	return (
+		<div class="timeline-row">
+			<div class="timeline-icon timeline-icon-reddit">
+				<MessageSquareText size={16} />
+			</div>
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<span class="text-xs muted nowrap">{formatRelativeTime(props.item.timestamp)}</span>
+				<div class="flex-row items-start" style={{ gap: "0.5rem" }}>
+					<Show when={props.item.url} fallback={<span class="secondary font-medium">{props.item.title}</span>}>
+						<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="secondary font-medium">
+							{props.item.title}
+						</a>
+					</Show>
+				</div>
+				<div class="flex-row items-center text-xs muted" style={{ gap: "0.5rem" }}>
+					<Show when={payload().subreddit}>
+						<span>r/{payload().subreddit}</span>
+						<span>·</span>
+					</Show>
+					<span class="inline-flex items-center" style={{ gap: "0.25rem" }}>
+						<ArrowBigUp size={12} />
+						<span>{score()}</span>
+					</span>
+					<span>·</span>
+					<span>
+						{commentCount()} {commentCount() === 1 ? "comment" : "comments"}
+					</span>
+					<Show when={payload().has_media}>
+						<span>·</span>
+						<span class="reddit-media-badge">media</span>
+					</Show>
+				</div>
+			</div>
+		</div>
+	);
+}
+
+function RedditCommentRow(props: { item: TimelineItem }) {
+	const payload = () =>
+		props.item.payload as {
+			type: "comment";
+			content: string;
+			parent_title: string;
+			parent_url: string;
+			subreddit: string;
+			score: number;
+			is_op: boolean;
+		};
+
+	// Check if content is long enough to need collapsing (roughly 4 lines worth)
+	const isLongContent = () => payload().content.length > 280 || payload().content.split("\n").length > 4;
+
+	const [expanded, setExpanded] = createSignal(false);
+
+	const CommentText = () => <span>{payload().content}</span>;
+
+	const ExpandLink = () => (
+		<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
+			<button type="button" class="reddit-expand-label" onClick={() => setExpanded(!expanded())} style={{ "margin-top": "-0.15rem" }}>
+				{expanded() ? "show less" : "show more"}
+			</button>
+			<Show when={props.item.url}>
+				<span class="muted">·</span>
+				<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="reddit-expand-label">
+					see comment
+				</a>
+			</Show>
+		</div>
+	);
+
+	return (
+		<div class="timeline-row">
+			<div class="timeline-icon timeline-icon-reddit-comment">
+				<Reply size={16} />
+			</div>
+			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
+				<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
+					<span class="muted nowrap shrink-0">{formatRelativeTime(props.item.timestamp)}</span>
+					<Show when={payload().is_op}>
+						<span class="reddit-op-badge">OP</span>
+					</Show>
+				</div>
+				<Show
+					when={isLongContent()}
+					fallback={
+						<>
+							<div class="reddit-comment-text">
+								<CommentText />
+							</div>
+							<Show when={props.item.url}>
+								<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
+									<a href={props.item.url} target="_blank" rel="noopener noreferrer" class="reddit-expand-label">
+										see comment
+									</a>
+								</div>
+							</Show>
+						</>
+					}
+				>
+					<div class={`reddit-comment-text ${expanded() ? "" : "reddit-comment-clamped"}`}>
+						<CommentText />
+					</div>
+					<ExpandLink />
+				</Show>
+				<div class="flex-row items-center text-xs muted" style={{ gap: "0.5rem", "flex-wrap": "wrap" }}>
+					<span>r/{payload().subreddit}</span>
+					<span>·</span>
+					<span class="inline-flex items-center" style={{ gap: "0.25rem" }}>
+						<ArrowBigUp size={12} />
+						<span>{payload().score}</span>
+					</span>
+					<span>·</span>
+					<span>
+						on{" "}
+						<a href={payload().parent_url} target="_blank" rel="noopener noreferrer" class="muted truncate" style={{ "max-width": "250px" }}>
+							"{payload().parent_title}"
+						</a>
+					</span>
+				</div>
 			</div>
 		</div>
 	);

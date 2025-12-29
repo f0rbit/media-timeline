@@ -4,10 +4,10 @@
 
 The Media Timeline project is a **well-architected, production-ready Cloudflare Worker** that aggregates activity from multiple platforms (GitHub, Bluesky, YouTube, Devpad) into a unified chronological timeline. The core functionality is **fully implemented** with comprehensive test coverage using in-memory backends.
 
-### Project Maturity: **80-85% Complete**
+### Project Maturity: **~90% Complete**
 
 The following core features are fully implemented and tested:
-- Multi-platform data aggregation (4 platforms)
+- Multi-platform data aggregation (6 platforms: GitHub, Bluesky, YouTube, Devpad, Reddit, Twitter/X)
 - Versioned storage with content-addressed deduplication (@f0rbit/corpus)
 - Multi-tenant support with role-based access
 - Rate limiting with circuit breaker pattern
@@ -15,8 +15,11 @@ The following core features are fully implemented and tested:
 - API key authentication
 - Cron-based data fetching (every 5 minutes)
 - Timeline grouping (commits by repo/day, date grouping)
+- OAuth flows for Reddit and Twitter/X (PKCE)
+- Connections UI with platform cards, settings, pause/resume functionality
+- Partial filters implementation (hidden repos for GitHub, hidden subreddits for Reddit)
 
-**What remains**: OAuth flows, additional platforms, filters, search, export, analytics, and operational tooling.
+**What remains**: OAuth flows for remaining platforms (GitHub, YouTube), additional platforms (Mastodon, Linear, Notion), full filter support, search, export, analytics, and operational tooling.
 
 ---
 
@@ -30,7 +33,9 @@ The following core features are fully implemented and tested:
 | Bluesky Provider | **Implemented** | AT Protocol feed fetching |
 | YouTube Provider | **Implemented** | Playlist items API |
 | Devpad Provider | **Implemented** | Tasks API |
-| Memory Providers (testing) | **Implemented** | All 4 platforms with error simulation |
+| Reddit Provider | **Implemented** | OAuth, posts, comments, timeline normalization |
+| Twitter/X Provider | **Implemented** | OAuth PKCE, tweets, timeline normalization |
+| Memory Providers (testing) | **Implemented** | All 6 platforms with error simulation |
 | Timeline Normalization | **Implemented** | Platform -> TimelineItem conversion |
 | Commit Grouping | **Implemented** | Groups commits by repo+date |
 | Date Grouping | **Implemented** | Groups entries by date |
@@ -55,13 +60,13 @@ The following core features are fully implemented and tested:
 | **Planned Platforms** | | | |
 | Mastodon (ActivityPub) | Not Started | Medium | Medium (~200 LOC) |
 | LinkedIn (Posts/Articles) | Not Started | Low | High (~300 LOC) |
-| Twitter/X (API access limited) | Not Started | Low | High (~300 LOC) |
 | Notion (Page updates) | Not Started | Low | Medium (~200 LOC) |
 | Linear (Issue updates) | Not Started | Medium | Medium (~200 LOC) |
 | **Feature Extensions** | | | |
-| OAuth Flows (Web UI) | Not Started | High | High (~500 LOC) |
+| OAuth Flows (Web UI) | **Partial** | High | High (~500 LOC) | Reddit & Twitter implemented; GitHub/YouTube pending |
+| Connections UI | **Implemented** | High | Medium (~400 LOC) | Platform cards, settings, pause/resume |
 | Webhooks (Real-time) | Not Started | Medium | High (~400 LOC) |
-| Filters (Exclude repos/channels) | Not Started | Medium | Low (~150 LOC) |
+| Filters (Exclude repos/channels) | **Partial** | Medium | Low (~150 LOC) | Hidden repos (GitHub), hidden subreddits (Reddit) |
 | Search (Full-text) | Not Started | Medium | High (~400 LOC) |
 | Export (JSON/CSV) | Not Started | Low | Low (~100 LOC) |
 | Analytics (Heatmaps/trends) | Not Started | Low | Medium (~300 LOC) |
@@ -460,7 +465,7 @@ packages/
 
 ## Limitations & Notes
 
-1. **Twitter/X**: API access is restricted and expensive. Deprioritized unless API access is confirmed.
+1. **Twitter/X**: ~~API access is restricted and expensive. Deprioritized unless API access is confirmed.~~ **Now implemented** with OAuth PKCE flow and tweet timeline normalization.
 
 2. **LinkedIn**: API requires OAuth App approval and has strict usage policies. Consider only if business use case exists.
 
@@ -493,12 +498,19 @@ packages/
 
 ## Summary
 
-The Media Timeline project is in excellent shape. The core architecture is solid, tested, and production-ready. The remaining work is primarily **feature extensions** rather than foundational changes.
+The Media Timeline project is in excellent shape with **~90% completion**. The core architecture is solid, tested, and production-ready. Major milestones recently completed include:
+
+- **Reddit Provider**: Full implementation with OAuth flow, posts, comments, and hidden subreddits filter
+- **Twitter/X Provider**: Full implementation with OAuth PKCE, tweets, and timeline normalization
+- **Connections UI**: Complete with platform cards, settings management, pause/resume functionality
+- **Partial Filters**: Hidden repos for GitHub, hidden subreddits for Reddit
+
+The remaining work is primarily **feature extensions** rather than foundational changes.
 
 **Recommended next actions**:
 1. Implement Task 1.2 (Observability) - 1-2 days
 2. Implement Task 1.1 (Token Rotation) - 2-3 days  
-3. Implement Task 2.2 (Filters) - 1 day
-4. Seek approval on Task 2.1 (OAuth) and Task 4.2 (Search) strategies
+3. Complete filters for remaining platforms - 1 day
+4. Implement OAuth for GitHub and YouTube - 2-3 days
 
-Total estimated effort for all remaining features: **~4,000 LOC** / **6-8 weeks** with 1-2 developers.
+Total estimated effort for all remaining features: **~2,500 LOC** / **4-5 weeks** with 1-2 developers.

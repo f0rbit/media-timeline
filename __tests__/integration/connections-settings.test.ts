@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { ACCOUNTS, API_KEYS, GITHUB_FIXTURES, USERS } from "./fixtures";
+import { ACCOUNTS, API_KEYS, USERS } from "./fixtures";
 import { type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedUser } from "./setup";
 
 type ErrorResponse = { error: string; message: string };

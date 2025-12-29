@@ -1,6 +1,7 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { RedditComment, RedditPost, TimelineItem } from "./schema";
 import { createRedditCommentsStore, createRedditPostsStore } from "./storage";
+import { truncate } from "./utils";
 
 export type RedditTimelineData = {
 	posts: RedditPost[];
@@ -8,24 +9,22 @@ export type RedditTimelineData = {
 };
 
 export async function loadRedditDataForAccount(backend: Backend, accountId: string): Promise<RedditTimelineData> {
-	const posts: RedditPost[] = [];
-	const comments: RedditComment[] = [];
-
-	const postsStoreResult = createRedditPostsStore(backend, accountId);
-	if (postsStoreResult.ok) {
-		const snapshotResult = await postsStoreResult.value.store.get_latest();
-		if (snapshotResult.ok && snapshotResult.value) {
-			posts.push(...snapshotResult.value.data.posts);
-		}
-	}
-
-	const commentsStoreResult = createRedditCommentsStore(backend, accountId);
-	if (commentsStoreResult.ok) {
-		const snapshotResult = await commentsStoreResult.value.store.get_latest();
-		if (snapshotResult.ok && snapshotResult.value) {
-			comments.push(...snapshotResult.value.data.comments);
-		}
-	}
+	const [posts, comments] = await Promise.all([
+		(async (): Promise<RedditPost[]> => {
+			const storeResult = createRedditPostsStore(backend, accountId);
+			if (!storeResult.ok) return [];
+			const snapshotResult = await storeResult.value.store.get_latest();
+			if (!snapshotResult.ok) return [];
+			return snapshotResult.value.data.posts;
+		})(),
+		(async (): Promise<RedditComment[]> => {
+			const storeResult = createRedditCommentsStore(backend, accountId);
+			if (!storeResult.ok) return [];
+			const snapshotResult = await storeResult.value.store.get_latest();
+			if (!snapshotResult.ok) return [];
+			return snapshotResult.value.data.comments;
+		})(),
+	]);
 
 	console.log(`[loadRedditDataForAccount] Loaded: ${posts.length} posts, ${comments.length} comments`);
 	return { posts, comments };
@@ -34,12 +33,6 @@ export async function loadRedditDataForAccount(backend: Backend, accountId: stri
 const truncateContent = (content: string, maxLength = 200): string => {
 	if (content.length <= maxLength) return content;
 	return `${content.slice(0, maxLength - 3)}...`;
-};
-
-const truncateTitle = (text: string, maxLength = 72): string => {
-	const singleLine = text.replace(/\s+/g, " ").trim();
-	if (singleLine.length <= maxLength) return singleLine;
-	return `${singleLine.slice(0, maxLength - 3)}...`;
 };
 
 export function normalizeReddit(data: RedditTimelineData, _username: string): TimelineItem[] {
@@ -69,6 +62,7 @@ export function normalizeReddit(data: RedditTimelineData, _username: string): Ti
 				has_media: hasMedia,
 				is_reply: false,
 				is_repost: false,
+				subreddit: post.subreddit,
 			},
 		});
 	}
@@ -82,14 +76,14 @@ export function normalizeReddit(data: RedditTimelineData, _username: string): Ti
 			platform: "reddit",
 			type: "comment",
 			timestamp,
-			title: truncateTitle(comment.body),
+			title: truncate(comment.body),
 			url: `https://reddit.com${comment.permalink}`,
 			payload: {
 				type: "comment",
 				content: comment.body,
 				author_handle: comment.author,
 				parent_title: comment.link_title,
-				parent_url: `https://reddit.com${comment.link_permalink}`,
+				parent_url: comment.link_permalink.startsWith("http") ? comment.link_permalink : `https://reddit.com${comment.link_permalink}`,
 				subreddit: comment.subreddit,
 				score: comment.score,
 				is_op: comment.is_submitter,

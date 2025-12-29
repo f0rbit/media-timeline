@@ -1,1 +1,1 @@
-export type { AppContext, DrizzleDB, GitHubProviderLike } from "./context";
+export type { AppContext, DrizzleDB, GitHubProviderLike, TwitterProviderLike } from "./context";

@@ -124,11 +124,11 @@ const handleYouTubeResponse = async (response: Response): Promise<YouTubeRaw> =>
 	return validated.data;
 };
 
-const tryCatchAsync = async <T, E>(fn: () => Promise<T>, mapError: (e: unknown) => E): Promise<Result<T, E>> => {
+const try_catch_async_local = async <T, E>(fn: () => Promise<T>, map_error: (e: unknown) => E): Promise<Result<T, E>> => {
 	try {
 		return ok(await fn());
 	} catch (e) {
-		return err(mapError(e));
+		return err(map_error(e));
 	}
 };
 
@@ -149,7 +149,7 @@ export class YouTubeProvider implements Provider<YouTubeRaw> {
 		});
 		const url = `https://www.googleapis.com/youtube/v3/playlistItems?${params}`;
 
-		return tryCatchAsync(
+		return try_catch_async_local(
 			async () =>
 				handleYouTubeResponse(
 					await fetch(url, {

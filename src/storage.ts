@@ -23,7 +23,7 @@ import {
 	TwitterTweetsStoreSchema,
 	YouTubeRawSchema,
 } from "./schema";
-import { type Result, err, ok } from "./utils";
+import { type Result, err, ok, pipe } from "./utils";
 
 export type CorpusError = { kind: "store_not_found"; store_id: string };
 
@@ -43,6 +43,68 @@ export type TwitterMetaStoreId = `twitter/${string}/meta`;
 export type TwitterTweetsStoreId = `twitter/${string}/tweets`;
 
 export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId | RedditMetaStoreId | RedditPostsStoreId | RedditCommentsStoreId | TwitterMetaStoreId | TwitterTweetsStoreId;
+
+export type ParsedStoreId =
+	| { type: "github_meta"; accountId: string }
+	| { type: "github_commits"; accountId: string; owner: string; repo: string; branch: string }
+	| { type: "github_prs"; accountId: string; owner: string; repo: string }
+	| { type: "reddit_meta"; accountId: string }
+	| { type: "reddit_posts"; accountId: string }
+	| { type: "reddit_comments"; accountId: string }
+	| { type: "twitter_meta"; accountId: string }
+	| { type: "twitter_tweets"; accountId: string }
+	| { type: "raw"; platform: string; accountId: string };
+
+export const parseStoreId = (storeId: string): Result<ParsedStoreId, { kind: "invalid_store_id"; storeId: string }> => {
+	const parts = storeId.split("/");
+
+	// github/{accountId}/meta
+	if (parts[0] === "github" && parts[2] === "meta" && parts[1]) {
+		return ok({ type: "github_meta", accountId: parts[1] });
+	}
+
+	// github/{accountId}/commits/{owner}/{repo}/{branch}
+	if (parts[0] === "github" && parts[2] === "commits" && parts[1] && parts[3] && parts[4] && parts[5]) {
+		return ok({ type: "github_commits", accountId: parts[1], owner: parts[3], repo: parts[4], branch: parts[5] });
+	}
+
+	// github/{accountId}/prs/{owner}/{repo}
+	if (parts[0] === "github" && parts[2] === "prs" && parts[1] && parts[3] && parts[4]) {
+		return ok({ type: "github_prs", accountId: parts[1], owner: parts[3], repo: parts[4] });
+	}
+
+	// reddit/{accountId}/meta
+	if (parts[0] === "reddit" && parts[2] === "meta" && parts[1]) {
+		return ok({ type: "reddit_meta", accountId: parts[1] });
+	}
+
+	// reddit/{accountId}/posts
+	if (parts[0] === "reddit" && parts[2] === "posts" && parts[1]) {
+		return ok({ type: "reddit_posts", accountId: parts[1] });
+	}
+
+	// reddit/{accountId}/comments
+	if (parts[0] === "reddit" && parts[2] === "comments" && parts[1]) {
+		return ok({ type: "reddit_comments", accountId: parts[1] });
+	}
+
+	// twitter/{accountId}/meta
+	if (parts[0] === "twitter" && parts[2] === "meta" && parts[1]) {
+		return ok({ type: "twitter_meta", accountId: parts[1] });
+	}
+
+	// twitter/{accountId}/tweets
+	if (parts[0] === "twitter" && parts[2] === "tweets" && parts[1]) {
+		return ok({ type: "twitter_tweets", accountId: parts[1] });
+	}
+
+	// raw/{platform}/{accountId}
+	if (parts[0] === "raw" && parts[1] && parts[2]) {
+		return ok({ type: "raw", platform: parts[1], accountId: parts[2] });
+	}
+
+	return err({ kind: "invalid_store_id", storeId });
+};
 
 export const rawStoreId = (platform: string, accountId: string): RawStoreId => `raw/${platform}/${accountId}`;
 export const timelineStoreId = (userId: string): TimelineStoreId => `timeline/${userId}`;

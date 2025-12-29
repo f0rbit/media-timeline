@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type DevpadRaw, type DevpadTask, DevpadTaskSchema, type TaskPayload, type TimelineItem } from "../schema";
-import { tryCatchAsync } from "../utils";
+import { try_catch_async } from "../utils";
 import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderControlMethods, createMemoryProviderState, simulateErrors } from "./memory-base";
 import { type FetchResult, type Provider, type ProviderError, toProviderError } from "./types";
 
@@ -42,7 +42,7 @@ export class DevpadProvider implements Provider<DevpadRaw> {
 	fetch(token: string): Promise<FetchResult<DevpadRaw>> {
 		const url = "https://devpad.tools/api/v0/tasks";
 
-		return tryCatchAsync(
+		return try_catch_async(
 			async () =>
 				handleDevpadResponse(
 					await fetch(url, {

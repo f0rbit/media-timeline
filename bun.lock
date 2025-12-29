@@ -5,7 +5,7 @@
     "": {
       "name": "media-timeline",
       "dependencies": {
-        "@f0rbit/corpus": "^0.2.0",
+        "@f0rbit/corpus": "0.2.2",
         "@xdevplatform/xdk": "^0.3.0",
         "drizzle-orm": "^0.44.7",
         "hono": "^4.10.7",
@@ -209,7 +209,7 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
 
-    "@f0rbit/corpus": ["@f0rbit/corpus@0.2.0", "", { "dependencies": { "drizzle-orm": "^0.44.7" }, "peerDependencies": { "typescript": "^5", "zod": "^3" } }, "sha512-Hwm+PoJKsEJxTtvji95N7vchWQdY5dECYT7tenm+9A1Y81PnMAjnwWiKy+3bjUmD7B/+g3HyJmshYQR4ouC+6A=="],
+    "@f0rbit/corpus": ["@f0rbit/corpus@0.2.2", "", { "dependencies": { "drizzle-orm": "^0.44.7" }, "peerDependencies": { "typescript": "^5", "zod": "^3" } }, "sha512-/iyIhaOZswFXO6AIIYa8LXrXwv0FJayqYM86Um0udN4VdaliffR8KrBAk6V47g1guKnRxpSdR5f8ehae4PBRaw=="],
 
     "@fastify/busboy": ["@fastify/busboy@2.1.1", "", {}, "sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA=="],
 

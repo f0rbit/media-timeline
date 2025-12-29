@@ -1,5 +1,8 @@
 {
 	"$schema": "https://biomejs.dev/schemas/1.9.4/schema.json",
+	"files": {
+		"ignore": ["node_modules", "local", "dist", ".astro", ".sst", "bun.lock"]
+	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
@@ -17,6 +20,16 @@
 		}
 	},
 	"linter": {
-		"enabled": true
+		"enabled": true,
+		"rules": {
+			"style": {
+				"noNonNullAssertion": "error"
+			},
+			"a11y": {
+				"noSvgWithoutTitle": "off",
+				"useButtonType": "off",
+				"noLabelWithoutControl": "off"
+			}
+		}
 	}
 }

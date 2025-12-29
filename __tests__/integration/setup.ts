@@ -10,12 +10,12 @@ import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, Redd
 import { connectionRoutes, timelineRoutes } from "../../src/routes";
 import type { Platform } from "../../src/schema";
 import * as schema from "../../src/schema/database";
-import { encrypt, err, hashApiKey, ok, unwrap, unwrapErr, uuid } from "../../src/utils";
+import { encrypt, err, hash_api_key, ok, unwrap, unwrap_err, uuid } from "../../src/utils";
 import { ACCOUNTS } from "./fixtures";
 
 // Note: apiKeys used by seedApiKey comes from schema via the drizzle instance
 
-export { hashApiKey };
+export { hash_api_key };
 export type { Platform };
 
 const RawDataSchema = z.record(z.unknown());
@@ -622,7 +622,7 @@ export const seedRateLimit = async (ctx: TestContext, accountId: string, state: 
 
 export const seedApiKey = async (ctx: TestContext, userId: string, keyValue: string, name?: string): Promise<string> => {
 	const keyId = uuid();
-	const keyHash = await hashApiKey(keyValue);
+	const keyHash = await hash_api_key(keyValue);
 	const timestamp = now();
 
 	await ctx.d1
@@ -679,4 +679,4 @@ export const getUserAccounts = async (ctx: TestContext, userId: string) =>
 		.bind(userId)
 		.all();
 
-export { unwrap as assertResultOk, unwrapErr as assertResultErr };
+export { unwrap as assertResultOk, unwrap_err as assertResultErr };

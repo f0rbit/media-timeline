@@ -26,6 +26,7 @@ export const PostPayloadSchema = z.object({
 	has_media: z.boolean().default(false),
 	is_reply: z.boolean().default(false),
 	is_repost: z.boolean().default(false),
+	subreddit: z.string().optional(),
 });
 
 export const VideoPayloadSchema = z.object({
@@ -127,6 +128,7 @@ export type CommitPayload = z.infer<typeof CommitPayloadSchema>;
 export type PostPayload = z.infer<typeof PostPayloadSchema>;
 export type VideoPayload = z.infer<typeof VideoPayloadSchema>;
 export type TaskPayload = z.infer<typeof TaskPayloadSchema>;
+export type PRCommit = z.infer<typeof PRCommitSchema>;
 export type PullRequestPayload = z.infer<typeof PullRequestPayloadSchema>;
 export type CommentPayload = z.infer<typeof CommentPayloadSchema>;
 export type Payload = z.infer<typeof PayloadSchema>;

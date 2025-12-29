@@ -65,8 +65,8 @@ export default function ConnectionCard(props: Props) {
 				</div>
 			</div>
 
-			<Show when={props.connection.last_fetched_at}>
-				<small class="tertiary text-xs">Last synced: {formatRelativeTime(props.connection.last_fetched_at!)}</small>
+			<Show when={props.connection.last_fetched_at} keyed>
+				{lastFetched => <small class="tertiary text-xs">Last synced: {formatRelativeTime(lastFetched)}</small>}
 			</Show>
 
 			<Show when={error()}>

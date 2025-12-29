@@ -1,3 +1,7 @@
+import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo, PRCommit, Platform, PlatformSettings, PostPayload, PullRequestPayload, TimelineItem, TimelineType } from "@schema/types";
+
+export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo, Platform, PlatformSettings, PostPayload, PRCommit, PullRequestPayload, TimelineItem, TimelineType };
+
 type ApiClientConfig = {
 	baseUrl: string;
 	apiKey: string | null;
@@ -8,11 +12,11 @@ let config: ApiClientConfig = {
 	apiKey: null,
 };
 
-export function configureApi(newConfig: Partial<ApiClientConfig>) {
+export function configureApi(newConfig: Partial<ApiClientConfig>): void {
 	config = { ...config, ...newConfig };
 }
 
-export function setApiKey(key: string) {
+export function setApiKey(key: string): void {
 	config.apiKey = key;
 }
 
@@ -21,7 +25,7 @@ export function getApiKey(): string | null {
 }
 
 const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = "mt_dev_" + btoa(MOCK_USER_ID).slice(0, 24);
+const MOCK_API_KEY = `mt_dev_${btoa(MOCK_USER_ID).slice(0, 24)}`;
 
 export function getMockApiKey(): string {
 	return MOCK_API_KEY;
@@ -31,7 +35,7 @@ export function getMockUserId(): string {
 	return MOCK_USER_ID;
 }
 
-export function initMockAuth() {
+export function initMockAuth(): void {
 	if (import.meta.env.DEV) {
 		setApiKey(MOCK_API_KEY);
 	}
@@ -59,7 +63,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<A
 	};
 
 	if (config.apiKey) {
-		requestHeaders["Authorization"] = `Bearer ${config.apiKey}`;
+		requestHeaders.Authorization = `Bearer ${config.apiKey}`;
 	}
 
 	const url = `${config.baseUrl}/api/v1${path}`;
@@ -103,10 +107,6 @@ export const api = {
 	delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
 
-export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
-
-export type TimelineType = "commit" | "post" | "video" | "task" | "pull_request" | "comment";
-
 export type Connection = {
 	account_id: string;
 	platform: Platform;
@@ -115,8 +115,6 @@ export type Connection = {
 	last_fetched_at: string | null;
 	created_at: string;
 };
-
-export type PlatformSettings = Record<string, unknown>;
 
 export type ConnectionWithSettings = Connection & {
 	settings?: PlatformSettings;
@@ -130,91 +128,9 @@ export type ConnectionsWithSettingsResponse = {
 	accounts: ConnectionWithSettings[];
 };
 
-export type GitHubRepo = {
-	full_name: string;
-	name: string;
-	owner: string;
-	is_private: boolean;
-	default_branch: string;
-	pushed_at: string | null;
-};
-
-export type PRCommit = {
-	sha: string;
-	message: string;
-	url: string;
-};
-
-export type CommitPayload = {
-	type: "commit";
-	sha: string;
-	message: string;
-	repo: string;
-	branch: string;
-};
-
-export type PullRequestPayload = {
-	type: "pull_request";
-	repo: string;
-	number: number;
-	title: string;
-	state: "open" | "closed" | "merged";
-	action: string;
-	head_ref: string;
-	base_ref: string;
-	commits: PRCommit[];
-	commit_shas?: string[];
-};
-
-export type CommentPayload = {
-	type: "comment";
-	content: string;
-	author_handle: string;
-	parent_title: string;
-	parent_url: string;
-	subreddit: string;
-	score: number;
-	is_op: boolean;
-};
-
-export type PostPayload = {
-	type: "post";
-	title: string;
-	content: string;
-	author_handle: string;
-	subreddit: string;
-	score: number;
-	num_comments: number;
-	is_self: boolean;
-};
-
-export type TimelineItem = {
-	id: string;
-	platform: Platform;
-	type: TimelineType;
-	timestamp: string;
-	title: string;
-	url: string;
-	payload: CommitPayload | PullRequestPayload | CommentPayload | PostPayload | Record<string, unknown>;
-};
-
-export type CommitGroup = {
-	type: "commit_group";
-	repo: string;
-	branch: string;
-	date: string;
-	commits: TimelineItem[];
-	total_additions: number;
-	total_deletions: number;
-	total_files_changed: number;
-};
-
 export type TimelineEntry = TimelineItem | CommitGroup;
 
-export type TimelineGroup = {
-	date: string;
-	items: TimelineEntry[];
-};
+export type TimelineGroup = DateGroup;
 
 export type TimelineResponse = {
 	data: {
