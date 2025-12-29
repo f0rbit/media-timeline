@@ -8,8 +8,13 @@ export {
 	try_catch_async,
 	fetch_result,
 	pipe,
+	at,
+	first,
+	last,
+	merge_deep,
 	type Pipe,
 	type FetchError,
+	type DeepPartial,
 } from "@f0rbit/corpus";
 
 import { type FetchError, type Result, err, ok, pipe, try_catch, try_catch_async } from "@f0rbit/corpus";
@@ -117,48 +122,6 @@ export const hash_sha256 = async (data: string): Promise<Uint8Array> => {
 };
 
 export const hash_api_key = async (key: string): Promise<string> => to_hex(await hash_sha256(key));
-
-// Merge utilities
-export type DeepPartial<T> = T extends object ? { [P in keyof T]?: DeepPartial<T[P]> } : T;
-
-export const merge_deep = <T extends Record<string, unknown>>(base: T, overrides: DeepPartial<T>): T => {
-	const result = { ...base };
-	for (const key in overrides) {
-		const value = overrides[key as keyof typeof overrides];
-		if (value !== undefined && typeof value === "object" && !Array.isArray(value) && value !== null) {
-			(result as Record<string, unknown>)[key] = merge_deep(result[key] as Record<string, unknown>, value as DeepPartial<Record<string, unknown>>);
-		} else if (value !== undefined) {
-			(result as Record<string, unknown>)[key] = value;
-		}
-	}
-	return result;
-};
-
-// Array access utilities
-export const at = <T>(array: readonly T[], index: number): Result<T, { kind: "index_out_of_bounds"; index: number; length: number }> => {
-	if (index < 0 || index >= array.length) {
-		return err({ kind: "index_out_of_bounds", index, length: array.length });
-	}
-	const element = array[index];
-	if (element === undefined) {
-		return err({ kind: "index_out_of_bounds", index, length: array.length });
-	}
-	return ok(element);
-};
-
-export const first = <T>(array: readonly T[]): Result<T, { kind: "empty_array" }> => {
-	if (array.length === 0) {
-		return err({ kind: "empty_array" });
-	}
-	return ok(array[0] as T);
-};
-
-export const last = <T>(array: readonly T[]): Result<T, { kind: "empty_array" }> => {
-	if (array.length === 0) {
-		return err({ kind: "empty_array" });
-	}
-	return ok(array[array.length - 1] as T);
-};
 
 // String utilities
 export const truncate = (text: string, max_length = 72): string => {
