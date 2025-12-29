@@ -3,8 +3,8 @@ import { normalizeBluesky, normalizeGitHub } from "../../src/platforms";
 import type { CommitGroup, TimelineItem } from "../../src/schema";
 import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "../../src/timeline";
 import { first, unwrap } from "../../src/utils";
-import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
-import { type TestContext, createTestContext, seedAccount, seedUser } from "./setup";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, PROFILES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
+import { type TestContext, createTestContext, seedAccount, seedProfile, seedUser } from "./setup";
 
 const isCommitGroup = (entry: TimelineEntry): entry is CommitGroup => entry.type === "commit_group";
 
@@ -255,7 +255,8 @@ describe("timeline consistency", () => {
 	describe("deduplication", () => {
 		it("same content produces same content_hash", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const store = ctx.corpus.createRawStore("github", ACCOUNTS.alice_github.id);
 
@@ -275,7 +276,8 @@ describe("timeline consistency", () => {
 
 		it("different content produces different content_hash", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const store = ctx.corpus.createRawStore("github", ACCOUNTS.alice_github.id);
 
@@ -295,7 +297,8 @@ describe("timeline consistency", () => {
 
 		it("stores with parent refs to raw snapshots", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const rawStore = ctx.corpus.createRawStore("github", ACCOUNTS.alice_github.id);
 			const timelineStore = ctx.corpus.createTimelineStore(USERS.alice.id);
@@ -334,7 +337,8 @@ describe("timeline consistency", () => {
 
 		it("timeline version changes when raw data changes", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const rawStore = ctx.corpus.createRawStore("github", ACCOUNTS.alice_github.id);
 			const timelineStore = ctx.corpus.createTimelineStore(USERS.alice.id);

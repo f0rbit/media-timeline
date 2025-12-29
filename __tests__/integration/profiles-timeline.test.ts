@@ -1,12 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { ACCOUNTS, API_KEYS, PROFILES, USERS } from "./fixtures";
-import { type ProfileFilterSeed, type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedProfile, seedProfileFilter, seedProfileVisibility, seedUser } from "./setup";
-import { createGitHubCommitsStore, createGitHubMetaStore, createRedditPostsStore, createTwitterTweetsStore } from "../../src/storage";
-import { unwrap } from "../../src/utils";
 import type { GitHubRepoCommitsStore } from "../../src/schema/github-commits";
 import type { GitHubMetaStore } from "../../src/schema/github-meta";
 import type { RedditPostsStore } from "../../src/schema/reddit-posts";
 import type { TwitterTweetsStore } from "../../src/schema/twitter-tweets";
+import { createGitHubCommitsStore, createGitHubMetaStore, createRedditPostsStore, createTwitterTweetsStore } from "../../src/storage";
+import { unwrap } from "../../src/utils";
+import { ACCOUNTS, API_KEYS, PROFILES, USERS } from "./fixtures";
+import { type ProfileFilterSeed, type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedProfile, seedProfileFilter, seedUser } from "./setup";
 
 type TimelineItem = {
 	id: string;
@@ -200,11 +200,11 @@ describe("Profile Timeline API", () => {
 
 	describe("GET /api/v1/profiles/:slug/timeline", () => {
 		describe("Basic timeline generation", () => {
-			it("returns full timeline for profile with all accounts visible", async () => {
+			it("returns full timeline for profile with all accounts", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("feat: add feature", "2024-01-15T14:00:00Z")]);
@@ -226,8 +226,8 @@ describe("Profile Timeline API", () => {
 
 			it("returns correct response format with meta and data.groups", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("initial commit", "2024-01-15T12:00:00Z")]);
@@ -248,63 +248,12 @@ describe("Profile Timeline API", () => {
 				expect(data.meta).toHaveProperty("profile_name");
 				expect(data.meta).toHaveProperty("generated_at");
 			});
-		});
 
-		describe("Visibility filtering", () => {
-			it("excludes content from hidden accounts", async () => {
+			it("shows all accounts on a profile", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
-				await seedProfileVisibility(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github.id, true);
-				await seedProfileVisibility(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit.id, false);
-				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
-
-				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("feat: visible", "2024-01-15T14:00:00Z")]);
-
-				await seedRedditPosts(ctx, ACCOUNTS.alice_reddit.id, "alice_redditor", [makeRedditPost("programming", "Hidden post", "2024-01-15T10:00:00Z")]);
-
-				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
-					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
-				});
-
-				expect(res.status).toBe(200);
-				const data = (await res.json()) as ProfileTimelineResponse;
-				expect(data.data.groups).toHaveLength(1);
-				const items = flattenItems(data.data.groups);
-				expect(items).toHaveLength(1);
-				expect(items[0]?.platform).toBe("github");
-			});
-
-			it("returns empty timeline when all accounts are hidden", async () => {
-				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
-				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
-				await seedProfileVisibility(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github.id, false);
-				await seedProfileVisibility(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit.id, false);
-				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
-
-				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("commit", "2024-01-15T14:00:00Z")]);
-
-				await seedRedditPosts(ctx, ACCOUNTS.alice_reddit.id, "alice_redditor", [makeRedditPost("programming", "post", "2024-01-15T10:00:00Z")]);
-
-				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
-					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
-				});
-
-				expect(res.status).toBe(200);
-				const data = (await res.json()) as ProfileTimelineResponse;
-				expect(data.data.groups).toHaveLength(0);
-			});
-
-			it("shows all accounts when no visibility records exist (default visible)", async () => {
-				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
-				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("commit", "2024-01-15T14:00:00Z")]);
@@ -326,8 +275,8 @@ describe("Profile Timeline API", () => {
 		describe("Content filters - Include", () => {
 			it("include filter for specific repo only shows that repo commits", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_work);
+				await seedAccount(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_github);
 				await seedProfileFilter(ctx, PROFILES.alice_work.id, {
 					account_id: ACCOUNTS.alice_github.id,
 					filter_type: "include",
@@ -358,8 +307,8 @@ describe("Profile Timeline API", () => {
 
 			it("include filter for subreddit only shows posts from that subreddit", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_work);
+				await seedAccount(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_reddit);
 				await seedProfileFilter(ctx, PROFILES.alice_work.id, {
 					account_id: ACCOUNTS.alice_reddit.id,
 					filter_type: "include",
@@ -393,8 +342,8 @@ describe("Profile Timeline API", () => {
 		describe("Content filters - Exclude", () => {
 			it("exclude filter for repo hides that repo commits", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 				await seedProfileFilter(ctx, PROFILES.alice_main.id, {
 					account_id: ACCOUNTS.alice_github.id,
 					filter_type: "exclude",
@@ -427,8 +376,8 @@ describe("Profile Timeline API", () => {
 
 			it("exclude filter for keyword hides matching content", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_twitter);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_twitter);
 				await seedProfileFilter(ctx, PROFILES.alice_main.id, {
 					account_id: ACCOUNTS.alice_twitter.id,
 					filter_type: "exclude",
@@ -460,13 +409,10 @@ describe("Profile Timeline API", () => {
 		});
 
 		describe("Combined filters", () => {
-			it("visibility and include filters work together", async () => {
+			it("include filter works with account on profile", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_work);
-				await seedProfileVisibility(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_github.id, true);
-				await seedProfileVisibility(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_reddit.id, false);
+				await seedAccount(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_github);
 				await seedProfileFilter(ctx, PROFILES.alice_work.id, {
 					account_id: ACCOUNTS.alice_github.id,
 					filter_type: "include",
@@ -478,8 +424,6 @@ describe("Profile Timeline API", () => {
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "work-project", [makeGitHubCommit("work commit", "2024-01-15T14:00:00Z")]);
 
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "personal-project", [makeGitHubCommit("personal commit", "2024-01-15T12:00:00Z")]);
-
-				await seedRedditPosts(ctx, ACCOUNTS.alice_reddit.id, "alice_redditor", [makeRedditPost("programming", "reddit post", "2024-01-15T10:00:00Z")]);
 
 				const app = createTestApp(ctx);
 				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_work.slug}/timeline`, {
@@ -497,8 +441,8 @@ describe("Profile Timeline API", () => {
 
 			it.skip("multiple filters on same account work together", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 				await seedProfileFilter(ctx, PROFILES.alice_main.id, {
 					account_id: ACCOUNTS.alice_github.id,
 					filter_type: "include",
@@ -554,9 +498,9 @@ describe("Profile Timeline API", () => {
 
 			it("returns unfiltered timeline for profile with no filters", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("commit", "2024-01-15T14:00:00Z")]);
@@ -587,25 +531,6 @@ describe("Profile Timeline API", () => {
 				const data = (await res.json()) as ErrorResponse;
 				expect(data.error).toBe("Not found");
 				expect(data.message).toContain("Profile not found");
-			});
-
-			it("removes empty date groups after filtering", async () => {
-				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
-				await seedProfileVisibility(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github.id, false);
-				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
-
-				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("commit", "2024-01-15T14:00:00Z"), makeGitHubCommit("older commit", "2024-01-14T14:00:00Z")]);
-
-				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
-					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
-				});
-
-				expect(res.status).toBe(200);
-				const data = (await res.json()) as ProfileTimelineResponse;
-				expect(data.data.groups).toHaveLength(0);
 			});
 		});
 
@@ -656,8 +581,8 @@ describe("Profile Timeline API", () => {
 		describe("Timeline data handling", () => {
 			it("returns empty groups when no data in stores", async () => {
 				await seedUser(ctx, USERS.alice);
-				await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+				await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				const app = createTestApp(ctx);

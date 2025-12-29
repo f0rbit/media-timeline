@@ -11,7 +11,7 @@ import { connectionRoutes, profileRoutes, timelineRoutes } from "../../src/route
 import type { Platform } from "../../src/schema";
 import * as schema from "../../src/schema/database";
 import { encrypt, err, hash_api_key, ok, unwrap, unwrap_err, uuid } from "../../src/utils";
-import { ACCOUNTS } from "./fixtures";
+import { ACCOUNTS, PROFILES } from "./fixtures";
 
 // Note: apiKeys used by seedApiKey comes from schema via the drizzle instance
 
@@ -21,7 +21,6 @@ export type { Platform };
 const RawDataSchema = z.record(z.unknown());
 const TimelineDataSchema = z.record(z.unknown());
 const GitHubMetaStoreSchema = z.record(z.unknown());
-export type MemberRole = "owner" | "member";
 
 export type UserSeed = {
 	id: string;
@@ -133,8 +132,23 @@ const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS profiles (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id),
+    slug TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    theme TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_user_slug ON profiles(user_id, slug);
+
   CREATE TABLE IF NOT EXISTS accounts (
     id TEXT PRIMARY KEY,
+    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
     platform TEXT NOT NULL,
     platform_user_id TEXT,
     platform_username TEXT,
@@ -147,19 +161,8 @@ const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_accounts_platform_user ON accounts(platform, platform_user_id);
-
-  CREATE TABLE IF NOT EXISTS account_members (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id),
-    account_id TEXT NOT NULL REFERENCES accounts(id),
-    role TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    UNIQUE(user_id, account_id)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_account_members_user ON account_members(user_id);
-  CREATE INDEX IF NOT EXISTS idx_account_members_account ON account_members(account_id);
+  CREATE INDEX IF NOT EXISTS idx_accounts_profile ON accounts(profile_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_profile_platform_user ON accounts(profile_id, platform, platform_user_id);
 
   CREATE TABLE IF NOT EXISTS api_keys (
     id TEXT PRIMARY KEY,
@@ -220,32 +223,6 @@ const SCHEMA = `
     FOREIGN KEY (child_store_id, child_version) REFERENCES corpus_snapshots(store_id, version),
     FOREIGN KEY (parent_store_id, parent_version) REFERENCES corpus_snapshots(store_id, version)
   );
-
-  CREATE TABLE IF NOT EXISTS profiles (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id),
-    slug TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    theme TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_user_slug ON profiles(user_id, slug);
-
-  CREATE TABLE IF NOT EXISTS profile_visibility (
-    id TEXT PRIMARY KEY,
-    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
-    is_visible INTEGER DEFAULT 1,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_profile_visibility_profile ON profile_visibility(profile_id);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_profile_visibility_unique ON profile_visibility(profile_id, account_id);
 
   CREATE TABLE IF NOT EXISTS profile_filters (
     id TEXT PRIMARY KEY,
@@ -664,7 +641,7 @@ export const seedUser = async (ctx: TestContext, user: UserSeed): Promise<void> 
 		.run();
 };
 
-export const seedAccount = async (ctx: TestContext, userId: string, account: AccountSeed, role: MemberRole = "owner"): Promise<void> => {
+export const seedAccount = async (ctx: TestContext, profileId: string, account: AccountSeed): Promise<void> => {
 	const timestamp = now();
 	const encryptedAccessToken = await encryptToken(account.access_token, ctx.env.EncryptionKey);
 	const encryptedRefreshToken = account.refresh_token ? await encryptToken(account.refresh_token, ctx.env.EncryptionKey) : null;
@@ -672,15 +649,13 @@ export const seedAccount = async (ctx: TestContext, userId: string, account: Acc
 	await ctx.d1
 		.prepare(`
       INSERT INTO accounts (
-        id, platform, platform_user_id, platform_username,
+        id, profile_id, platform, platform_user_id, platform_username,
         access_token_encrypted, refresh_token_encrypted,
         is_active, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `)
-		.bind(account.id, account.platform, account.platform_user_id ?? null, account.platform_username ?? null, encryptedAccessToken, encryptedRefreshToken, (account.is_active ?? true) ? 1 : 0, timestamp, timestamp)
+		.bind(account.id, profileId, account.platform, account.platform_user_id ?? null, account.platform_username ?? null, encryptedAccessToken, encryptedRefreshToken, (account.is_active ?? true) ? 1 : 0, timestamp, timestamp)
 		.run();
-
-	await ctx.d1.prepare("INSERT INTO account_members (id, user_id, account_id, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(uuid(), userId, account.id, role, timestamp).run();
 };
 
 export const seedRateLimit = async (ctx: TestContext, accountId: string, state: RateLimitSeed): Promise<void> => {
@@ -719,11 +694,6 @@ export const seedApiKey = async (ctx: TestContext, userId: string, keyValue: str
 	return keyId;
 };
 
-export const addAccountMember = async (ctx: TestContext, userId: string, accountId: string, role: MemberRole): Promise<void> => {
-	const timestamp = now();
-	await ctx.d1.prepare("INSERT INTO account_members (id, user_id, account_id, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(uuid(), userId, accountId, role, timestamp).run();
-};
-
 export const seedProfile = async (ctx: TestContext, userId: string, profile: ProfileSeed): Promise<void> => {
 	const timestamp = now();
 	await ctx.d1
@@ -732,17 +702,6 @@ export const seedProfile = async (ctx: TestContext, userId: string, profile: Pro
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 		.bind(profile.id, userId, profile.slug, profile.name, profile.description ?? null, profile.theme ?? null, timestamp, timestamp)
-		.run();
-};
-
-export const seedProfileVisibility = async (ctx: TestContext, profileId: string, accountId: string, isVisible: boolean): Promise<void> => {
-	const timestamp = now();
-	await ctx.d1
-		.prepare(`
-      INSERT INTO profile_visibility (id, profile_id, account_id, is_visible, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `)
-		.bind(uuid(), profileId, accountId, isVisible ? 1 : 0, timestamp, timestamp)
 		.run();
 };
 
@@ -792,19 +751,24 @@ export const setupGitHubProvider = (ctx: TestContext, data: LegacyGitHubRaw): vo
 	}
 };
 
-export const getAccountMembers = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM account_members WHERE account_id = ?").bind(accountId).all();
-
 export const getRateLimit = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM rate_limits WHERE account_id = ?").bind(accountId).first();
 
 export const getUserAccounts = async (ctx: TestContext, userId: string) =>
 	ctx.d1
 		.prepare(`
-      SELECT a.*, am.role
+      SELECT a.*, p.user_id
       FROM accounts a
-      INNER JOIN account_members am ON a.id = am.account_id
-      WHERE am.user_id = ?
+      INNER JOIN profiles p ON a.profile_id = p.id
+      WHERE p.user_id = ?
     `)
 		.bind(userId)
 		.all();
+
+export const getProfileAccounts = async (ctx: TestContext, profileId: string) => ctx.d1.prepare("SELECT * FROM accounts WHERE profile_id = ?").bind(profileId).all();
+
+export const seedUserWithProfile = async (ctx: TestContext, user: UserSeed, profile: ProfileSeed): Promise<void> => {
+	await seedUser(ctx, user);
+	await seedProfile(ctx, user.id, profile);
+};
 
 export { unwrap as assertResultOk, unwrap_err as assertResultErr };

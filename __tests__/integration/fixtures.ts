@@ -538,6 +538,16 @@ export const PROFILES = {
 		slug: "main",
 		name: "Bob Main Profile",
 	},
+	charlie_main: {
+		id: "profile-charlie-main",
+		slug: "main",
+		name: "Charlie Main Profile",
+	},
+	org_admin_main: {
+		id: "profile-org-admin-main",
+		slug: "main",
+		name: "Org Admin Profile",
+	},
 };
 
 export const makeTimelineItem = (

@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { Hono } from "hono";
 import type { AppContext } from "../../src/infrastructure";
-import { encodeOAuthState, validateOAuthQueryKey, decodeOAuthState, validateOAuthRequest } from "../../src/oauth-helpers";
+import { decodeOAuthState, encodeOAuthState, validateOAuthQueryKey, validateOAuthRequest } from "../../src/oauth-helpers";
 import { authRoutes } from "../../src/routes";
-import { API_KEYS, USERS } from "./fixtures";
-import { type TestContext, createTestContext, seedApiKey, seedUser } from "./setup";
+import { API_KEYS, PROFILES, USERS } from "./fixtures";
+import { type TestContext, createTestContext, seedApiKey, seedProfile, seedUser } from "./setup";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -52,7 +52,7 @@ const getLocation = (res: Response): string => {
 
 const parseLocationUrl = (res: Response): URL => new URL(getLocation(res));
 
-const getStateFromResponse = (res: Response): { user_id: string; nonce: string } => {
+const getStateFromResponse = (res: Response): { user_id: string; profile_id: string; nonce: string } => {
 	const url = parseLocationUrl(res);
 	const state = url.searchParams.get("state");
 	if (!state) throw new Error("Expected state parameter but found none");
@@ -73,10 +73,11 @@ describe("GitHub OAuth Integration", () => {
 	describe("GET /api/auth/github", () => {
 		it("should redirect to GitHub with correct params", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			expect(res.status).toBe(302);
 
@@ -91,6 +92,7 @@ describe("GitHub OAuth Integration", () => {
 
 			const decodedState = getStateFromResponse(res);
 			expect(decodedState.user_id).toBe(USERS.alice.id);
+			expect(decodedState.profile_id).toBe(PROFILES.alice_main.id);
 			expect(decodedState.nonce).toBeDefined();
 		});
 
@@ -108,10 +110,11 @@ describe("GitHub OAuth Integration", () => {
 
 		it("should reject with invalid API key", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request("/api/auth/github?key=invalid-api-key");
+			const res = await app.request(`/api/auth/github?key=invalid-api-key&profile_id=${PROFILES.alice_main.id}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -119,12 +122,26 @@ describe("GitHub OAuth Integration", () => {
 			expect(location).toContain("error=github_invalid_auth");
 		});
 
-		it("should return 500 when GitHub OAuth not configured", async () => {
+		it("should reject without profile_id", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
-			const app = createGitHubOAuthTestApp(ctx, { GITHUB_CLIENT_ID: "" });
+			const app = createGitHubOAuthTestApp(ctx);
 			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+
+			expect(res.status).toBe(302);
+			const location = getLocation(res);
+			expect(location).toContain("http://localhost:4321/connections");
+			expect(location).toContain("error=github_no_profile");
+		});
+
+		it("should return 500 when GitHub OAuth not configured", async () => {
+			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
+
+			const app = createGitHubOAuthTestApp(ctx, { GITHUB_CLIENT_ID: "" });
+			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			expect(res.status).toBe(500);
 			const data = (await res.json()) as { error: string };
@@ -135,8 +152,9 @@ describe("GitHub OAuth Integration", () => {
 	describe("GET /api/auth/github/callback", () => {
 		it("should handle missing code", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 
-			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, nonce: "test-nonce" }));
+			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
 			const res = await app.request(`/api/auth/github/callback?state=${state}`);
@@ -165,7 +183,7 @@ describe("GitHub OAuth Integration", () => {
 		});
 
 		it("should handle state without user_id", async () => {
-			const stateWithoutUserId = btoa(JSON.stringify({ nonce: "test-nonce" }));
+			const stateWithoutUserId = btoa(JSON.stringify({ profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
 			const res = await app.request(`/api/auth/github/callback?code=test-code&state=${stateWithoutUserId}`);
@@ -175,8 +193,19 @@ describe("GitHub OAuth Integration", () => {
 			expect(location).toContain("error=github_invalid_state");
 		});
 
+		it("should handle state without profile_id", async () => {
+			const stateWithoutProfileId = btoa(JSON.stringify({ user_id: USERS.alice.id, nonce: "test-nonce" }));
+
+			const app = createGitHubOAuthTestApp(ctx);
+			const res = await app.request(`/api/auth/github/callback?code=test-code&state=${stateWithoutProfileId}`);
+
+			expect(res.status).toBe(302);
+			const location = getLocation(res);
+			expect(location).toContain("error=github_invalid_state");
+		});
+
 		it("should handle OAuth error from GitHub", async () => {
-			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, nonce: "test-nonce" }));
+			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
 			const res = await app.request(`/api/auth/github/callback?error=access_denied&state=${state}`);
@@ -187,7 +216,7 @@ describe("GitHub OAuth Integration", () => {
 		});
 
 		it("should handle OAuth error_description from GitHub", async () => {
-			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, nonce: "test-nonce" }));
+			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
 			const res = await app.request(`/api/auth/github/callback?error=access_denied&error_description=User%20denied%20access&state=${state}`);
@@ -199,7 +228,8 @@ describe("GitHub OAuth Integration", () => {
 
 		it("should handle unconfigured OAuth secrets in callback", async () => {
 			await seedUser(ctx, USERS.alice);
-			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, nonce: "test-nonce" }));
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx, { GITHUB_CLIENT_ID: "", GITHUB_CLIENT_SECRET: "" });
 			const res = await app.request(`/api/auth/github/callback?code=test-code&state=${state}`);
@@ -211,28 +241,31 @@ describe("GitHub OAuth Integration", () => {
 	});
 
 	describe("OAuth state encoding/decoding", () => {
-		it("should include user_id and nonce in state", async () => {
+		it("should include user_id, profile_id and nonce in state", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const decodedState = getStateFromResponse(res);
 
 			expect(decodedState.user_id).toBe(USERS.alice.id);
+			expect(decodedState.profile_id).toBe(PROFILES.alice_main.id);
 			expect(typeof decodedState.nonce).toBe("string");
 			expect(decodedState.nonce.length).toBeGreaterThan(0);
 		});
 
 		it("should generate unique nonces for each request", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
 
-			const res1 = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
-			const res2 = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+			const res1 = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res2 = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const state1 = getStateFromResponse(res1);
 			const state2 = getStateFromResponse(res2);
@@ -244,10 +277,11 @@ describe("GitHub OAuth Integration", () => {
 	describe("OAuth scope configuration", () => {
 		it("should request read:user and repo scopes", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
 			const scope = url.searchParams.get("scope");
@@ -259,10 +293,11 @@ describe("GitHub OAuth Integration", () => {
 	describe("redirect URI configuration", () => {
 		it("should use APP_URL for redirect_uri", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx, { APP_URL: "https://api.example.com" });
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
 			const redirectUri = url.searchParams.get("redirect_uri");
@@ -272,10 +307,11 @@ describe("GitHub OAuth Integration", () => {
 
 		it("should use default APP_URL when not configured", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx, { APP_URL: "" });
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
 			const redirectUri = url.searchParams.get("redirect_uri");
@@ -306,44 +342,50 @@ describe("GitHub OAuth Integration", () => {
 		it("should correctly identify different users via API key", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedUser(ctx, USERS.bob);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedProfile(ctx, USERS.bob.id, PROFILES.bob_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
 
-			const aliceRes = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
-			const bobRes = await app.request(`/api/auth/github?key=${API_KEYS.bob_primary}`);
+			const aliceRes = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const bobRes = await app.request(`/api/auth/github?key=${API_KEYS.bob_primary}&profile_id=${PROFILES.bob_main.id}`);
 
 			const aliceState = getStateFromResponse(aliceRes);
 			const bobState = getStateFromResponse(bobRes);
 
 			expect(aliceState.user_id).toBe(USERS.alice.id);
+			expect(aliceState.profile_id).toBe(PROFILES.alice_main.id);
 			expect(bobState.user_id).toBe(USERS.bob.id);
+			expect(bobState.profile_id).toBe(PROFILES.bob_main.id);
 		});
 	});
 
 	describe("encodeOAuthState helper", () => {
-		it("should encode user_id and nonce", () => {
-			const state = encodeOAuthState("test-user-id");
+		it("should encode user_id, profile_id and nonce", () => {
+			const state = encodeOAuthState("test-user-id", "test-profile-id");
 			const decoded = JSON.parse(atob(state));
 
 			expect(decoded.user_id).toBe("test-user-id");
+			expect(decoded.profile_id).toBe("test-profile-id");
 			expect(typeof decoded.nonce).toBe("string");
 			expect(decoded.nonce.length).toBeGreaterThan(0);
 		});
 
 		it("should encode extra data when provided", () => {
-			const state = encodeOAuthState("test-user-id", { custom_field: "custom_value" });
+			const state = encodeOAuthState("test-user-id", "test-profile-id", { custom_field: "custom_value" });
 			const decoded = JSON.parse(atob(state));
 
 			expect(decoded.user_id).toBe("test-user-id");
+			expect(decoded.profile_id).toBe("test-profile-id");
 			expect(decoded.nonce).toBeDefined();
 			expect(decoded.custom_field).toBe("custom_value");
 		});
 
 		it("should generate unique nonces", () => {
-			const state1 = encodeOAuthState("test-user-id");
-			const state2 = encodeOAuthState("test-user-id");
+			const state1 = encodeOAuthState("test-user-id", "test-profile-id");
+			const state2 = encodeOAuthState("test-user-id", "test-profile-id");
 
 			const decoded1 = JSON.parse(atob(state1));
 			const decoded2 = JSON.parse(atob(state2));

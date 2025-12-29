@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { handleCron } from "../../src/cron";
 import type { TimelineEntry } from "../../src/timeline";
-import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, USERS, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
-import { type TestContext, addAccountMember, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, getAccountMembers, getUserAccounts, seedAccount, seedUser, setupGitHubProvider } from "./setup";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, PROFILES, USERS, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
+import { type TestContext, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, getUserAccounts, seedAccount, seedProfile, seedUser, setupGitHubProvider } from "./setup";
 
 describe("multi-tenant", () => {
 	let ctx: TestContext;
@@ -15,109 +15,62 @@ describe("multi-tenant", () => {
 		ctx.cleanup();
 	});
 
-	describe("account sharing", () => {
-		it("shared account data appears in multiple user timelines", async () => {
+	describe("profile-based accounts", () => {
+		it("account on profile appears in user timeline", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
+			const githubData = makeGitHubRaw([makeGitHubExtendedCommit({ sha: "abc123", repo: "alice/project", message: "initial commit" })]);
 
-			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ sha: "shared123", repo: "org/shared-repo", message: "shared commit" })]);
-
-			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.alice_github.id]: githubData });
 			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
-			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
 
 			expect(aliceTimeline.ok).toBe(true);
-			expect(bobTimeline.ok).toBe(true);
-
-			if (aliceTimeline.ok && bobTimeline.ok) {
+			if (aliceTimeline.ok) {
 				const aliceData = aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
-				const bobData = bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
-
 				const aliceEntries = aliceData.groups.flatMap(g => g.items);
-				const bobEntries = bobData.groups.flatMap(g => g.items);
-
 				expect(aliceEntries.length).toBeGreaterThan(0);
-				expect(bobEntries.length).toBeGreaterThan(0);
-
-				const aliceHasShared = aliceEntries.some(e => (e.type === "commit_group" ? e.repo === "org/shared-repo" : false));
-				const bobHasShared = bobEntries.some(e => (e.type === "commit_group" ? e.repo === "org/shared-repo" : false));
-
-				expect(aliceHasShared).toBe(true);
-				expect(bobHasShared).toBe(true);
 			}
 		});
 
-		it("shared account generates timelines for all members", async () => {
+		it("multiple accounts on same profile are combined in timeline", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-			await seedUser(ctx, USERS.charlie);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_bluesky);
 
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-			await addAccountMember(ctx, USERS.charlie.id, ACCOUNTS.shared_org_github.id, "member");
+			const githubData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/repo", message: "github commit" })]);
 
-			const sharedData = GITHUB_FIXTURES.singleCommit();
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.alice_github.id]: githubData });
+			const providerFactory = createProviderFactoryFromAccounts({ [ACCOUNTS.alice_bluesky.id]: BLUESKY_FIXTURES.singlePost() });
 
-			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
-			const result = await handleCron({ ...ctx.appContext, gitHubProvider });
+			await handleCron({ ...ctx.appContext, gitHubProvider, providerFactory });
 
-			expect(result.updated_users).toHaveLength(3);
-			expect(result.timelines_generated).toBe(3);
+			const timeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
+			expect(timeline.ok).toBe(true);
 
-			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
-			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
-			const charlieTimeline = await ctx.corpus.createTimelineStore(USERS.charlie.id).get_latest();
-
-			expect(aliceTimeline.ok).toBe(true);
-			expect(bobTimeline.ok).toBe(true);
-			expect(charlieTimeline.ok).toBe(true);
+			if (timeline.ok) {
+				const data = timeline.value.data as { groups: Array<{ items: TimelineEntry[] }> };
+				const entries = data.groups.flatMap(g => g.items);
+				const hasGithub = entries.some(e => e.type === "commit_group" || (e.type === "commit" && e.platform === "github"));
+				const hasBluesky = entries.some(e => e.type === "post" && e.platform === "bluesky");
+				expect(hasGithub).toBe(true);
+				expect(hasBluesky).toBe(true);
+			}
 		});
 
-		it("each user gets their own timeline even with shared data", async () => {
+		it("user can have multiple profiles with different accounts", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_work);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_bluesky);
 
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
-			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.alice.id, ACCOUNTS.shared_org_github.id, "member");
-
-			const aliceData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/personal", message: "alice personal" })]);
-
-			const sharedData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "org/shared", message: "shared work" })]);
-
-			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
-				[ACCOUNTS.alice_github.id]: aliceData,
-				[ACCOUNTS.shared_org_github.id]: sharedData,
-			});
-			await handleCron({ ...ctx.appContext, gitHubProvider });
-
-			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
-			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
-
-			expect(aliceTimeline.ok).toBe(true);
-			expect(bobTimeline.ok).toBe(true);
-
-			if (aliceTimeline.ok && bobTimeline.ok) {
-				const aliceEntries = (aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
-				const bobEntries = (bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
-
-				expect(aliceEntries.length).toBe(2);
-				expect(bobEntries.length).toBe(1);
-
-				const aliceRepos = aliceEntries
-					.filter((e): e is TimelineEntry & { repo: string } => e.type === "commit_group")
-					.map(e => e.repo)
-					.sort();
-				expect(aliceRepos).toEqual(["alice/personal", "org/shared"]);
-
-				const bobRepos = bobEntries.filter((e): e is TimelineEntry & { repo: string } => e.type === "commit_group").map(e => e.repo);
-				expect(bobRepos).toEqual(["org/shared"]);
-			}
+			const accounts = await getUserAccounts(ctx, USERS.alice.id);
+			expect(accounts.results).toHaveLength(2);
 		});
 	});
 
@@ -125,9 +78,10 @@ describe("multi-tenant", () => {
 		it("users cannot access other users timelines via corpus", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedUser(ctx, USERS.bob);
-
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.bob_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedProfile(ctx, USERS.bob.id, PROFILES.bob_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, PROFILES.bob_main.id, ACCOUNTS.bob_github);
 
 			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
 				[ACCOUNTS.alice_github.id]: GITHUB_FIXTURES.singleCommit("alice/repo"),
@@ -159,146 +113,94 @@ describe("multi-tenant", () => {
 			}
 		});
 
-		it("account members can see shared account data", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-
-			const sharedData = GITHUB_FIXTURES.singleCommit("org/shared");
-			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: sharedData });
-			await handleCron({ ...ctx.appContext, gitHubProvider });
-
-			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
-			expect(bobTimeline.ok).toBe(true);
-
-			if (bobTimeline.ok) {
-				const entries = (bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
-				const hasSharedData = entries.some(e => e.type === "commit_group" && e.repo === "org/shared");
-				expect(hasSharedData).toBe(true);
-			}
-		});
-
-		it("non-members cannot access account data", async () => {
+		it("user with no profile or accounts has no timeline", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedUser(ctx, USERS.charlie);
-
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const aliceData = GITHUB_FIXTURES.singleCommit("alice/private");
 			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.alice_github.id]: aliceData });
 			await handleCron({ ...ctx.appContext, gitHubProvider });
 
 			const charlieTimeline = await ctx.corpus.createTimelineStore(USERS.charlie.id).get_latest();
-
 			expect(charlieTimeline.ok).toBe(false);
 		});
 	});
 
-	describe("permissions", () => {
-		it("owner role is set correctly", async () => {
+	describe("profile ownership", () => {
+		it("account belongs to exactly one profile", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
-			const members = await getAccountMembers(ctx, ACCOUNTS.alice_github.id);
-			expect(members.results).toHaveLength(1);
-			expect((members.results[0] as { role: string }).role).toBe("owner");
+			const account = await ctx.d1.prepare("SELECT profile_id FROM accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first<{ profile_id: string }>();
+			expect(account?.profile_id).toBe(PROFILES.alice_main.id);
 		});
 
-		it("member role is set correctly", async () => {
+		it("user sees all their accounts across profiles", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-
-			const members = await getAccountMembers(ctx, ACCOUNTS.shared_org_github.id);
-			expect(members.results).toHaveLength(2);
-
-			const typedMembers = members.results as Array<{ role: string; user_id: string }>;
-			const ownerMember = typedMembers.find(m => m.role === "owner");
-			const regularMember = typedMembers.find(m => m.role === "member");
-
-			expect(ownerMember).toBeDefined();
-			expect(regularMember).toBeDefined();
-			expect((ownerMember as { user_id: string }).user_id).toBe(USERS.alice.id);
-			expect((regularMember as { user_id: string }).user_id).toBe(USERS.bob.id);
-		});
-
-		it("user sees all their accounts including shared ones", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
-			await seedAccount(ctx, USERS.bob.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.alice.id, ACCOUNTS.shared_org_github.id, "member");
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_work);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_bluesky);
 
 			const aliceAccounts = await getUserAccounts(ctx, USERS.alice.id);
 			expect(aliceAccounts.results).toHaveLength(2);
 
 			const typedAliceAccounts = aliceAccounts.results as Array<{ id: string }>;
 			const accountIds = typedAliceAccounts.map(a => a.id).sort();
-			expect(accountIds).toEqual([ACCOUNTS.alice_github.id, ACCOUNTS.shared_org_github.id].sort());
-		});
-
-		it("only owner can deactivate account via direct DB check", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-
-			const checkOwnership = async (userId: string, accountId: string): Promise<boolean> => {
-				const result = await ctx.d1.prepare("SELECT role FROM account_members WHERE user_id = ? AND account_id = ?").bind(userId, accountId).first<{ role: string }>();
-				return result?.role === "owner";
-			};
-
-			expect(await checkOwnership(USERS.alice.id, ACCOUNTS.shared_org_github.id)).toBe(true);
-			expect(await checkOwnership(USERS.bob.id, ACCOUNTS.shared_org_github.id)).toBe(false);
-		});
-
-		it("only owner can add members via permission check", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-			await seedUser(ctx, USERS.charlie);
-
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github, "owner");
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-
-			const canAddMember = async (requesterId: string, accountId: string): Promise<boolean> => {
-				const result = await ctx.d1.prepare("SELECT role FROM account_members WHERE user_id = ? AND account_id = ?").bind(requesterId, accountId).first<{ role: string }>();
-				return result?.role === "owner";
-			};
-
-			expect(await canAddMember(USERS.alice.id, ACCOUNTS.shared_org_github.id)).toBe(true);
-			expect(await canAddMember(USERS.bob.id, ACCOUNTS.shared_org_github.id)).toBe(false);
-			expect(await canAddMember(USERS.charlie.id, ACCOUNTS.shared_org_github.id)).toBe(false);
-		});
-
-		it("prevents duplicate memberships", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
-
-			const addDuplicate = async () => {
-				try {
-					await addAccountMember(ctx, USERS.alice.id, ACCOUNTS.alice_github.id, "member");
-					return false;
-				} catch {
-					return true;
-				}
-			};
-
-			const failed = await addDuplicate();
-			expect(failed).toBe(true);
+			expect(accountIds).toEqual([ACCOUNTS.alice_bluesky.id, ACCOUNTS.alice_github.id].sort());
 		});
 	});
 
-	describe("multi-account scenarios", () => {
+	describe("multi-user scenarios", () => {
+		it("each user gets their own separate timeline", async () => {
+			await seedUser(ctx, USERS.alice);
+			await seedUser(ctx, USERS.bob);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedProfile(ctx, USERS.bob.id, PROFILES.bob_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, PROFILES.bob_main.id, ACCOUNTS.bob_github);
+
+			const aliceData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/personal", message: "alice work" })]);
+			const bobData = makeGitHubRaw([makeGitHubExtendedCommit({ repo: "bob/personal", message: "bob work" })]);
+
+			const gitHubProvider = createGitHubProviderFromLegacyAccounts({
+				[ACCOUNTS.alice_github.id]: aliceData,
+				[ACCOUNTS.bob_github.id]: bobData,
+			});
+			await handleCron({ ...ctx.appContext, gitHubProvider });
+
+			const aliceTimeline = await ctx.corpus.createTimelineStore(USERS.alice.id).get_latest();
+			const bobTimeline = await ctx.corpus.createTimelineStore(USERS.bob.id).get_latest();
+
+			expect(aliceTimeline.ok).toBe(true);
+			expect(bobTimeline.ok).toBe(true);
+
+			if (aliceTimeline.ok && bobTimeline.ok) {
+				const aliceEntries = (aliceTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
+				const bobEntries = (bobTimeline.value.data as { groups: Array<{ items: TimelineEntry[] }> }).groups.flatMap(g => g.items);
+
+				expect(aliceEntries.length).toBe(1);
+				expect(bobEntries.length).toBe(1);
+
+				const aliceRepos = aliceEntries.filter((e): e is TimelineEntry & { repo: string } => e.type === "commit_group").map(e => e.repo);
+				expect(aliceRepos).toEqual(["alice/personal"]);
+
+				const bobRepos = bobEntries.filter((e): e is TimelineEntry & { repo: string } => e.type === "commit_group").map(e => e.repo);
+				expect(bobRepos).toEqual(["bob/personal"]);
+			}
+		});
+
 		it("user with multiple platforms gets combined timeline", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github, "owner");
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky, "owner");
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_bluesky);
+
+			const aliceYoutube = { ...ACCOUNTS.bob_youtube, id: "acc-alice-youtube", access_token: "ya29_alice_yt_token" };
+			await seedAccount(ctx, PROFILES.alice_main.id, aliceYoutube);
 
 			const githubData = makeGitHubRaw([
 				makeGitHubExtendedCommit({
@@ -318,31 +220,6 @@ describe("multi-tenant", () => {
 				const entries = (timeline.value.data as { groups: Array<{ entries: TimelineEntry[] }> }).groups.flatMap(g => g.entries);
 				expect(entries.length).toBeGreaterThan(0);
 			}
-		});
-
-		it("organization with multiple members and accounts", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-			await seedUser(ctx, USERS.org_admin);
-
-			await seedAccount(ctx, USERS.org_admin.id, ACCOUNTS.shared_org_github, "owner");
-			await seedAccount(ctx, USERS.org_admin.id, { ...ACCOUNTS.devpad_account, id: "acc-org-devpad" }, "owner");
-			await addAccountMember(ctx, USERS.alice.id, ACCOUNTS.shared_org_github.id, "member");
-			await addAccountMember(ctx, USERS.alice.id, "acc-org-devpad", "member");
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-
-			const githubData = GITHUB_FIXTURES.multipleCommitsSameDay("org/project");
-
-			const gitHubProvider = createGitHubProviderFromLegacyAccounts({ [ACCOUNTS.shared_org_github.id]: githubData });
-			await handleCron({ ...ctx.appContext, gitHubProvider });
-
-			const adminAccounts = await getUserAccounts(ctx, USERS.org_admin.id);
-			const aliceAccounts = await getUserAccounts(ctx, USERS.alice.id);
-			const bobAccounts = await getUserAccounts(ctx, USERS.bob.id);
-
-			expect(adminAccounts.results).toHaveLength(2);
-			expect(aliceAccounts.results).toHaveLength(2);
-			expect(bobAccounts.results).toHaveLength(1);
 		});
 	});
 });
