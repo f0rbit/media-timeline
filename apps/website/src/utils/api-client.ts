@@ -6,18 +6,24 @@ export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo,
 const MOCK_USER_ID = "mock-user-001";
 const MOCK_API_KEY = `mt_dev_${btoa(MOCK_USER_ID).slice(0, 24)}`;
 
-// Check if running in browser on localhost
-const isLocalDev = typeof window !== "undefined" && window.location.hostname === "localhost";
+// Check if running in browser on localhost (evaluated at request time, not module load)
+const isLocalDev = () => typeof window !== "undefined" && window.location.hostname === "localhost";
 
 type ApiClientConfig = {
 	baseUrl: string;
 	apiKey: string | null;
 };
 
-// Initialize config - automatically set mock API key for localhost
 let config: ApiClientConfig = {
 	baseUrl: import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787",
-	apiKey: isLocalDev ? MOCK_API_KEY : null,
+	apiKey: null,
+};
+
+// Get effective API key - use mock key for localhost if no key explicitly set
+const getEffectiveApiKey = (): string | null => {
+	if (config.apiKey) return config.apiKey;
+	if (isLocalDev()) return MOCK_API_KEY;
+	return null;
 };
 
 export function configureApi(newConfig: Partial<ApiClientConfig>): void {
@@ -68,8 +74,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<A
 		...headers,
 	};
 
-	if (config.apiKey) {
-		requestHeaders.Authorization = `Bearer ${config.apiKey}`;
+	const apiKey = getEffectiveApiKey();
+	if (apiKey) {
+		requestHeaders.Authorization = `Bearer ${apiKey}`;
 	}
 
 	const url = `${config.baseUrl}/api/v1${path}`;
