@@ -3,9 +3,9 @@ import type { FetchError, StoreError } from "./errors";
 import { mergeByKey } from "./merge";
 import type { GitHubFetchResult } from "./platforms/github";
 import type { ProviderError } from "./platforms/types";
-import type { GitHubRepoCommitsStore, GitHubRepoPRsStore } from "./schema";
+import type { GitHubMetaStore, GitHubRepoCommitsStore, GitHubRepoPRsStore } from "./schema";
 import { createGitHubCommitsStore, createGitHubMetaStore, createGitHubPRsStore } from "./storage";
-import { type Result, err, ok, to_nullable } from "./utils";
+import { type Result, err, ok, pipe, to_nullable } from "./utils";
 
 export type GitHubProcessResult = {
 	account_id: string;
@@ -58,6 +58,47 @@ type GitHubProvider = {
 	fetch(token: string): Promise<Result<GitHubFetchResult, ProviderError>>;
 };
 
+type RepoStoreStats = { owner: string; repo: string; version: string; newCount: number; total: number };
+const defaultRepoStats = (owner: string, repo: string): RepoStoreStats => ({ owner, repo, version: "", newCount: 0, total: 0 });
+
+const storeMeta = async (backend: Backend, accountId: string, meta: GitHubMetaStore): Promise<string> => {
+	const storeResult = createGitHubMetaStore(backend, accountId);
+	if (!storeResult.ok) return "";
+
+	const putResult = await storeResult.value.store.put(meta);
+	return putResult.ok ? putResult.value.version : "";
+};
+
+const storeCommits = async (backend: Backend, accountId: string, owner: string, repo: string, incoming: GitHubRepoCommitsStore): Promise<RepoStoreStats> => {
+	const storeResult = createGitHubCommitsStore(backend, accountId, owner, repo);
+	if (!storeResult.ok) return defaultRepoStats(owner, repo);
+
+	const store = storeResult.value.store;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
+	const { merged, newCount } = mergeCommits(existing, incoming);
+	const putResult = await store.put(merged);
+
+	return pipe(putResult)
+		.map(({ version }) => ({ owner, repo, version, newCount, total: merged.total_commits }))
+		.tap(({ newCount: n, total }) => console.log(`[processGitHubAccount] ${owner}/${repo} commits: ${n} new, ${total} total`))
+		.unwrap_or(defaultRepoStats(owner, repo));
+};
+
+const storePRs = async (backend: Backend, accountId: string, owner: string, repo: string, incoming: GitHubRepoPRsStore): Promise<RepoStoreStats> => {
+	const storeResult = createGitHubPRsStore(backend, accountId, owner, repo);
+	if (!storeResult.ok) return defaultRepoStats(owner, repo);
+
+	const store = storeResult.value.store;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
+	const { merged, newCount } = mergePRs(existing, incoming);
+	const putResult = await store.put(merged);
+
+	return pipe(putResult)
+		.map(({ version }) => ({ owner, repo, version, newCount, total: merged.total_prs }))
+		.tap(({ newCount: n, total }) => console.log(`[processGitHubAccount] ${owner}/${repo} PRs: ${n} new, ${total} total`))
+		.unwrap_or(defaultRepoStats(owner, repo));
+};
+
 export async function processGitHubAccount(backend: Backend, accountId: string, token: string, provider: GitHubProvider): Promise<Result<GitHubProcessResult, GitHubProcessError>> {
 	console.log(`[processGitHubAccount] Starting for account: ${accountId}`);
 
@@ -71,14 +112,7 @@ export async function processGitHubAccount(backend: Backend, accountId: string, 
 
 	const { meta, repos } = fetchResult.value;
 
-	let metaVersion = "";
-	const metaStoreResult = createGitHubMetaStore(backend, accountId);
-	if (metaStoreResult.ok) {
-		const putResult = await metaStoreResult.value.store.put(meta);
-		if (putResult.ok) {
-			metaVersion = putResult.value.version;
-		}
-	}
+	const metaVersion = await storeMeta(backend, accountId, meta);
 
 	const commitStores: Array<{ owner: string; repo: string; version: string }> = [];
 	const prStores: Array<{ owner: string; repo: string; version: string }> = [];
@@ -91,42 +125,18 @@ export async function processGitHubAccount(backend: Backend, accountId: string, 
 		const [owner, repo] = fullName.split("/");
 		if (!owner || !repo) continue;
 
-		const commitsStoreResult = createGitHubCommitsStore(backend, accountId, owner, repo);
-		if (commitsStoreResult.ok) {
-			const store = commitsStoreResult.value.store;
-
-			const existingResult = await store.get_latest();
-			const existing = to_nullable(existingResult)?.data ?? null;
-
-			const { merged: mergedCommits, newCount: commitNewCount } = mergeCommits(existing, data.commits);
-			newCommits += commitNewCount;
-
-			const putResult = await store.put(mergedCommits);
-			if (putResult.ok) {
-				commitStores.push({ owner, repo, version: putResult.value.version });
-				totalCommits += mergedCommits.total_commits;
-			}
-
-			console.log(`[processGitHubAccount] ${fullName} commits: ${commitNewCount} new, ${mergedCommits.total_commits} total`);
+		const commitResult = await storeCommits(backend, accountId, owner, repo, data.commits);
+		if (commitResult.version) {
+			commitStores.push({ owner, repo, version: commitResult.version });
+			totalCommits += commitResult.total;
+			newCommits += commitResult.newCount;
 		}
 
-		const prsStoreResult = createGitHubPRsStore(backend, accountId, owner, repo);
-		if (prsStoreResult.ok) {
-			const store = prsStoreResult.value.store;
-
-			const existingResult = await store.get_latest();
-			const existing = to_nullable(existingResult)?.data ?? null;
-
-			const { merged: mergedPRs, newCount: prNewCount } = mergePRs(existing, data.prs);
-			newPRs += prNewCount;
-
-			const putResult = await store.put(mergedPRs);
-			if (putResult.ok) {
-				prStores.push({ owner, repo, version: putResult.value.version });
-				totalPRs += mergedPRs.total_prs;
-			}
-
-			console.log(`[processGitHubAccount] ${fullName} PRs: ${prNewCount} new, ${mergedPRs.total_prs} total`);
+		const prResult = await storePRs(backend, accountId, owner, repo, data.prs);
+		if (prResult.version) {
+			prStores.push({ owner, repo, version: prResult.version });
+			totalPRs += prResult.total;
+			newPRs += prResult.newCount;
 		}
 	}
 
