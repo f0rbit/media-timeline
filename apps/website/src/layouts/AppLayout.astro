@@ -20,7 +20,6 @@ const pages = [
 
 const currentPath = Astro.url.pathname;
 const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
-const profileSlug = Astro.url.searchParams.get("profile");
 ---
 
 <Layout title={title} description={description} ogImage={ogImage} noindex={noindex}>
@@ -34,8 +33,8 @@ const profileSlug = Astro.url.searchParams.get("profile");
               {p.name}
             </a>
           ))}
-          <ProfileSelector client:load currentSlug={profileSlug} />
-          <AuthStatus client:load />
+          <ProfileSelector client:only="solid-js" />
+          <AuthStatus client:only="solid-js" />
         </nav>
       </header>
       <main class="flex-col">
