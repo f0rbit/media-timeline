@@ -61,7 +61,11 @@ const updateProfile = async (id: string, data: { slug?: string; name?: string; d
 	return result.data.profile;
 };
 
-export default function ProfileList() {
+type ProfileListProps = {
+	currentSlug?: string | null;
+};
+
+export default function ProfileList(props: ProfileListProps) {
 	initMockAuth();
 
 	const [profiles, { refetch }] = createResource(fetchProfiles);
@@ -88,6 +92,10 @@ export default function ProfileList() {
 		const visibility = profile.visibility ?? [];
 		const visible = visibility.filter(v => v.is_visible).length;
 		return { visible, total: visibility.length };
+	};
+
+	const handleViewTimeline = (slug: string) => {
+		window.location.href = `/timeline?profile=${encodeURIComponent(slug)}`;
 	};
 
 	return (
@@ -135,6 +143,8 @@ export default function ProfileList() {
 							fallback={
 								<ProfileCard
 									profile={profile}
+									isCurrent={props.currentSlug === profile.slug}
+									onView={() => handleViewTimeline(profile.slug)}
 									onEdit={() => setEditingProfile(profile)}
 									onDelete={() => handleDelete(profile)}
 									onCopy={() => handleCopy(profile.slug)}
@@ -161,6 +171,8 @@ export default function ProfileList() {
 
 type ProfileCardProps = {
 	profile: Profile;
+	isCurrent: boolean;
+	onView: () => void;
 	onEdit: () => void;
 	onDelete: () => void;
 	onCopy: () => void;
@@ -173,14 +185,22 @@ function ProfileCard(props: ProfileCardProps) {
 	const endpoint = `https://media.devpad.tools/api/v1/profiles/${props.profile.slug}/timeline`;
 
 	return (
-		<div class="card">
+		<div class={`card ${props.isCurrent ? "card-active" : ""}`}>
 			<div class="flex-col" style={{ gap: "8px" }}>
 				<div class="flex-row justify-between items-start">
 					<div class="flex-col" style={{ gap: "2px" }}>
-						<h6 class="secondary font-medium">{props.profile.name}</h6>
+						<div class="flex-row items-center" style={{ gap: "8px" }}>
+							<h6 class="secondary font-medium">{props.profile.name}</h6>
+							<Show when={props.isCurrent}>
+								<span class="badge-active">Currently Viewing</span>
+							</Show>
+						</div>
 						<span class="muted text-sm">/{props.profile.slug}</span>
 					</div>
 					<div class="flex-row icons">
+						<button class="icon-btn" onClick={props.onView} title="View timeline">
+							<EyeIcon />
+						</button>
 						<button class="icon-btn" onClick={props.onEdit} title="Edit profile">
 							<EditIcon />
 						</button>
@@ -376,6 +396,15 @@ function PlusIcon() {
 		<svg class="lucide" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 			<path d="M5 12h14" />
 			<path d="M12 5v14" />
+		</svg>
+	);
+}
+
+function EyeIcon() {
+	return (
+		<svg class="lucide" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+			<path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0" />
+			<circle cx="12" cy="12" r="3" />
 		</svg>
 	);
 }
