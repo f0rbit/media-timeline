@@ -4,7 +4,7 @@ import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { accountMembers, accounts, apiKeys } from "./schema";
-import { type Result, encrypt, err, hash_api_key, ok, try_catch_async } from "./utils";
+import { type Result, encrypt, err, hash_api_key, ok, pipe, try_catch_async } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -161,19 +161,14 @@ type EncryptedTokens = {
 	encryptedRefreshToken: string | null;
 };
 
-export const encryptTokens = async (tokens: TokenResponse, encryptionKey: string): Promise<Result<EncryptedTokens, OAuthError>> => {
-	const encryptedAccessTokenResult = await encrypt(tokens.access_token, encryptionKey);
-	if (!encryptedAccessTokenResult.ok) {
-		return err({ kind: "encryption_failed", message: "Failed to encrypt access token" });
-	}
-
-	const encryptedRefreshToken = tokens.refresh_token ? await encrypt(tokens.refresh_token, encryptionKey).then(r => (r.ok ? r.value : null)) : null;
-
-	return ok({
-		encryptedAccessToken: encryptedAccessTokenResult.value,
-		encryptedRefreshToken,
-	});
-};
+export const encryptTokens = (tokens: TokenResponse, encryptionKey: string): Promise<Result<EncryptedTokens, OAuthError>> =>
+	pipe(encrypt(tokens.access_token, encryptionKey))
+		.map_err((): OAuthError => ({ kind: "encryption_failed", message: "Failed to encrypt access token" }))
+		.flat_map(async encryptedAccessToken => {
+			const encryptedRefreshToken = tokens.refresh_token ? await encrypt(tokens.refresh_token, encryptionKey).then(r => (r.ok ? r.value : null)) : null;
+			return ok({ encryptedAccessToken, encryptedRefreshToken });
+		})
+		.result();
 
 export const upsertOAuthAccount = async (db: Database, encryptionKey: string, userId: string, platform: Platform, user: OAuthUser, tokens: TokenResponse): Promise<Result<string, OAuthError>> => {
 	const encryptedResult = await encryptTokens(tokens, encryptionKey);
