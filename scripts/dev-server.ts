@@ -1,10 +1,11 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { mkdirSync, readFileSync, readdirSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { authMiddleware } from "../src/auth";
@@ -25,49 +26,6 @@ const ENCRYPTION_KEY = "dev-encryption-key-32-bytes-ok!";
 const MOCK_USER_ID = "mock-user-001";
 const MOCK_API_KEY = `mt_dev_${Buffer.from(MOCK_USER_ID).toString("base64").slice(0, 24)}`;
 
-/**
- * Run Drizzle migrations from the migrations folder
- */
-function runMigrations(sqliteDb: Database) {
-	// Create migrations tracking table
-	sqliteDb.exec(`
-		CREATE TABLE IF NOT EXISTS __drizzle_migrations (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			hash TEXT NOT NULL,
-			created_at INTEGER NOT NULL
-		);
-	`);
-
-	// Get applied migrations
-	const applied = new Set((sqliteDb.query("SELECT hash FROM __drizzle_migrations").all() as { hash: string }[]).map(row => row.hash));
-
-	// Read and apply pending migrations
-	const migrationsDir = "./migrations";
-	const migrationFiles = readdirSync(migrationsDir)
-		.filter(f => f.endsWith(".sql"))
-		.sort();
-
-	for (const file of migrationFiles) {
-		const hash = file.replace(".sql", "");
-		if (applied.has(hash)) continue;
-
-		console.log(`   Applying migration: ${file}`);
-		const sql = readFileSync(`${migrationsDir}/${file}`, "utf-8");
-
-		// Split by statement breakpoint and execute each statement
-		const statements = sql
-			.split("--> statement-breakpoint")
-			.map(s => s.trim())
-			.filter(Boolean);
-		for (const statement of statements) {
-			sqliteDb.exec(statement);
-		}
-
-		// Record migration
-		sqliteDb.exec(`INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${hash}', ${Date.now()})`);
-	}
-}
-
 type Variables = {
 	auth: { user_id: string; key_id: string };
 	appContext: AppContext;
@@ -79,12 +37,12 @@ async function startDevServer() {
 	mkdirSync("local/corpus", { recursive: true });
 
 	const sqliteDb = new Database("local/dev.db");
+	const db = drizzle(sqliteDb, { schema });
 
 	console.log("📋 Running Drizzle migrations...");
-	runMigrations(sqliteDb);
+	migrate(db, { migrationsFolder: "./migrations" });
 	console.log("✅ Migrations complete\n");
 
-	const db = drizzle(sqliteDb, { schema });
 	const dbWithBatch = Object.assign(db, {
 		batch: async <T extends readonly unknown[]>(queries: T): Promise<T> => {
 			for (const query of queries) {
