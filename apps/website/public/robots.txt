@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+Disallow: /dashboard
+Disallow: /timeline
+Disallow: /connections
+
+Sitemap: https://media.devpad.tools/sitemap.xml

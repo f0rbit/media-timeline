@@ -3,9 +3,13 @@ import Dashboard from "../../components/solid/Dashboard/Dashboard";
 import AppLayout from "../../layouts/AppLayout.astro";
 ---
 
-<AppLayout title="Dashboard | Media Timeline">
+<AppLayout 
+  title="Dashboard | Media Timeline"
+  description="Your activity overview and insights across connected platforms."
+  noindex={true}
+>
   <section>
-    <h3>Dashboard</h3>
+    <h1 class="page-title">Dashboard</h1>
     <p class="description">Your activity overview and insights.</p>
   </section>
   <Dashboard client:load />

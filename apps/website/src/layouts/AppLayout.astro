@@ -3,9 +3,12 @@ import Layout from "./Layout.astro";
 
 interface Props {
 	title?: string;
+	description?: string;
+	ogImage?: string;
+	noindex?: boolean;
 }
 
-const { title = "Media Timeline" } = Astro.props;
+const { title = "Media Timeline", description, ogImage, noindex } = Astro.props;
 
 const pages = [
 	{ name: "dashboard", href: "/dashboard" },
@@ -17,7 +20,7 @@ const currentPath = Astro.url.pathname;
 const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
 ---
 
-<Layout title={title}>
+<Layout title={title} description={description} ogImage={ogImage} noindex={noindex}>
   <body>
     <div id="container">
       <header>

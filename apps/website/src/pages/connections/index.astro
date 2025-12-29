@@ -3,9 +3,13 @@ import ConnectionList from "../../components/solid/ConnectionList";
 import AppLayout from "../../layouts/AppLayout.astro";
 ---
 
-<AppLayout title="Connections | Media Timeline">
+<AppLayout 
+  title="Connections | Media Timeline"
+  description="Connect and manage your GitHub, Twitter, Reddit, Bluesky, and YouTube accounts."
+  noindex={true}
+>
   <section>
-    <h3>Connections</h3>
+    <h1 class="page-title">Connections</h1>
     <p class="description">Manage your connected platforms.</p>
   </section>
   <ConnectionList client:load />
