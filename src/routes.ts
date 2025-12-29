@@ -69,7 +69,8 @@ const RawSnapshotSchema = z.object({
 type TimelineSnapshot = z.infer<typeof TimelineSnapshotSchema>;
 type RawSnapshot = z.infer<typeof RawSnapshotSchema>;
 
-type TimelineRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; message: string };
+type TimelineGetError = { kind: "store_error"; status: 500 } | { kind: "not_found"; status: 404 } | { kind: "parse_error"; status: 500 };
+
 type RawRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; message: string };
 
 const CreateConnectionBodySchema = z.object({
@@ -107,7 +108,6 @@ timelineRoutes.get("/:user_id", async c => {
 	const from = c.req.query("from");
 	const to = c.req.query("to");
 
-	// Fetch GitHub usernames for repo owner stripping
 	const githubAccounts = await ctx.db
 		.select({ platform_username: accounts.platform_username })
 		.from(accounts)
@@ -116,40 +116,50 @@ timelineRoutes.get("/:user_id", async c => {
 
 	const githubUsernames = githubAccounts.map(a => a.platform_username).filter((u): u is string => u !== null);
 
-	const storeResult = createTimelineStore(ctx.backend, userId);
+	const result = await pipe(createTimelineStore(ctx.backend, userId))
+		.map_err((): TimelineGetError => ({ kind: "store_error", status: 500 }))
+		.map(({ store }) => store)
+		.flat_map(async (store): Promise<Result<TimelineSnapshot, TimelineGetError>> => {
+			const latest = await store.get_latest();
+			if (!latest.ok) {
+				return latest.error.kind === "not_found" ? err({ kind: "not_found" as const, status: 404 as const }) : err({ kind: "store_error" as const, status: 500 as const });
+			}
+			return ok(latest.value as TimelineSnapshot);
+		})
+		.flat_map((raw): Result<TimelineSnapshot, TimelineGetError> => {
+			const parsed = TimelineSnapshotSchema.safeParse(raw);
+			return parsed.success ? ok(parsed.data) : err({ kind: "parse_error" as const, status: 500 as const });
+		})
+		.map(snapshot => {
+			const filteredGroups = snapshot.data.groups.filter(group => {
+				if (from && group.date < from) return false;
+				if (to && group.date > to) return false;
+				return true;
+			});
+			return {
+				meta: { ...snapshot.meta, github_usernames: githubUsernames },
+				data: { ...snapshot.data, groups: filteredGroups },
+			};
+		})
+		.result();
 
-	if (!storeResult.ok) {
-		return c.json({ error: "Internal error", message: "Failed to create timeline store" }, 500);
-	}
-
-	const store = storeResult.value.store;
-	const latestResult = await store.get_latest();
-
-	if (!latestResult.ok) {
-		if (latestResult.error.kind === "not_found") {
-			return c.json({ error: "Not found", message: "No timeline data available" }, 404);
+	return match(
+		result,
+		data => c.json(data) as Response,
+		error => {
+			const messages: Record<TimelineGetError["kind"], string> = {
+				store_error: "Failed to create timeline store",
+				not_found: "No timeline data available",
+				parse_error: "Invalid timeline data format",
+			};
+			const errorLabels: Record<TimelineGetError["kind"], string> = {
+				store_error: "Internal error",
+				not_found: "Not found",
+				parse_error: "Internal error",
+			};
+			return c.json({ error: errorLabels[error.kind], message: messages[error.kind] }, error.status) as Response;
 		}
-		return c.json({ error: "Internal error", message: "Unexpected error" }, 500);
-	}
-
-	const parsed = TimelineSnapshotSchema.safeParse(latestResult.value);
-
-	if (!parsed.success) {
-		return c.json({ error: "Internal error", message: "Invalid timeline data format" }, 500);
-	}
-
-	const filteredGroups = parsed.data.data.groups.filter(group => {
-		if (from && group.date < from) return false;
-		if (to && group.date > to) return false;
-		return true;
-	});
-
-	const result = {
-		meta: { ...parsed.data.meta, github_usernames: githubUsernames },
-		data: { ...parsed.data.data, groups: filteredGroups },
-	};
-
-	return c.json(result);
+	);
 });
 
 timelineRoutes.get("/:user_id/raw/:platform", async c => {
