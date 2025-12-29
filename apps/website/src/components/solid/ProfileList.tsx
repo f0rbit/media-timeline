@@ -39,8 +39,13 @@ type CreateProfileResponse = {
 const API_BASE_URL = "https://media.devpad.tools";
 
 const fetchProfiles = async (): Promise<Profile[]> => {
+	console.log("[ProfileList] Fetching profiles...");
 	const result = await api.get<ProfilesResponse>("/profiles");
-	if (!result.ok) throw new Error(result.error.message);
+	if (!result.ok) {
+		console.error("[ProfileList] Failed to fetch profiles:", result.error);
+		throw new Error(result.error.message);
+	}
+	console.log("[ProfileList] Got profiles:", result.data.profiles.length);
 	return result.data.profiles;
 };
 
@@ -66,6 +71,9 @@ type ProfileListProps = {
 };
 
 export default function ProfileList(props: ProfileListProps) {
+	if (typeof window !== "undefined") {
+		console.log("[ProfileList] Component mounted in browser");
+	}
 	initMockAuth();
 
 	const [profiles, { refetch }] = createResource(fetchProfiles);

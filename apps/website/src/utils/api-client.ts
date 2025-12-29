@@ -2,14 +2,22 @@ import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo,
 
 export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo, Platform, PlatformSettings, PostPayload, PRCommit, PullRequestPayload, TimelineItem, TimelineType };
 
+// Mock user/key for local development
+const MOCK_USER_ID = "mock-user-001";
+const MOCK_API_KEY = `mt_dev_${btoa(MOCK_USER_ID).slice(0, 24)}`;
+
+// Check if running in browser on localhost
+const isLocalDev = typeof window !== "undefined" && window.location.hostname === "localhost";
+
 type ApiClientConfig = {
 	baseUrl: string;
 	apiKey: string | null;
 };
 
+// Initialize config - automatically set mock API key for localhost
 let config: ApiClientConfig = {
 	baseUrl: import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787",
-	apiKey: null,
+	apiKey: isLocalDev ? MOCK_API_KEY : null,
 };
 
 export function configureApi(newConfig: Partial<ApiClientConfig>): void {
@@ -24,9 +32,6 @@ export function getApiKey(): string | null {
 	return config.apiKey;
 }
 
-const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = `mt_dev_${btoa(MOCK_USER_ID).slice(0, 24)}`;
-
 export function getMockApiKey(): string {
 	return MOCK_API_KEY;
 }
@@ -35,8 +40,9 @@ export function getMockUserId(): string {
 	return MOCK_USER_ID;
 }
 
+// Legacy function - API key is now auto-initialized for localhost
 export function initMockAuth(): void {
-	if (import.meta.env.DEV) {
+	if (typeof window !== "undefined" && (import.meta.env.DEV || window.location.hostname === "localhost")) {
 		setApiKey(MOCK_API_KEY);
 	}
 }

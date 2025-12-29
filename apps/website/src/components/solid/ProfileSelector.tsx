@@ -9,12 +9,16 @@ type ProfileSelectorProps = {
 const fetchProfiles = async (): Promise<ProfileSummary[]> => {
 	if (isServer) return [];
 	const result = await profiles.list();
-	if (!result.ok) return [];
+	if (!result.ok) {
+		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
+		return [];
+	}
 	return result.data.profiles;
 };
 
 export default function ProfileSelector(props: ProfileSelectorProps) {
 	initMockAuth();
+	console.log("[ProfileSelector] Initialized, DEV mode:", import.meta.env.DEV);
 
 	const [isOpen, setIsOpen] = createSignal(false);
 	const [profileList] = createResource(fetchProfiles);
