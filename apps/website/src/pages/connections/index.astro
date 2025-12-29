@@ -2,8 +2,6 @@
 import ConnectionList from "../../components/solid/ConnectionList";
 import ProfileList from "../../components/solid/ProfileList";
 import AppLayout from "../../layouts/AppLayout.astro";
-
-const profileSlug = Astro.url.searchParams.get("profile");
 ---
 
 <AppLayout 
@@ -19,13 +17,17 @@ const profileSlug = Astro.url.searchParams.get("profile");
   <section class="connections-section">
     <h2 class="section-title">Profiles</h2>
     <p class="section-description">Create profiles to share different views of your activity via API.</p>
-    <ProfileList client:load currentSlug={profileSlug} />
+    <div class="content-skeleton">
+      <ProfileList client:only="solid-js" />
+    </div>
   </section>
   
   <section class="connections-section">
     <h2 class="section-title">Connected Platforms</h2>
     <p class="section-description">Connect your accounts to aggregate activity.</p>
-    <ConnectionList client:load profileSlug={profileSlug} />
+    <div class="content-skeleton">
+      <ConnectionList client:only="solid-js" />
+    </div>
   </section>
 </AppLayout>
 
@@ -44,5 +46,10 @@ const profileSlug = Astro.url.searchParams.get("profile");
   .section-description {
     color: var(--text-tertiary);
     font-size: 0.875rem;
+  }
+  
+  /* Prevent layout shift while client components load */
+  .content-skeleton {
+    min-height: 100px;
   }
 </style>

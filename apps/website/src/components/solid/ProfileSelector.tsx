@@ -1,44 +1,95 @@
-import { createEffect, createResource, createSignal, For, on, onCleanup, onMount, Show } from "solid-js";
-import { isServer } from "solid-js/web";
-import { initMockAuth, profiles, type ProfileSummary } from "../../utils/api-client";
+import { For, Show, createEffect, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
+import { type ProfileSummary, initMockAuth, profiles } from "../../utils/api-client";
 
-const fetchProfiles = async (): Promise<ProfileSummary[]> => {
-	if (isServer) return [];
-	const result = await profiles.list();
-	if (!result.ok) {
-		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
-		return [];
-	}
-	return result.data.profiles;
+type AuthState = { authenticated: true; profiles: ProfileSummary[] } | { authenticated: false };
+
+export type ProfileSelectorProps = {
+	currentSlug: string | null;
+	initialProfiles?: ProfileSummary[];
+	isAuthenticated?: boolean;
 };
 
-export default function ProfileSelector(props: { currentSlug?: string | null }) {
-	if (!isServer) {
-		initMockAuth();
-	}
+const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => {
+	initMockAuth();
 
+	const result = await profiles.list();
+	if (!result.ok) {
+		if (result.error.status === 401) {
+			return { authenticated: false };
+		}
+		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
+		return initial ?? { authenticated: true, profiles: [] };
+	}
+	return { authenticated: true, profiles: result.data.profiles };
+};
+
+const getSlugFromUrl = () => {
+	if (typeof window === "undefined") return null;
+	return new URLSearchParams(window.location.search).get("profile");
+};
+
+const buildUrl = (path: string, slug: string | null) => {
+	if (!slug) return path;
+	return `${path}?profile=${encodeURIComponent(slug)}`;
+};
+
+export default function ProfileSelector(props: ProfileSelectorProps) {
 	const [isOpen, setIsOpen] = createSignal(false);
-	const [profileList] = createResource(fetchProfiles);
+
+	const initialState = (): AuthState | undefined => {
+		if (props.initialProfiles !== undefined) {
+			return props.isAuthenticated !== false ? { authenticated: true, profiles: props.initialProfiles } : { authenticated: false };
+		}
+		return undefined;
+	};
+
+	const [authState] = createResource(
+		() => initialState(),
+		initial => fetchAuthAndProfiles(initial)
+	);
+
+	const currentSlug = () => getSlugFromUrl() ?? props.currentSlug;
 	let containerRef: HTMLDivElement | undefined;
 
+	const hasInitialData = () => props.initialProfiles !== undefined;
+
+	const profileList = () => {
+		if (hasInitialData() && !authState()) {
+			return props.initialProfiles ?? [];
+		}
+		const state = authState();
+		if (!state?.authenticated) return props.initialProfiles ?? [];
+		return state.profiles;
+	};
+
+	const isAuthenticated = () => {
+		if (hasInitialData() && !authState()) {
+			return props.isAuthenticated !== false;
+		}
+		const state = authState();
+		return state?.authenticated ?? props.isAuthenticated !== false;
+	};
+
 	const currentProfile = () => {
-		if (!props.currentSlug) return null;
-		return profileList()?.find(p => p.slug === props.currentSlug) ?? null;
+		const slug = currentSlug();
+		if (!slug) return null;
+		return profileList().find(p => p.slug === slug) ?? null;
 	};
 
 	const buttonLabel = () => {
-		if (profileList.loading) return "Loading...";
+		if (!hasInitialData() && authState.loading) return "Loading...";
 		const profile = currentProfile();
-		return profile?.name ?? "Loading...";
+		return profile?.name ?? "Select Profile";
 	};
 
 	createEffect(
 		on(
-			() => profileList(),
-			list => {
-				if (isServer) return;
-				if (!list || list.length === 0) return;
-				if (props.currentSlug) return;
+			() => authState(),
+			state => {
+				if (!state?.authenticated) return;
+				const list = state.profiles;
+				if (list.length === 0) return;
+				if (currentSlug()) return;
 
 				const firstProfile = list[0];
 				if (!firstProfile) return;
@@ -51,11 +102,15 @@ export default function ProfileSelector(props: { currentSlug?: string | null }) 
 	);
 
 	const handleSelect = (slug: string) => {
-		if (isServer) return;
 		const url = new URL(window.location.href);
 		url.searchParams.set("profile", slug);
 		window.location.href = url.toString();
 		setIsOpen(false);
+	};
+
+	const handleLogin = () => {
+		const returnUrl = encodeURIComponent(window.location.href);
+		window.location.href = `https://devpad.tools/login?redirect=${returnUrl}`;
 	};
 
 	const handleClickOutside = (e: MouseEvent) => {
@@ -69,7 +124,6 @@ export default function ProfileSelector(props: { currentSlug?: string | null }) 
 	};
 
 	onMount(() => {
-		if (isServer) return;
 		document.addEventListener("click", handleClickOutside);
 		document.addEventListener("keydown", handleKeyDown);
 
@@ -80,54 +134,63 @@ export default function ProfileSelector(props: { currentSlug?: string | null }) 
 	});
 
 	const hasNoProfiles = () => {
-		if (profileList.loading) return false;
-		const list = profileList();
-		return list !== undefined && list.length === 0;
+		if (!hasInitialData() && authState.loading) return false;
+		if (!isAuthenticated()) return false;
+		return profileList().length === 0;
 	};
 
+	const isLoading = () => !hasInitialData() && authState.loading;
+
 	return (
-		<Show
-			when={!hasNoProfiles()}
-			fallback={
-				<a href="/connections" class="profile-selector-create-link">
-					<PlusIcon />
-					<span>Create Profile</span>
-				</a>
-			}
-		>
-			<div class="profile-selector" ref={containerRef}>
-				<button class="profile-selector-button" onClick={() => setIsOpen(!isOpen())} aria-expanded={isOpen()} aria-haspopup="menu" type="button">
-					<ProfileIcon />
-					<span class="profile-selector-label">{buttonLabel()}</span>
-					<ChevronDownIcon />
-				</button>
+		<Show when={!isLoading()} fallback={<div class="auth-loading" />}>
+			<Show
+				when={isAuthenticated()}
+				fallback={
+					<button onClick={handleLogin} class="auth-btn login-btn">
+						Login
+					</button>
+				}
+			>
+				<Show
+					when={!hasNoProfiles()}
+					fallback={
+						<a href={buildUrl("/connections", currentSlug())} class="profile-selector-create-link">
+							<PlusIcon />
+							<span>Create Profile</span>
+						</a>
+					}
+				>
+					<div class="profile-selector" ref={containerRef}>
+						<button class="profile-selector-button" onClick={() => setIsOpen(!isOpen())} aria-expanded={isOpen()} aria-haspopup="menu" type="button">
+							<ProfileIcon />
+							<span class="profile-selector-label">{buttonLabel()}</span>
+							<ChevronDownIcon />
+						</button>
 
-				<Show when={isOpen()}>
-					<div class="profile-selector-dropdown">
-						<Show when={profileList.loading}>
-							<div class="profile-selector-item profile-selector-loading">Loading...</div>
-						</Show>
+						<Show when={isOpen()}>
+							<div class="profile-selector-dropdown">
+								<Show when={profileList().length > 0}>
+									<For each={profileList()}>
+										{profile => (
+											<button class={`profile-selector-item ${currentSlug() === profile.slug ? "active" : ""}`} onClick={() => handleSelect(profile.slug)} type="button">
+												<span class="profile-selector-radio">{currentSlug() === profile.slug ? <CheckIcon /> : null}</span>
+												<span>{profile.name}</span>
+											</button>
+										)}
+									</For>
 
-						<Show when={!profileList.loading && (profileList()?.length ?? 0) > 0}>
-							<For each={profileList()}>
-								{profile => (
-									<button class={`profile-selector-item ${props.currentSlug === profile.slug ? "active" : ""}`} onClick={() => handleSelect(profile.slug)} type="button">
-										<span class="profile-selector-radio">{props.currentSlug === profile.slug ? <CheckIcon /> : null}</span>
-										<span>{profile.name}</span>
-									</button>
-								)}
-							</For>
+									<div class="profile-selector-divider" />
 
-							<div class="profile-selector-divider" />
-
-							<a href="/connections" class="profile-selector-item profile-selector-create">
-								<PlusIcon />
-								<span>Manage Profiles</span>
-							</a>
+									<a href={buildUrl("/connections", currentSlug())} class="profile-selector-item profile-selector-create">
+										<PlusIcon />
+										<span>Manage Profiles</span>
+									</a>
+								</Show>
+							</div>
 						</Show>
 					</div>
 				</Show>
-			</div>
+			</Show>
 		</Show>
 	);
 }

@@ -1,32 +1,24 @@
 ---
-import AppLayout from "../layouts/AppLayout.astro";
-import HeroSection from "../components/landing/HeroSection.astro";
+import CTASection from "../components/landing/CTASection.astro";
 import FeaturesSection from "../components/landing/FeaturesSection.astro";
+import HeroSection from "../components/landing/HeroSection.astro";
 import HowItWorksSection from "../components/landing/HowItWorksSection.astro";
 import TimelinePreviewSection from "../components/landing/TimelinePreviewSection.astro";
-import CTASection from "../components/landing/CTASection.astro";
+import AppLayout from "../layouts/AppLayout.astro";
 
 const structuredData = {
 	"@context": "https://schema.org",
 	"@type": "SoftwareApplication",
-	"name": "Media Timeline",
-	"applicationCategory": "DeveloperApplication",
-	"operatingSystem": "Web",
-	"description": "Aggregate activity from GitHub, Reddit, Twitter, Bluesky, and YouTube into a unified timeline.",
-	"offers": {
+	name: "Media Timeline",
+	applicationCategory: "DeveloperApplication",
+	operatingSystem: "Web",
+	description: "Aggregate activity from GitHub, Reddit, Twitter, Bluesky, and YouTube into a unified timeline.",
+	offers: {
 		"@type": "Offer",
-		"price": "0",
-		"priceCurrency": "USD"
+		price: "0",
+		priceCurrency: "USD",
 	},
-	"featureList": [
-		"Unified Timeline",
-		"GitHub Integration",
-		"Reddit Integration",
-		"Twitter Integration",
-		"YouTube Integration",
-		"Bluesky Integration",
-		"Privacy-first Design"
-	]
+	featureList: ["Unified Timeline", "GitHub Integration", "Reddit Integration", "Twitter Integration", "YouTube Integration", "Bluesky Integration", "Privacy-first Design"],
 };
 ---
 
