@@ -8,12 +8,12 @@ interface Props {
 const { title = "Media Timeline" } = Astro.props;
 
 const pages = [
-	{ name: "timeline", href: "/" },
+	{ name: "timeline", href: "/timeline" },
 	{ name: "connections", href: "/connections" },
 ];
 
 const currentPath = Astro.url.pathname;
-const active = pages.find(p => (p.href === "/" ? currentPath === "/" : currentPath.startsWith(p.href)))?.name ?? "timeline";
+const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
 ---
 
 <Layout title={title}>
