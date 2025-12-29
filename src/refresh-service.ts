@@ -4,7 +4,7 @@ import type { RefreshError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { RedditProvider } from "./platforms/reddit";
 import { accountMembers, accounts } from "./schema";
-import { type Result, decrypt, err, ok } from "./utils";
+import { type Result, decrypt, err, match, ok, pipe } from "./utils";
 
 type AccountWithUser = {
 	id: string;
@@ -112,17 +112,21 @@ const processGitHubRefresh = async (ctx: AppContext, account: AccountWithUser, u
 };
 
 const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
-	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
-	if (!decryptResult.ok) {
-		return { result: err({ kind: "decryption_failed", message: "Failed to decrypt Reddit token" }) };
+	const tokenResult = await pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
+		.map_err((): RefreshError => ({ kind: "decryption_failed", message: "Failed to decrypt Reddit token" }))
+		.result();
+
+	if (!tokenResult.ok) {
+		return { result: err(tokenResult.error) };
 	}
+	const token = tokenResult.value;
 
 	const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	const backgroundTask: BackgroundTask = async () => {
 		try {
 			const provider = new RedditProvider();
-			const result = await processRedditAccount(ctx.backend, account.id, decryptResult.value, provider);
+			const result = await processRedditAccount(ctx.backend, account.id, token, provider);
 
 			if (result.ok) {
 				const allUserAccounts = await fetchUserAccounts(ctx, userId);
@@ -159,22 +163,22 @@ const processGenericRefresh = async (ctx: AppContext, account: AccountWithUser, 
 };
 
 export const refreshSingleAccount = async (ctx: AppContext, accountId: string, userId: string): Promise<RefreshSingleResult> => {
-	const accountResult = await lookupAccount(ctx, accountId, userId);
-	if (!accountResult.ok) {
-		return { result: err(accountResult.error) };
-	}
+	const accountResult = await pipe(lookupAccount(ctx, accountId, userId)).result();
 
-	const account = accountResult.value;
-
-	if (account.platform === "github") {
-		return processGitHubRefresh(ctx, account, userId);
-	}
-
-	if (account.platform === "reddit") {
-		return processRedditRefresh(ctx, account, userId);
-	}
-
-	return processGenericRefresh(ctx, account, userId);
+	return match(
+		accountResult,
+		account => {
+			switch (account.platform) {
+				case "github":
+					return processGitHubRefresh(ctx, account, userId);
+				case "reddit":
+					return processRedditRefresh(ctx, account, userId);
+				default:
+					return processGenericRefresh(ctx, account, userId);
+			}
+		},
+		error => Promise.resolve({ result: err(error) })
+	);
 };
 
 export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promise<RefreshAllResult> => {
@@ -233,14 +237,18 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 
 			for (const account of redditAccounts) {
 				try {
-					const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
-					if (!decryptResult.ok) {
+					const tokenResult = await pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
+						.map_err((): RefreshError => ({ kind: "decryption_failed", message: "Failed to decrypt Reddit token" }))
+						.result();
+
+					if (!tokenResult.ok) {
 						console.error("[refresh-all] Reddit token decryption failed for account:", account.id);
 						continue;
 					}
+					const token = tokenResult.value;
 
 					const provider = new RedditProvider();
-					const result = await processRedditAccount(ctx.backend, account.id, decryptResult.value, provider);
+					const result = await processRedditAccount(ctx.backend, account.id, token, provider);
 					if (result.ok) bgSucceeded++;
 				} catch (e) {
 					console.error(`[refresh-all] Failed to refresh Reddit account ${account.id}:`, e);
