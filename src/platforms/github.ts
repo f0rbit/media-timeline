@@ -1,7 +1,7 @@
 import { Octokit } from "octokit";
 import { createLogger } from "../logger";
 import type { GitHubMetaStore, GitHubRepoCommit, GitHubRepoCommitsStore, GitHubRepoMeta, GitHubRepoPR, GitHubRepoPRsStore } from "../schema";
-import { type Result, err, ok } from "../utils";
+import { type Result, err, ok, pipe } from "../utils";
 import { type ProviderError, mapHttpError, toProviderError } from "./types";
 
 const log = createLogger("github");
@@ -134,36 +134,44 @@ export class GitHubProvider {
 	}
 
 	async fetch(token: string): Promise<Result<GitHubFetchResult, ProviderError>> {
-		try {
-			log.debug("Starting fetch", { maxRepos: this.config.maxRepos });
+		log.debug("Starting fetch", { maxRepos: this.config.maxRepos });
 
-			const octokit = new Octokit({
-				auth: token,
-				userAgent: "media-timeline/2.0.0",
-			});
+		const octokit = new Octokit({
+			auth: token,
+			userAgent: "media-timeline/2.0.0",
+		});
 
-			const userResult = await this.fetchUser(octokit);
-			if (!userResult.ok) return userResult;
-			const username = userResult.value;
-			log.info("Authenticated as", username);
+		return pipe
+			.try(
+				async () => {
+					const userResult = await this.fetchUser(octokit);
+					if (!userResult.ok) throw userResult.error;
+					const username = userResult.value;
+					log.info("Authenticated as", username);
 
-			const reposResult = await this.fetchRepos(octokit);
-			if (!reposResult.ok) return reposResult;
-			const repos = reposResult.value;
-			log.debug("Found repos", { count: repos.length });
+					const reposResult = await this.fetchRepos(octokit);
+					if (!reposResult.ok) throw reposResult.error;
+					const repos = reposResult.value;
+					log.debug("Found repos", { count: repos.length });
 
-			const meta = await this.buildMeta(octokit, username, repos);
-			const repoDataMap = await this.fetchAllRepoData(octokit, meta.repositories, username);
+					const meta = await this.buildMeta(octokit, username, repos);
+					const repoDataMap = await this.fetchAllRepoData(octokit, meta.repositories, username);
 
-			const totalCommits = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.commits.total_commits, 0);
-			const totalPRs = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.prs.total_prs, 0);
-			log.info("Fetch complete", { repos: repoDataMap.size, commits: totalCommits, prs: totalPRs });
+					const totalCommits = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.commits.total_commits, 0);
+					const totalPRs = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.prs.total_prs, 0);
+					log.info("Fetch complete", { repos: repoDataMap.size, commits: totalCommits, prs: totalPRs });
 
-			return ok({ meta, repos: repoDataMap });
-		} catch (error: unknown) {
-			log.error("Fetch failed", error);
-			return err(mapOctokitError(error));
-		}
+					return { meta, repos: repoDataMap };
+				},
+				(error): ProviderError => {
+					if (typeof error === "object" && error !== null && "kind" in error) {
+						return error as ProviderError;
+					}
+					log.error("Fetch failed", error);
+					return mapOctokitError(error);
+				}
+			)
+			.result();
 	}
 
 	private async fetchUser(octokit: Octokit): Promise<Result<string, ProviderError>> {
