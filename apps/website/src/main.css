@@ -1017,6 +1017,12 @@ footer {
 	--platform-color: oklch(20% 0.01 0);
 }
 
+@media (prefers-color-scheme: dark) {
+	.platform-twitter {
+		--platform-color: oklch(100% 0 0);
+	}
+}
+
 .status-active {
 	color: oklch(from var(--item-green) 0.85 0.1 h);
 }
