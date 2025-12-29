@@ -1,43 +1,16 @@
 export { err, ok, type Result } from "@f0rbit/corpus";
+export {
+	match,
+	to_nullable,
+	unwrap,
+	unwrap_err as unwrapErr,
+	try_catch as tryCatch,
+	try_catch_async as tryCatchAsync,
+	fetch_result as fetchResult,
+	type FetchError,
+} from "@f0rbit/corpus";
 
-import { type Result, err, ok } from "@f0rbit/corpus";
-
-export const to_nullable = <T, E>(result: Result<T, E>): T | null => (result.ok ? result.value : null);
-
-export const match = <T, E, R>(result: Result<T, E>, onOk: (value: T) => R, onErr: (error: E) => R): R => {
-	if (result.ok) return onOk(result.value);
-	return onErr(result.error);
-};
-
-export const tryCatch = <T, E>(fn: () => T, onError: (e: unknown) => E): Result<T, E> => {
-	try {
-		return ok(fn());
-	} catch (e) {
-		return err(onError(e));
-	}
-};
-
-export const tryCatchAsync = async <T, E>(fn: () => Promise<T>, onError: (e: unknown) => E): Promise<Result<T, E>> => {
-	try {
-		return ok(await fn());
-	} catch (e) {
-		return err(onError(e));
-	}
-};
-
-export type FetchError = { type: "network"; cause: unknown } | { type: "http"; status: number; statusText: string };
-
-export const fetchResult = async <T, E>(input: string | URL | Request, init: RequestInit | undefined, onError: (e: FetchError) => E, parseBody: (response: Response) => Promise<T> = r => r.json() as Promise<T>): Promise<Result<T, E>> => {
-	try {
-		const response = await fetch(input, init);
-		if (!response.ok) {
-			return err(onError({ type: "http", status: response.status, statusText: response.statusText }));
-		}
-		return ok(await parseBody(response));
-	} catch (e) {
-		return err(onError({ type: "network", cause: e }));
-	}
-};
+import { type FetchError, type Result, err, fetch_result, ok, try_catch, try_catch_async } from "@f0rbit/corpus";
 
 type MaybePromise<T> = T | Promise<T>;
 
@@ -102,8 +75,8 @@ const createPipe = <T, E>(promised: Promise<Result<T, E>>): Pipe<T, E> => ({
 export const pipe = <T, E>(initial: MaybePromise<Result<T, E>>): Pipe<T, E> => createPipe(Promise.resolve(initial));
 pipe.ok = <T>(value: T): Pipe<T, never> => pipe(ok(value));
 pipe.err = <E>(error: E): Pipe<never, E> => pipe(err(error));
-pipe.try = <T, E>(fn: () => Promise<T>, onError: (e: unknown) => E): Pipe<T, E> => pipe(tryCatchAsync(fn, onError));
-pipe.fetch = <T, E>(input: string | URL | Request, init: RequestInit | undefined, onError: (e: FetchError) => E, parseBody?: (response: Response) => Promise<T>): Pipe<T, E> => pipe(fetchResult(input, init, onError, parseBody));
+pipe.try = <T, E>(fn: () => Promise<T>, onError: (e: unknown) => E): Pipe<T, E> => pipe(try_catch_async(fn, onError));
+pipe.fetch = <T, E>(input: string | URL | Request, init: RequestInit | undefined, onError: (e: FetchError) => E, parseBody?: (response: Response) => Promise<T>): Pipe<T, E> => pipe(fetch_result(input, init, onError, parseBody));
 
 // Encryption
 const SALT = new TextEncoder().encode("media-timeline-salt");
@@ -129,7 +102,7 @@ const deriveKey = (password: string): Promise<CryptoKey> =>
 	);
 
 export const encrypt = (plaintext: string, key: string): Promise<Result<string, EncryptionError>> =>
-	tryCatchAsync(
+	try_catch_async(
 		async () => {
 			const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 			const derivedKey = await deriveKey(key);
@@ -147,7 +120,7 @@ export const decrypt = (ciphertext: string, key: string): Promise<Result<string,
 	pipe(fromBase64(ciphertext))
 		.mapErr((): EncryptionError => ({ kind: "decryption_failed", message: "Invalid base64 ciphertext" }))
 		.flatMap(combined =>
-			tryCatchAsync(
+			try_catch_async(
 				async () => {
 					const iv = combined.slice(0, IV_LENGTH);
 					const data = combined.slice(IV_LENGTH);
@@ -186,7 +159,7 @@ export type DecodeError = { kind: "invalid_base64"; input: string } | { kind: "i
 
 export const toBase64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
 export const fromBase64 = (str: string): Result<Uint8Array, DecodeError> =>
-	tryCatch(
+	try_catch(
 		() => Uint8Array.from(atob(str), c => c.charCodeAt(0)),
 		(): DecodeError => ({ kind: "invalid_base64", input: str.slice(0, 50) })
 	);
@@ -252,9 +225,6 @@ export const last = <T>(array: readonly T[]): Result<T, { kind: "empty_array" }>
 };
 
 // String utilities
-/**
- * Truncate text to a maximum length, taking only the first line and replacing whitespace.
- */
 export const truncate = (text: string, maxLength = 72): string => {
 	const firstLine = text.split("\n")[0] ?? "";
 	const singleLine = firstLine.replace(/\s+/g, " ").trim();
@@ -264,14 +234,3 @@ export const truncate = (text: string, maxLength = 72): string => {
 // Other utilities
 export const uuid = (): string => crypto.randomUUID();
 export const randomSha = (): string => Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
-
-// Test utilities
-export const unwrap = <T, E>(result: Result<T, E>): T => {
-	if (!result.ok) throw new Error(`Unwrap called on error result: ${JSON.stringify(result.error)}`);
-	return result.value;
-};
-
-export const unwrapErr = <T, E>(result: Result<T, E>): E => {
-	if (result.ok) throw new Error(`unwrapErr called on ok result: ${JSON.stringify(result.value)}`);
-	return result.error;
-};
