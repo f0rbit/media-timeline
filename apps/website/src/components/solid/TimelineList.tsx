@@ -7,7 +7,6 @@ import GitCommit from "lucide-solid/icons/git-commit-horizontal";
 import GitPullRequest from "lucide-solid/icons/git-pull-request";
 import MessageSquareText from "lucide-solid/icons/message-square-text";
 import Reply from "lucide-solid/icons/reply";
-import User from "lucide-solid/icons/user";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
 
 const GithubUsernamesContext = createContext<string[]>([]);
@@ -22,7 +21,6 @@ const stripOwnerPrefix = (repo: string, usernames: string[]): string => {
 type TimelineData = {
 	groups: TimelineGroup[];
 	githubUsernames: string[];
-	profileName?: string;
 };
 
 // Read profile slug from URL
@@ -45,7 +43,6 @@ export default function TimelineList() {
 			return {
 				groups: result.data.data.groups,
 				githubUsernames: [],
-				profileName: result.data.meta.profile_name,
 			};
 		}
 	);
@@ -63,12 +60,9 @@ export default function TimelineList() {
 
 				<Show when={data()} keyed>
 					{response => (
-						<>
-							<Show when={response.profileName}>{profileName => <ProfileBadge name={profileName()} />}</Show>
-							<GithubUsernamesContext.Provider value={response.githubUsernames}>
-								<TimelineGroups groups={response.groups} />
-							</GithubUsernamesContext.Provider>
-						</>
+						<GithubUsernamesContext.Provider value={response.githubUsernames}>
+							<TimelineGroups groups={response.groups} />
+						</GithubUsernamesContext.Provider>
 					)}
 				</Show>
 			</div>
@@ -83,15 +77,6 @@ function NoProfileSelected() {
 				<p>No profile selected. Please select a profile to view your timeline.</p>
 				<a href="/connections">Go to Connections</a>
 			</div>
-		</div>
-	);
-}
-
-function ProfileBadge(props: { name: string }) {
-	return (
-		<div class="profile-badge">
-			<User size={14} />
-			<span>Viewing: {props.name}</span>
 		</div>
 	);
 }
