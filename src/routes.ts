@@ -477,57 +477,53 @@ connectionRoutes.delete("/:account_id", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	const result = await deleteConnection({ db: ctx.db, backend: ctx.backend }, accountId, auth.user_id);
+	return match(
+		await deleteConnection({ db: ctx.db, backend: ctx.backend }, accountId, auth.user_id),
+		({ affected_users, deleted_stores, account_id, platform }) => {
+			const regenerateTimelines = async () => {
+				const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
-	if (!result.ok) {
-		const error = result.error;
-		if (error.kind === "not_found") {
-			return c.json({ error: "Not found", message: "Account not found" }, 404);
+				for (const userId of affected_users) {
+					const userAccounts = await ctx.db
+						.select({
+							id: accounts.id,
+							platform: accounts.platform,
+							platform_user_id: accounts.platform_user_id,
+							access_token_encrypted: accounts.access_token_encrypted,
+							refresh_token_encrypted: accounts.refresh_token_encrypted,
+							user_id: accountMembers.user_id,
+						})
+						.from(accounts)
+						.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
+						.where(and(eq(accountMembers.user_id, userId), eq(accounts.is_active, true)));
+
+					const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+					await combineUserTimeline(ctx.backend, userId, snapshots);
+				}
+			};
+
+			// Regenerate timelines - in production use waitUntil, in dev await directly
+			try {
+				c.executionCtx.waitUntil(regenerateTimelines());
+			} catch {
+				// Dev server doesn't have ExecutionContext - run synchronously
+			}
+
+			return c.json({
+				deleted: true,
+				account_id,
+				platform,
+				deleted_stores: deleted_stores.length,
+				affected_users: affected_users.length,
+			}) as Response;
+		},
+		error => {
+			const statusMap: Record<string, number> = { not_found: 404, forbidden: 403 };
+			const status = statusMap[error.kind] ?? 500;
+			const message = "message" in error ? error.message : "Not found";
+			return c.json({ error: error.kind, message }, status as 404 | 403 | 500) as Response;
 		}
-		if (error.kind === "forbidden") {
-			return c.json({ error: "Forbidden", message: error.message }, 403);
-		}
-		return c.json({ error: "Internal error", message: error.message }, 500);
-	}
-
-	const { affected_users, deleted_stores, account_id, platform } = result.value;
-
-	const regenerateTimelines = async () => {
-		const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
-
-		for (const userId of affected_users) {
-			const userAccounts = await ctx.db
-				.select({
-					id: accounts.id,
-					platform: accounts.platform,
-					platform_user_id: accounts.platform_user_id,
-					access_token_encrypted: accounts.access_token_encrypted,
-					refresh_token_encrypted: accounts.refresh_token_encrypted,
-					user_id: accountMembers.user_id,
-				})
-				.from(accounts)
-				.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-				.where(and(eq(accountMembers.user_id, userId), eq(accounts.is_active, true)));
-
-			const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
-			await combineUserTimeline(ctx.backend, userId, snapshots);
-		}
-	};
-
-	// Regenerate timelines - in production use waitUntil, in dev await directly
-	try {
-		c.executionCtx.waitUntil(regenerateTimelines());
-	} catch {
-		await regenerateTimelines();
-	}
-
-	return c.json({
-		deleted: true,
-		account_id,
-		platform,
-		deleted_stores: deleted_stores.length,
-		affected_users: affected_users.length,
-	});
+	);
 });
 
 connectionRoutes.post("/:account_id/members", async c => {
