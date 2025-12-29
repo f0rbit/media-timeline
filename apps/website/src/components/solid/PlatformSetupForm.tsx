@@ -14,6 +14,7 @@ type PlatformConfig = {
 
 type Props = {
 	platform: Platform;
+	profileId: string;
 	onSuccess: () => void;
 };
 
@@ -60,6 +61,7 @@ export default function PlatformSetupForm(props: Props) {
 			platform: props.platform,
 			access_token: token(),
 			platform_username: username() || undefined,
+			profile_id: props.profileId,
 		});
 
 		if (!result.ok) {

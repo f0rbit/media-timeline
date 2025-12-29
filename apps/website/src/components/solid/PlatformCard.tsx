@@ -1,4 +1,4 @@
-import type { ConnectionWithSettings, PlatformSettings } from "@/utils/api-client";
+import type { ConnectionWithSettings } from "@/utils/api-client";
 import { getApiKey } from "@/utils/api-client";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
 import { Match, Show, Switch } from "solid-js";
@@ -15,11 +15,12 @@ import StatusBadge, { type ConnectionState } from "./StatusBadge";
 
 type Props = {
 	platform: Platform;
+	profileId: string;
 	connection: ConnectionWithSettings | null;
 	onConnectionChange: () => void;
 };
 
-function RedditOAuthButton() {
+function RedditOAuthButton(props: { profileId: string }) {
 	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
 	const handleConnect = () => {
@@ -28,7 +29,7 @@ function RedditOAuthButton() {
 			console.error("No API key available for Reddit OAuth");
 			return;
 		}
-		window.location.href = `${apiUrl}/api/auth/reddit?key=${encodeURIComponent(apiKey)}`;
+		window.location.href = `${apiUrl}/api/auth/reddit?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
@@ -41,7 +42,7 @@ function RedditOAuthButton() {
 	);
 }
 
-function TwitterOAuthButton() {
+function TwitterOAuthButton(props: { profileId: string }) {
 	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
 	const handleConnect = () => {
@@ -50,7 +51,7 @@ function TwitterOAuthButton() {
 			console.error("No API key available for Twitter OAuth");
 			return;
 		}
-		window.location.href = `${apiUrl}/api/auth/twitter?key=${encodeURIComponent(apiKey)}`;
+		window.location.href = `${apiUrl}/api/auth/twitter?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
@@ -63,7 +64,7 @@ function TwitterOAuthButton() {
 	);
 }
 
-function GitHubOAuthButton() {
+function GitHubOAuthButton(props: { profileId: string }) {
 	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
 	const handleConnect = () => {
@@ -72,7 +73,7 @@ function GitHubOAuthButton() {
 			console.error("No API key available for GitHub OAuth");
 			return;
 		}
-		window.location.href = `${apiUrl}/api/auth/github?key=${encodeURIComponent(apiKey)}`;
+		window.location.href = `${apiUrl}/api/auth/github?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
@@ -162,16 +163,16 @@ export default function PlatformCard(props: Props) {
 
 			<Switch>
 				<Match when={state() === "not_configured" && props.platform === "reddit"}>
-					<RedditOAuthButton />
+					<RedditOAuthButton profileId={props.profileId} />
 				</Match>
 				<Match when={state() === "not_configured" && props.platform === "twitter"}>
-					<TwitterOAuthButton />
+					<TwitterOAuthButton profileId={props.profileId} />
 				</Match>
 				<Match when={state() === "not_configured" && props.platform === "github"}>
-					<GitHubOAuthButton />
+					<GitHubOAuthButton profileId={props.profileId} />
 				</Match>
 				<Match when={state() === "not_configured"}>
-					<PlatformSetupForm platform={props.platform} onSuccess={props.onConnectionChange} />
+					<PlatformSetupForm platform={props.platform} profileId={props.profileId} onSuccess={props.onConnectionChange} />
 				</Match>
 				<Match when={state() === "active" && props.connection} keyed>
 					{connection => (

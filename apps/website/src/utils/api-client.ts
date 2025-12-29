@@ -2,12 +2,7 @@ import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo,
 
 export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo, Platform, PlatformSettings, PostPayload, PRCommit, PullRequestPayload, TimelineItem, TimelineType };
 
-// Mock user/key for local development
-const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = `mt_dev_${btoa(MOCK_USER_ID).slice(0, 24)}`;
-
-// Check if running in browser on localhost (evaluated at request time, not module load)
-const isLocalDev = () => typeof window !== "undefined" && window.location.hostname === "localhost";
+import { MOCK_API_KEY, MOCK_USER_ID, isDevMode } from "./mock-auth";
 
 type ApiClientConfig = {
 	baseUrl: string;
@@ -22,7 +17,7 @@ let config: ApiClientConfig = {
 // Get effective API key - use mock key for localhost if no key explicitly set
 const getEffectiveApiKey = (): string | null => {
 	if (config.apiKey) return config.apiKey;
-	if (isLocalDev()) return MOCK_API_KEY;
+	if (isDevMode()) return MOCK_API_KEY;
 	return null;
 };
 
@@ -46,9 +41,9 @@ export function getMockUserId(): string {
 	return MOCK_USER_ID;
 }
 
-// Legacy function - API key is now auto-initialized for localhost
+// Initialize mock auth for dev mode
 export function initMockAuth(): void {
-	if (typeof window !== "undefined" && (import.meta.env.DEV || window.location.hostname === "localhost")) {
+	if (isDevMode()) {
 		setApiKey(MOCK_API_KEY);
 	}
 }
@@ -157,9 +152,9 @@ export type TimelineResponse = {
 };
 
 export const connections = {
-	list: () => api.get<ConnectionsResponse>("/connections"),
-	listWithSettings: () => api.get<ConnectionsWithSettingsResponse>("/connections?include_settings=true"),
-	create: (data: { platform: string; access_token: string; platform_username?: string }) => api.post<{ account_id: string }>("/connections", data),
+	list: (profileId: string) => api.get<ConnectionsResponse>(`/connections?profile_id=${profileId}`),
+	listWithSettings: (profileId: string) => api.get<ConnectionsWithSettingsResponse>(`/connections?profile_id=${profileId}&include_settings=true`),
+	create: (data: { platform: string; access_token: string; platform_username?: string; profile_id: string }) => api.post<{ account_id: string }>("/connections", data),
 	update: (accountId: string, data: { is_active?: boolean }) => api.patch<{ success: boolean; connection: Connection }>(`/connections/${accountId}`, data),
 	delete: (accountId: string) => api.delete<{ success: boolean }>(`/connections/${accountId}`),
 	refresh: (accountId: string) => api.post<{ status: string }>(`/connections/${accountId}/refresh`),
@@ -199,17 +194,6 @@ export type ProfileTimelineResponse = {
 	};
 };
 
-export type AccountVisibility = {
-	account_id: string;
-	platform: string;
-	platform_username: string | null;
-	is_visible: boolean;
-};
-
-export type VisibilityResponse = {
-	visibility: AccountVisibility[];
-};
-
 export type ProfileWithRelations = {
 	id: string;
 	slug: string;
@@ -218,7 +202,6 @@ export type ProfileWithRelations = {
 	theme: string | null;
 	created_at: string;
 	updated_at: string;
-	visibility: AccountVisibility[];
 	filters: Array<{
 		id: string;
 		account_id: string;
@@ -235,8 +218,6 @@ export type ProfileDetailResponse = {
 export const profiles = {
 	list: () => api.get<ProfilesListResponse>("/profiles"),
 	get: (id: string) => api.get<ProfileDetailResponse>(`/profiles/${id}`),
-	getVisibility: (id: string) => api.get<VisibilityResponse>(`/profiles/${id}/visibility`),
-	updateVisibility: (id: string, visibility: Array<{ account_id: string; is_visible: boolean }>) => api.put<{ updated: boolean; count: number }>(`/profiles/${id}/visibility`, { visibility }),
 	getTimeline: (slug: string, params?: { limit?: number; before?: string }) => {
 		const query = new URLSearchParams();
 		if (params?.limit) query.set("limit", String(params.limit));

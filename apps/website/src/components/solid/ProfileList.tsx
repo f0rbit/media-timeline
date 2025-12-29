@@ -1,13 +1,5 @@
 import { api, initMockAuth } from "@/utils/api-client";
 import { For, Show, createResource, createSignal } from "solid-js";
-import { isServer } from "solid-js/web";
-
-type ProfileVisibility = {
-	account_id: string;
-	platform: string;
-	platform_username: string | null;
-	is_visible: boolean;
-};
 
 type ProfileFilter = {
 	id: string;
@@ -25,7 +17,6 @@ type Profile = {
 	theme: string | null;
 	created_at: string;
 	updated_at: string;
-	visibility?: ProfileVisibility[];
 	filters?: ProfileFilter[];
 };
 
@@ -40,8 +31,7 @@ type CreateProfileResponse = {
 const API_BASE_URL = "https://media.devpad.tools";
 
 const fetchProfiles = async (): Promise<Profile[]> => {
-	// Skip fetch during SSR
-	if (isServer) return [];
+	initMockAuth();
 	const result = await api.get<ProfilesResponse>("/profiles");
 	if (!result.ok) {
 		console.error("[ProfileList] Failed to fetch profiles:", result.error);
@@ -67,10 +57,17 @@ const updateProfile = async (id: string, data: { slug?: string; name?: string; d
 	return result.data.profile;
 };
 
-export default function ProfileList(props: { currentSlug?: string | null }) {
-	initMockAuth();
+export type ProfileSummary = Profile;
 
+// Read profile slug from URL
+const getSlugFromUrl = () => {
+	if (typeof window === "undefined") return null;
+	return new URLSearchParams(window.location.search).get("profile");
+};
+
+export default function ProfileList() {
 	const [profiles, { refetch }] = createResource(fetchProfiles);
+	const currentSlug = () => getSlugFromUrl();
 	const [editingProfile, setEditingProfile] = createSignal<Profile | null>(null);
 	const [showCreateForm, setShowCreateForm] = createSignal(false);
 	const [copiedSlug, setCopiedSlug] = createSignal<string | null>(null);
@@ -90,14 +87,7 @@ export default function ProfileList(props: { currentSlug?: string | null }) {
 		refetch();
 	};
 
-	const countVisibleAccounts = (profile: Profile): { visible: number; total: number } => {
-		const visibility = profile.visibility ?? [];
-		const visible = visibility.filter(v => v.is_visible).length;
-		return { visible, total: visibility.length };
-	};
-
 	const handleViewTimeline = (slug: string) => {
-		if (isServer) return;
 		window.location.href = `/timeline?profile=${encodeURIComponent(slug)}`;
 	};
 
@@ -146,13 +136,12 @@ export default function ProfileList(props: { currentSlug?: string | null }) {
 							fallback={
 								<ProfileCard
 									profile={profile}
-									isCurrent={props.currentSlug === profile.slug}
+									isCurrent={currentSlug() === profile.slug}
 									onView={() => handleViewTimeline(profile.slug)}
 									onEdit={() => setEditingProfile(profile)}
 									onDelete={() => handleDelete(profile)}
 									onCopy={() => handleCopy(profile.slug)}
 									copied={copiedSlug() === profile.slug}
-									countVisibleAccounts={countVisibleAccounts}
 								/>
 							}
 						>
@@ -180,11 +169,9 @@ type ProfileCardProps = {
 	onDelete: () => void;
 	onCopy: () => void;
 	copied: boolean;
-	countVisibleAccounts: (profile: Profile) => { visible: number; total: number };
 };
 
 function ProfileCard(props: ProfileCardProps) {
-	const { visible, total } = props.countVisibleAccounts(props.profile);
 	const endpoint = `https://media.devpad.tools/api/v1/profiles/${props.profile.slug}/timeline`;
 
 	return (
@@ -215,12 +202,6 @@ function ProfileCard(props: ProfileCardProps) {
 
 				<Show when={props.profile.description}>
 					<p class="tertiary text-sm">{props.profile.description}</p>
-				</Show>
-
-				<Show when={total > 0}>
-					<span class="muted text-xs">
-						{visible} of {total} accounts visible
-					</span>
 				</Show>
 
 				<div class="flex-row items-center" style={{ gap: "8px", "margin-top": "4px" }}>
