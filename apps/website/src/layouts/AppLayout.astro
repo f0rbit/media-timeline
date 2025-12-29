@@ -1,6 +1,7 @@
 ---
 import Layout from "./Layout.astro";
 import AuthStatus from "../components/solid/AuthStatus.tsx";
+import ProfileSelector from "../components/solid/ProfileSelector.tsx";
 
 interface Props {
 	title?: string;
@@ -19,6 +20,7 @@ const pages = [
 
 const currentPath = Astro.url.pathname;
 const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
+const profileSlug = Astro.url.searchParams.get("profile");
 ---
 
 <Layout title={title} description={description} ogImage={ogImage} noindex={noindex}>
@@ -32,6 +34,7 @@ const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
               {p.name}
             </a>
           ))}
+          <ProfileSelector client:load currentSlug={profileSlug} />
           <AuthStatus client:load />
         </nav>
       </header>
