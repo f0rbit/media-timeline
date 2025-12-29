@@ -18,7 +18,7 @@ import type {
 	YouTubeRaw,
 	YouTubeVideo,
 } from "../../src/schema";
-import { type DeepPartial, daysAgo, hoursAgo, mergeDeep, minutesAgo, randomSha, uuid } from "../../src/utils";
+import { type DeepPartial, days_ago, hours_ago, merge_deep, minutes_ago, random_sha, uuid } from "../../src/utils";
 
 export type GitHubExtendedCommitInput = {
 	sha?: string;
@@ -30,7 +30,7 @@ export type GitHubExtendedCommitInput = {
 };
 
 export const makeGitHubExtendedCommit = (overrides: GitHubExtendedCommitInput = {}): GitHubExtendedCommit => {
-	const sha = overrides.sha ?? randomSha();
+	const sha = overrides.sha ?? random_sha();
 	const repo = overrides.repo ?? "test-user/test-repo";
 	return {
 		sha,
@@ -61,7 +61,7 @@ export const makeGitHubRaw = (commits: GitHubExtendedCommit[] = [], events: GitH
 });
 
 export const makeBlueskyAuthor = (overrides: DeepPartial<BlueskyAuthor> = {}): BlueskyAuthor =>
-	mergeDeep(
+	merge_deep(
 		{
 			did: `did:plc:${uuid().slice(0, 24)}`,
 			handle: "test.bsky.social",
@@ -72,7 +72,7 @@ export const makeBlueskyAuthor = (overrides: DeepPartial<BlueskyAuthor> = {}): B
 	);
 
 export const makeBlueskyPost = (overrides: DeepPartial<BlueskyPost> = {}): BlueskyPost =>
-	mergeDeep(
+	merge_deep(
 		{
 			uri: `at://did:plc:abc123/app.bsky.feed.post/${uuid()}`,
 			cid: `bafyrei${uuid().replace(/-/g, "").slice(0, 48)}`,
@@ -88,7 +88,7 @@ export const makeBlueskyPost = (overrides: DeepPartial<BlueskyPost> = {}): Blues
 		overrides
 	);
 
-export const makeBlueskyFeedItem = (overrides: DeepPartial<BlueskyFeedItem> = {}): BlueskyFeedItem => mergeDeep({ post: makeBlueskyPost() }, overrides);
+export const makeBlueskyFeedItem = (overrides: DeepPartial<BlueskyFeedItem> = {}): BlueskyFeedItem => merge_deep({ post: makeBlueskyPost() }, overrides);
 
 export const makeBlueskyRaw = (feed: BlueskyFeedItem[] = [], cursor?: string, fetchedAt?: string): BlueskyRaw => ({
 	feed,
@@ -97,7 +97,7 @@ export const makeBlueskyRaw = (feed: BlueskyFeedItem[] = [], cursor?: string, fe
 });
 
 export const makeYouTubeVideo = (overrides: DeepPartial<YouTubeVideo> = {}): YouTubeVideo =>
-	mergeDeep(
+	merge_deep(
 		{
 			kind: "youtube#searchResult",
 			etag: "some-etag",
@@ -142,11 +142,11 @@ export const makeDevpadRaw = (tasks: DevpadTask[] = [], fetchedAt?: string): Dev
 });
 
 export const GITHUB_FIXTURES = {
-	singleCommit: (repo = "alice/project", timestamp = hoursAgo(1)) => {
+	singleCommit: (repo = "alice/project", timestamp = hours_ago(1)) => {
 		return makeGitHubRaw([makeGitHubExtendedCommit({ repo, date: timestamp, message: "Initial commit" })]);
 	},
 
-	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hoursAgo(2)) => {
+	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hours_ago(2)) => {
 		return makeGitHubRaw([
 			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature A" }),
 			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature B" }),
@@ -154,20 +154,20 @@ export const GITHUB_FIXTURES = {
 		]);
 	},
 
-	multipleReposSameDay: (timestamp = hoursAgo(1)) => {
+	multipleReposSameDay: (timestamp = hours_ago(1)) => {
 		return makeGitHubRaw([makeGitHubExtendedCommit({ repo: "alice/repo-a", date: timestamp, message: "update repo-a" }), makeGitHubExtendedCommit({ repo: "alice/repo-b", date: timestamp, message: "update repo-b" })]);
 	},
 
 	acrossMultipleDays: () => {
 		return makeGitHubRaw([
-			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(0), message: "today commit" }),
-			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(1), message: "yesterday commit" }),
-			makeGitHubExtendedCommit({ repo: "alice/project", date: daysAgo(2), message: "two days ago commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: days_ago(0), message: "today commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: days_ago(1), message: "yesterday commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: days_ago(2), message: "two days ago commit" }),
 		]);
 	},
 
 	withNonPushEvents: () => {
-		return makeGitHubRaw([makeGitHubExtendedCommit({ date: hoursAgo(1), message: "a commit" })], [makeGitHubWatchEvent({ created_at: hoursAgo(2) })]);
+		return makeGitHubRaw([makeGitHubExtendedCommit({ date: hours_ago(1), message: "a commit" })], [makeGitHubWatchEvent({ created_at: hours_ago(2) })]);
 	},
 
 	empty: () => makeGitHubRaw([]),
@@ -196,7 +196,7 @@ export const makeGitHubRepoCommitsStore = (repo = "alice/project", commits: Arra
 		repo: name ?? "project",
 		branches: ["main"],
 		commits: commits.map(c => ({
-			sha: c.sha ?? randomSha(),
+			sha: c.sha ?? random_sha(),
 			message: c.message ?? "feat: add new feature",
 			author_name: "Test User",
 			author_email: "test@example.com",
@@ -247,9 +247,9 @@ export const makeGitHubFetchResult = (repos: Array<{ repo: string; commits: Arra
 };
 
 export const GITHUB_V2_FIXTURES = {
-	singleCommit: (repo = "alice/project", timestamp = hoursAgo(1)) => makeGitHubFetchResult([{ repo, commits: [{ message: "Initial commit", date: timestamp }] }]),
+	singleCommit: (repo = "alice/project", timestamp = hours_ago(1)) => makeGitHubFetchResult([{ repo, commits: [{ message: "Initial commit", date: timestamp }] }]),
 
-	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hoursAgo(2)) =>
+	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hours_ago(2)) =>
 		makeGitHubFetchResult([
 			{
 				repo,
@@ -265,7 +265,7 @@ export const GITHUB_V2_FIXTURES = {
 };
 
 export const BLUESKY_FIXTURES = {
-	singlePost: (timestamp = hoursAgo(1)) =>
+	singlePost: (timestamp = hours_ago(1)) =>
 		makeBlueskyRaw([
 			makeBlueskyFeedItem({
 				post: makeBlueskyPost({
@@ -274,11 +274,11 @@ export const BLUESKY_FIXTURES = {
 			}),
 		]),
 
-	multiplePosts: (count = 3, _baseTimestamp = hoursAgo(1)) => {
+	multiplePosts: (count = 3, _baseTimestamp = hours_ago(1)) => {
 		const feed = Array.from({ length: count }, (_, i) =>
 			makeBlueskyFeedItem({
 				post: makeBlueskyPost({
-					record: { text: `Post number ${i + 1}`, createdAt: minutesAgo(i * 30) },
+					record: { text: `Post number ${i + 1}`, createdAt: minutes_ago(i * 30) },
 					likeCount: i * 10,
 				}),
 			})
@@ -290,7 +290,7 @@ export const BLUESKY_FIXTURES = {
 		makeBlueskyRaw([
 			makeBlueskyFeedItem({
 				post: makeBlueskyPost({
-					record: { text: "Check out this image!", createdAt: hoursAgo(1) },
+					record: { text: "Check out this image!", createdAt: hours_ago(1) },
 					embed: {
 						images: [{ thumb: "https://cdn.bsky.social/thumb.jpg", fullsize: "https://cdn.bsky.social/full.jpg" }],
 					},
@@ -304,7 +304,7 @@ export const BLUESKY_FIXTURES = {
 				post: makeBlueskyPost({
 					record: {
 						text: "This is a reply",
-						createdAt: hoursAgo(1),
+						createdAt: hours_ago(1),
 						reply: {
 							parent: { uri: "at://did:plc:parent/app.bsky.feed.post/abc" },
 							root: { uri: "at://did:plc:root/app.bsky.feed.post/def" },
@@ -318,7 +318,7 @@ export const BLUESKY_FIXTURES = {
 };
 
 export const YOUTUBE_FIXTURES = {
-	singleVideo: (timestamp = hoursAgo(1)) =>
+	singleVideo: (timestamp = hours_ago(1)) =>
 		makeYouTubeRaw([
 			makeYouTubeVideo({
 				snippet: {
@@ -338,7 +338,7 @@ export const YOUTUBE_FIXTURES = {
 		const items = Array.from({ length: count }, (_, i) =>
 			makeYouTubeVideo({
 				snippet: {
-					publishedAt: hoursAgo(i * 24),
+					publishedAt: hours_ago(i * 24),
 					channelId: "UCtest123",
 					title: `Video ${i + 1}`,
 					description: `Description ${i + 1}`,
@@ -354,7 +354,7 @@ export const YOUTUBE_FIXTURES = {
 		makeYouTubeRaw([
 			makeYouTubeVideo({
 				snippet: {
-					publishedAt: hoursAgo(1),
+					publishedAt: hours_ago(1),
 					channelId: "UC_channel_A",
 					title: "Video from Channel A",
 					description: "",
@@ -364,7 +364,7 @@ export const YOUTUBE_FIXTURES = {
 			}),
 			makeYouTubeVideo({
 				snippet: {
-					publishedAt: hoursAgo(2),
+					publishedAt: hours_ago(2),
 					channelId: "UC_channel_B",
 					title: "Video from Channel B",
 					description: "",
@@ -378,7 +378,7 @@ export const YOUTUBE_FIXTURES = {
 };
 
 export const DEVPAD_FIXTURES = {
-	singleTask: (timestamp = hoursAgo(1)) => makeDevpadRaw([makeDevpadTask({ updated_at: timestamp })]),
+	singleTask: (timestamp = hours_ago(1)) => makeDevpadRaw([makeDevpadTask({ updated_at: timestamp })]),
 
 	multipleTasks: (count = 3) => {
 		const tasks = Array.from({ length: count }, (_, i) =>
@@ -386,7 +386,7 @@ export const DEVPAD_FIXTURES = {
 				title: `Task ${i + 1}`,
 				status: (["todo", "in_progress", "done"] as const)[i % 3],
 				priority: (["low", "medium", "high"] as const)[i % 3],
-				updated_at: hoursAgo(i),
+				updated_at: hours_ago(i),
 			})
 		);
 		return makeDevpadRaw(tasks);
@@ -397,8 +397,8 @@ export const DEVPAD_FIXTURES = {
 			makeDevpadTask({
 				title: "Completed task",
 				status: "done",
-				completed_at: hoursAgo(2),
-				updated_at: hoursAgo(2),
+				completed_at: hours_ago(2),
+				updated_at: hours_ago(2),
 			}),
 		]),
 
@@ -537,7 +537,7 @@ export const makeTimelineItem = (
 	timestamp: new Date().toISOString(),
 	title: "Test item",
 	url: "https://example.com",
-	payload: { type: "commit", sha: randomSha(), message: "test", repo: "test/repo", branch: "main" },
+	payload: { type: "commit", sha: random_sha(), message: "test", repo: "test/repo", branch: "main" },
 	...overrides,
 });
 

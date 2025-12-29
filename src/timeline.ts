@@ -1,5 +1,5 @@
 import type { CommitGroup, CommitPayload, DateGroup, PullRequestPayload, TimelineItem } from "./schema";
-import { extractDateKey } from "./utils";
+import { extract_date_key } from "./utils";
 
 type TimelineEntry = TimelineItem | CommitGroup;
 type CommitItem = TimelineItem & { payload: CommitPayload };
@@ -11,7 +11,7 @@ const compareTimestampDesc = (a: TimelineEntry, b: TimelineEntry): number => new
 
 const getTimestamp = (entry: TimelineEntry): string => (entry.type === "commit_group" ? (entry.commits[0]?.timestamp ?? entry.date) : entry.timestamp);
 
-const getDateKey = (entry: TimelineEntry): string => (entry.type === "commit_group" ? entry.date : extractDateKey(entry.timestamp));
+const getDateKey = (entry: TimelineEntry): string => (entry.type === "commit_group" ? entry.date : extract_date_key(entry.timestamp));
 
 const isCommitItem = (item: TimelineItem): item is CommitItem => item.type === "commit" && item.payload.type === "commit";
 
@@ -148,7 +148,7 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 
 	// Step 2: Group only orphan commits by repo/branch/date
 	const groupedByRepoBranchDate = orphanCommits.reduce<Map<string, CommitItem[]>>((acc, commit) => {
-		const date = extractDateKey(commit.timestamp);
+		const date = extract_date_key(commit.timestamp);
 		const key = makeGroupKey(commit.payload.repo, commit.payload.branch, date);
 		const existing = acc.get(key) ?? [];
 		acc.set(key, [...existing, commit]);

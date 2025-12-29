@@ -4,7 +4,7 @@ import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { accountMembers, accounts, apiKeys } from "./schema";
-import { type Result, encrypt, err, hashApiKey, ok, tryCatchAsync } from "./utils";
+import { type Result, encrypt, err, hash_api_key, ok, try_catch_async } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -55,7 +55,7 @@ export const validateOAuthQueryKey = async (c: HonoContext, ctx: AppContext, pla
 		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_auth`));
 	}
 
-	const keyHash = await hashApiKey(apiKey);
+	const keyHash = await hash_api_key(apiKey);
 	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
 
 	if (!keyResult) {
@@ -133,7 +133,7 @@ export const exchangeCodeForTokens = async <TState extends Record<string, unknow
 	config: OAuthCallbackConfig<TState>,
 	stateData: OAuthState<TState>
 ): Promise<Result<TokenResponse, OAuthError>> =>
-	tryCatchAsync(
+	try_catch_async(
 		async () => {
 			const response = await fetch(config.tokenUrl, {
 				method: "POST",
@@ -151,7 +151,7 @@ export const exchangeCodeForTokens = async <TState extends Record<string, unknow
 	);
 
 export const fetchOAuthUserProfile = async <TState extends Record<string, unknown>>(accessToken: string, config: OAuthCallbackConfig<TState>): Promise<Result<OAuthUser, OAuthError>> =>
-	tryCatchAsync(
+	try_catch_async(
 		() => config.fetchUser(accessToken),
 		(e): OAuthError => ({ kind: "user_fetch_failed", message: String(e) })
 	);

@@ -22,7 +22,7 @@ import {
 	redditMetaStoreId,
 	redditPostsStoreId,
 } from "./storage";
-import { type Result, err, ok, tryCatchAsync } from "./utils";
+import { type Result, err, ok, try_catch_async } from "./utils";
 
 export type DeleteConnectionResult = {
 	account_id: string;
@@ -183,7 +183,7 @@ type TableDeletion = {
 
 const deleteTable = async (deletion: TableDeletion, accountId: string): Promise<Result<void, DeleteConnectionError>> => {
 	log("db", `Deleting ${deletion.name}`, { accountId });
-	return tryCatchAsync(
+	return try_catch_async(
 		async () => {
 			await deletion.execute();
 		},

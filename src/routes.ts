@@ -12,7 +12,7 @@ import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, valida
 import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
 import { DateGroupSchema, accountMembers, accountSettings, accounts } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
-import { type FetchError, type Result, encrypt, err, fetchResult, match, ok, pipe } from "./utils";
+import { type FetchError, type Result, encrypt, err, fetch_result, match, ok, pipe } from "./utils";
 
 type MembershipResult = Result<{ role: string }, { status: 404 | 403; error: string; message: string }>;
 
@@ -168,14 +168,14 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 	}
 
 	const result = await pipe(createRawStore(ctx.backend, platform, accountId))
-		.mapErr((e): RawRouteError => e)
+		.map_err((e): RawRouteError => e)
 		.map(({ store }) => store)
-		.flatMap(async (store): Promise<Result<unknown, RawRouteError>> => {
+		.flat_map(async (store): Promise<Result<unknown, RawRouteError>> => {
 			const latest = await store.get_latest();
 			if (!latest.ok) return err(latest.error);
 			return ok(latest.value);
 		})
-		.flatMap((raw): Result<RawSnapshot, RawRouteError> => {
+		.flat_map((raw): Result<RawSnapshot, RawRouteError> => {
 			const parsed = RawSnapshotSchema.safeParse(raw);
 			return parsed.success ? ok(parsed.data) : err({ kind: "validation_error", message: parsed.error.message });
 		})
@@ -257,7 +257,7 @@ const twitterOAuthConfig: OAuthCallbackConfig<{ code_verifier: string }> = {
 };
 
 export const refreshRedditToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
-	fetchResult<OAuthTokenResponse, FetchError>(
+	fetch_result<OAuthTokenResponse, FetchError>(
 		"https://www.reddit.com/api/v1/access_token",
 		{
 			method: "POST",
@@ -326,7 +326,7 @@ const generateCodeChallenge = async (verifier: string): Promise<string> => {
 };
 
 export const refreshTwitterToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
-	fetchResult<OAuthTokenResponse, FetchError>(
+	fetch_result<OAuthTokenResponse, FetchError>(
 		"https://api.twitter.com/2/oauth2/token",
 		{
 			method: "POST",
@@ -433,22 +433,22 @@ connectionRoutes.post("/", async c => {
 	const memberId = crypto.randomUUID();
 
 	const result = await pipe(encrypt(body.access_token, ctx.encryptionKey))
-		.flatMap(encryptedAccessToken =>
+		.flat_map(encrypted_access_token =>
 			body.refresh_token
 				? pipe(encrypt(body.refresh_token, ctx.encryptionKey))
-						.map(encryptedRefreshToken => ({ encryptedAccessToken, encryptedRefreshToken: encryptedRefreshToken as string | null }))
+						.map(encrypted_refresh_token => ({ encrypted_access_token, encrypted_refresh_token: encrypted_refresh_token as string | null }))
 						.result()
-				: Promise.resolve(ok({ encryptedAccessToken, encryptedRefreshToken: null as string | null }))
+				: Promise.resolve(ok({ encrypted_access_token, encrypted_refresh_token: null as string | null }))
 		)
-		.tap(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
+		.tap(async ({ encrypted_access_token, encrypted_refresh_token }) => {
 			await ctx.db.batch([
 				ctx.db.insert(accounts).values({
 					id: accountId,
 					platform: body.platform,
 					platform_user_id: body.platform_user_id ?? null,
 					platform_username: body.platform_username ?? null,
-					access_token_encrypted: encryptedAccessToken,
-					refresh_token_encrypted: encryptedRefreshToken,
+					access_token_encrypted: encrypted_access_token,
+					refresh_token_encrypted: encrypted_refresh_token,
 					token_expires_at: body.token_expires_at ?? null,
 					is_active: true,
 					created_at: now,

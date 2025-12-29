@@ -4,7 +4,7 @@ import { createMiddleware } from "hono/factory";
 import type { Bindings } from "./bindings";
 import type { AppContext } from "./infrastructure";
 import { apiKeys } from "./schema";
-import { hashApiKey } from "./utils";
+import { hash_api_key } from "./utils";
 
 export type AuthContext = {
 	user_id: string;
@@ -55,7 +55,7 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	}
 
 	const ctx = getContext(c);
-	const keyHash = await hashApiKey(apiKey);
+	const keyHash = await hash_api_key(apiKey);
 
 	const result = await ctx.db.select({ id: apiKeys.id, user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
 

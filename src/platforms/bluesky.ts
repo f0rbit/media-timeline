@@ -1,5 +1,5 @@
 import { type BlueskyFeedItem, type BlueskyRaw, BlueskyRawSchema, type PostPayload, type TimelineItem } from "../schema";
-import { tryCatchAsync } from "../utils";
+import { try_catch_async } from "../utils";
 import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderState, simulateErrors } from "./memory-base";
 import { type FetchResult, type Provider, type ProviderError, toProviderError } from "./types";
 
@@ -45,7 +45,7 @@ export class BlueskyProvider implements Provider<BlueskyRaw> {
 		const params = new URLSearchParams({ actor: this.config.actor, limit: "50" });
 		const url = `https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?${params}`;
 
-		return tryCatchAsync(
+		return try_catch_async(
 			async () =>
 				handleBlueskyResponse(
 					await fetch(url, {

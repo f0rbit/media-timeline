@@ -15,7 +15,7 @@ import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
 import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
 import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
-import { type Result, decrypt, pipe, to_nullable, tryCatch } from "./utils";
+import { type Result, decrypt, pipe, to_nullable, try_catch } from "./utils";
 
 export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline, platformProcessors };
 export type { ProviderFactory, RawSnapshot, PlatformGroups, PlatformProcessor };
@@ -295,37 +295,37 @@ const processPlatformAccountWithProcessor = async (ctx: AppContext, account: Acc
 
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-		.mapErr((e): CronProcessError => ({ kind: "decryption_failed", message: e.message }))
-		.flatMap(token => {
+		.map_err((e): CronProcessError => ({ kind: "decryption_failed", message: e.message }))
+		.flat_map(token => {
 			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
 			return pipe(result)
-				.mapErr(e => toProcessError(e))
-				.tapErr(() => recordFailure(ctx.db, account.id))
+				.map_err(e => toProcessError(e))
+				.tap_err(() => recordFailure(ctx.db, account.id))
 				.result();
 		})
-		.flatMap(rawData => {
+		.flat_map(raw_data => {
 			return pipe(createRawStore(ctx.backend, account.platform, account.id))
-				.mapErr((e): CronProcessError => ({ kind: "store_failed", store_id: e.store_id }))
-				.map(({ store }) => ({ rawData, store }))
+				.map_err((e): CronProcessError => ({ kind: "store_failed", store_id: e.store_id }))
+				.map(({ store }) => ({ raw_data, store }))
 				.result();
 		})
-		.flatMap(({ rawData, store }) => {
-			return pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
-				.mapErr((e): CronProcessError => ({ kind: "put_failed", message: String(e) }))
-				.map((result: { version: string }) => ({ rawData, version: result.version }))
+		.flat_map(({ raw_data, store }) => {
+			return pipe(store.put(raw_data as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
+				.map_err((e): CronProcessError => ({ kind: "put_failed", message: String(e) }))
+				.map((result: { version: string }) => ({ raw_data, version: result.version }))
 				.result();
 		})
-		.tapErr(logProcessError(account.id))
+		.tap_err(logProcessError(account.id))
 		.tap(() => recordSuccess(ctx.db, account.id))
 		.map(
-			(result: { rawData: Record<string, unknown>; version: string }): RawSnapshot => ({
+			(result: { raw_data: Record<string, unknown>; version: string }): RawSnapshot => ({
 				account_id: account.id,
 				platform: account.platform,
 				version: result.version,
-				data: result.rawData,
+				data: result.raw_data,
 			})
 		)
-		.unwrapOr(null as unknown as RawSnapshot)
+		.unwrap_or(null as unknown as RawSnapshot)
 		.then(r => r as RawSnapshot | null);
 };
 
@@ -480,7 +480,7 @@ const storeTimeline = async (backend: Backend, userId: string, timeline: ReturnT
 	}));
 
 	await pipe(createTimelineStore(backend, userId))
-		.tapErr(() => console.error(`[cron] Failed to create timeline store for user ${userId}`))
+		.tap_err(() => console.error(`[cron] Failed to create timeline store for user ${userId}`))
 		.tap(async ({ store }) => {
 			await store.put(timeline, { parents });
 		})
@@ -522,7 +522,7 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 };
 
 const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> => {
-	return tryCatch(
+	return try_catch(
 		() => {
 			switch (snapshot.platform as Platform) {
 				case "github":
