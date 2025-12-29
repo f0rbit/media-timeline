@@ -104,6 +104,10 @@ export type TestCorpus = {
 	createRawStore(platform: Platform, accountId: string): Store<Record<string, unknown>>;
 	createTimelineStore(userId: string): Store<Record<string, unknown>>;
 	createGitHubMetaStore(accountId: string): Store<Record<string, unknown>>;
+	createGitHubCommitsStore(accountId: string, owner: string, repo: string): Store<Record<string, unknown>>;
+	createRedditPostsStore(accountId: string): Store<Record<string, unknown>>;
+	createRedditCommentsStore(accountId: string): Store<Record<string, unknown>>;
+	createTwitterTweetsStore(accountId: string): Store<Record<string, unknown>>;
 };
 
 export type TestContext = {
@@ -432,7 +436,39 @@ export const createTestCorpus = (): TestCorpus => {
 		return store;
 	};
 
-	return { backend, createRawStore, createTimelineStore, createGitHubMetaStore };
+	const createGenericStore = (storeId: string): Store<Record<string, unknown>> => {
+		const existing = stores.get(storeId);
+		if (existing) return existing;
+
+		const corpus = create_corpus()
+			.with_backend(backend)
+			.with_store(define_store(storeId, json_codec(RawDataSchema)))
+			.build();
+
+		const store = corpus.stores[storeId];
+		if (!store) throw new Error(`Failed to create store: ${storeId}`);
+		stores.set(storeId, store);
+		return store;
+	};
+
+	const createGitHubCommitsStore = (accountId: string, owner: string, repo: string): Store<Record<string, unknown>> => createGenericStore(`github/${accountId}/commits/${owner}/${repo}`);
+
+	const createRedditPostsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`reddit/${accountId}/posts`);
+
+	const createRedditCommentsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`reddit/${accountId}/comments`);
+
+	const createTwitterTweetsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`twitter/${accountId}/tweets`);
+
+	return {
+		backend,
+		createRawStore,
+		createTimelineStore,
+		createGitHubMetaStore,
+		createGitHubCommitsStore,
+		createRedditPostsStore,
+		createRedditCommentsStore,
+		createTwitterTweetsStore,
+	};
 };
 
 const defaultTestProviderFactory: ProviderFactory = {
@@ -708,6 +744,26 @@ export const seedProfileVisibility = async (ctx: TestContext, profileId: string,
     `)
 		.bind(uuid(), profileId, accountId, isVisible ? 1 : 0, timestamp, timestamp)
 		.run();
+};
+
+export type ProfileFilterSeed = {
+	account_id: string;
+	filter_type: "include" | "exclude";
+	filter_key: string;
+	filter_value: string;
+};
+
+export const seedProfileFilter = async (ctx: TestContext, profileId: string, filter: ProfileFilterSeed): Promise<string> => {
+	const timestamp = now();
+	const filterId = uuid();
+	await ctx.d1
+		.prepare(`
+      INSERT INTO profile_filters (id, profile_id, account_id, filter_type, filter_key, filter_value, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `)
+		.bind(filterId, profileId, filter.account_id, filter.filter_type, filter.filter_key, filter.filter_value, timestamp, timestamp)
+		.run();
+	return filterId;
 };
 
 export const getUser = async (ctx: TestContext, userId: string) => ctx.d1.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();

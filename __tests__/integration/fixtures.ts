@@ -543,7 +543,7 @@ export const PROFILES = {
 export const makeTimelineItem = (
 	overrides: Partial<{
 		id: string;
-		platform: "github" | "bluesky" | "youtube" | "devpad" | "reddit";
+		platform: "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 		type: "commit" | "post" | "video" | "task" | "comment";
 		timestamp: string;
 		title: string;
