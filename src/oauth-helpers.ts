@@ -174,7 +174,8 @@ export const upsertOAuthAccount = (db: Database, encryptionKey: string, userId: 
 	pipe(encryptTokens(tokens, encryptionKey))
 		.flat_map(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
 			const now = new Date().toISOString();
-			const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+			// GitHub tokens don't expire (expires_in is undefined), so tokenExpiresAt can be null
+			const tokenExpiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null;
 
 			const existing = await db
 				.select()
@@ -190,7 +191,7 @@ export const upsertOAuthAccount = (db: Database, encryptionKey: string, userId: 
 		})
 		.result();
 
-const updateExistingAccount = async (db: Database, accountId: string, userId: string, encryptedAccessToken: string, encryptedRefreshToken: string | null, tokenExpiresAt: string, now: string): Promise<Result<string, OAuthError>> => {
+const updateExistingAccount = async (db: Database, accountId: string, userId: string, encryptedAccessToken: string, encryptedRefreshToken: string | null, tokenExpiresAt: string | null, now: string): Promise<Result<string, OAuthError>> => {
 	const existingMembership = await db
 		.select()
 		.from(accountMembers)
@@ -228,7 +229,7 @@ const createNewAccount = async (
 	user: OAuthUser,
 	encryptedAccessToken: string,
 	encryptedRefreshToken: string | null,
-	tokenExpiresAt: string,
+	tokenExpiresAt: string | null,
 	now: string
 ): Promise<Result<string, OAuthError>> => {
 	const accountId = crypto.randomUUID();
