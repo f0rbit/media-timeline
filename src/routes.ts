@@ -518,10 +518,13 @@ connectionRoutes.delete("/:account_id", async c => {
 			}) as Response;
 		},
 		error => {
-			const statusMap: Record<string, number> = { not_found: 404, forbidden: 403 };
-			const status = statusMap[error.kind] ?? 500;
-			const message = "message" in error ? error.message : "Not found";
-			return c.json({ error: error.kind, message }, status as 404 | 403 | 500) as Response;
+			const errorMap: Record<string, { status: number; label: string }> = {
+				not_found: { status: 404, label: "Not found" },
+				forbidden: { status: 403, label: "Forbidden" },
+			};
+			const { status, label } = errorMap[error.kind] ?? { status: 500, label: "Internal error" };
+			const message = "message" in error ? error.message : "Account not found";
+			return c.json({ error: label, message }, status as 404 | 403 | 500) as Response;
 		}
 	);
 });

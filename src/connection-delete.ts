@@ -22,7 +22,7 @@ import {
 	redditMetaStoreId,
 	redditPostsStoreId,
 } from "./storage";
-import { type Result, err, ok, try_catch_async } from "./utils";
+import { type Result, err, ok, pipe, try_catch_async } from "./utils";
 
 export type DeleteConnectionResult = {
 	account_id: string;
@@ -211,59 +211,73 @@ const deleteDbRecords = async (db: Database, accountId: string): Promise<Result<
 	return ok(undefined);
 };
 
+type Member = { role: string; user_id: string };
+
+const validateOwnership = (members: Member[], requestingUserId: string, accountId: string): Result<Member, DeleteConnectionError> => {
+	const membership = members.find(m => m.user_id === requestingUserId);
+	if (!membership) {
+		log("auth", "Account not found for user", { accountId, requestingUserId });
+		return err({ kind: "not_found" });
+	}
+	if (membership.role !== "owner") {
+		log("auth", "User is not owner", { accountId, requestingUserId, role: membership.role });
+		return err({ kind: "forbidden", message: "Only owners can delete accounts" });
+	}
+	log("auth", "Authorization check passed", { accountId, requestingUserId });
+	return ok(membership);
+};
+
+type Account = { id: string; platform: Platform };
+
+const fetchAccount = async (db: Database, accountId: string): Promise<Result<Account, DeleteConnectionError>> => {
+	const account = await db.select().from(accounts).where(eq(accounts.id, accountId)).get();
+	if (!account) {
+		log("fetch", "Account not found in database", { accountId });
+		return err({ kind: "not_found" });
+	}
+	log("fetch", "Account found", { accountId, platform: account.platform });
+	return ok(account);
+};
+
+type DeletionContext = {
+	account: Account;
+	affectedUsers: string[];
+	deletedStores: string[];
+};
+
 export async function deleteConnection(ctx: DeleteContext, accountId: string, requestingUserId: string): Promise<Result<DeleteConnectionResult, DeleteConnectionError>> {
 	log("start", "Beginning connection deletion", { accountId, requestingUserId });
 
 	const members = await ctx.db.select({ role: accountMembers.role, user_id: accountMembers.user_id }).from(accountMembers).where(eq(accountMembers.account_id, accountId)).all();
 
-	const requestingUserMembership = members.find(m => m.user_id === requestingUserId);
+	return pipe(validateOwnership(members, requestingUserId, accountId))
+		.flat_map(() => fetchAccount(ctx.db, accountId))
+		.flat_map(async (account): Promise<Result<DeletionContext, DeleteConnectionError>> => {
+			const affectedUsers = await getAffectedUsers(ctx.db, accountId);
+			log("users", "Found affected users", { count: affectedUsers.length, users: affectedUsers });
 
-	if (!requestingUserMembership) {
-		log("auth", "Account not found for user", { accountId, requestingUserId });
-		return err({ kind: "not_found" });
-	}
+			const deletedStores = await deleteCorpusStores(ctx.backend, { id: account.id, platform: account.platform });
+			log("corpus", "Corpus stores deleted", { count: deletedStores.length, stores: deletedStores });
 
-	if (requestingUserMembership.role !== "owner") {
-		log("auth", "User is not owner", { accountId, requestingUserId, role: requestingUserMembership.role });
-		return err({ kind: "forbidden", message: "Only owners can delete accounts" });
-	}
+			return ok({ account, affectedUsers, deletedStores });
+		})
+		.flat_map(async ({ account, affectedUsers, deletedStores }): Promise<Result<DeleteConnectionResult, DeleteConnectionError>> => {
+			const dbResult = await deleteDbRecords(ctx.db, accountId);
+			if (!dbResult.ok) return dbResult;
 
-	log("auth", "Authorization check passed", { accountId, requestingUserId });
+			log("complete", "Connection deletion completed", {
+				accountId,
+				platform: account.platform,
+				deletedStores: deletedStores.length,
+				affectedUsers: affectedUsers.length,
+			});
 
-	const account = await ctx.db.select().from(accounts).where(eq(accounts.id, accountId)).get();
-
-	if (!account) {
-		log("fetch", "Account not found in database", { accountId });
-		return err({ kind: "not_found" });
-	}
-
-	log("fetch", "Account found", { accountId, platform: account.platform });
-
-	const affectedUsers = await getAffectedUsers(ctx.db, accountId);
-	log("users", "Found affected users", { count: affectedUsers.length, users: affectedUsers });
-
-	const deletedStores = await deleteCorpusStores(ctx.backend, {
-		id: account.id,
-		platform: account.platform,
-	});
-	log("corpus", "Corpus stores deleted", { count: deletedStores.length, stores: deletedStores });
-
-	const dbResult = await deleteDbRecords(ctx.db, accountId);
-	if (!dbResult.ok) {
-		return dbResult;
-	}
-
-	log("complete", "Connection deletion completed", {
-		accountId,
-		platform: account.platform,
-		deletedStores: deletedStores.length,
-		affectedUsers: affectedUsers.length,
-	});
-
-	return ok({
-		account_id: accountId,
-		platform: account.platform,
-		deleted_stores: deletedStores,
-		affected_users: affectedUsers,
-	});
+			return ok({
+				account_id: accountId,
+				platform: account.platform,
+				deleted_stores: deletedStores,
+				affected_users: affectedUsers,
+			});
+		})
+		.result();
 }
