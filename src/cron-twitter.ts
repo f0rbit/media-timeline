@@ -3,9 +3,9 @@ import type { FetchError, StoreError } from "./errors";
 import { mergeByKey } from "./merge";
 import type { TwitterFetchResult } from "./platforms/twitter";
 import type { ProviderError } from "./platforms/types";
-import type { TwitterTweetsStore } from "./schema";
+import type { TwitterMetaStore, TwitterTweetsStore } from "./schema";
 import { createTwitterMetaStore, createTwitterTweetsStore } from "./storage";
-import { type Result, err, ok, to_nullable } from "./utils";
+import { type Result, ok, pipe, to_nullable } from "./utils";
 
 export type TwitterProcessResult = {
 	account_id: string;
@@ -42,60 +42,51 @@ type TwitterProvider = {
 	fetch(token: string): Promise<Result<TwitterFetchResult, ProviderError>>;
 };
 
-export async function processTwitterAccount(backend: Backend, accountId: string, token: string, provider: TwitterProvider): Promise<Result<TwitterProcessResult, TwitterProcessError>> {
-	console.log(`[processTwitterAccount] Starting for account: ${accountId}`);
+type StoreStats = { version: string; newCount: number; totalTweets: number };
+const defaultStats: StoreStats = { version: "", newCount: 0, totalTweets: 0 };
 
-	const fetchResult = await provider.fetch(token);
-	if (!fetchResult.ok) {
-		return err({
-			kind: "fetch_failed",
-			message: `Twitter fetch failed: ${fetchResult.error.kind}`,
-		});
-	}
+const storeMeta = async (backend: Backend, accountId: string, meta: TwitterMetaStore): Promise<string> => {
+	const storeResult = createTwitterMetaStore(backend, accountId);
+	if (!storeResult.ok) return "";
+	const putResult = await storeResult.value.store.put(meta);
+	return putResult.ok ? putResult.value.version : "";
+};
 
-	const { meta, tweets } = fetchResult.value;
+const storeTweets = async (backend: Backend, accountId: string, tweets: TwitterTweetsStore): Promise<StoreStats> => {
+	const storeResult = createTwitterTweetsStore(backend, accountId);
+	if (!storeResult.ok) return defaultStats;
 
-	let metaVersion = "";
-	const metaStoreResult = createTwitterMetaStore(backend, accountId);
-	if (metaStoreResult.ok) {
-		const putResult = await metaStoreResult.value.store.put(meta);
-		if (putResult.ok) {
-			metaVersion = putResult.value.version;
-		}
-	}
+	const store = storeResult.value.store;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
+	const { merged, newCount } = mergeTweets(existing, tweets);
+	const putResult = await store.put(merged);
 
-	let tweetsVersion = "";
-	let newTweets = 0;
-	let totalTweets = 0;
-	const tweetsStoreResult = createTwitterTweetsStore(backend, accountId);
-	if (tweetsStoreResult.ok) {
-		const store = tweetsStoreResult.value.store;
-		const existingResult = await store.get_latest();
-		const existing = to_nullable(existingResult)?.data ?? null;
-		const { merged, newCount } = mergeTweets(existing, tweets);
-		newTweets = newCount;
-		totalTweets = merged.total_tweets;
+	if (!putResult.ok) return defaultStats;
 
-		const putResult = await store.put(merged);
-		if (putResult.ok) {
-			tweetsVersion = putResult.value.version;
-		}
+	console.log(`[processTwitterAccount] Tweets: ${newCount} new, ${merged.total_tweets} total`);
+	return { version: putResult.value.version, newCount, totalTweets: merged.total_tweets };
+};
 
-		console.log(`[processTwitterAccount] Tweets: ${newCount} new, ${merged.total_tweets} total`);
-	}
+export const processTwitterAccount = (backend: Backend, accountId: string, token: string, provider: TwitterProvider): Promise<Result<TwitterProcessResult, TwitterProcessError>> =>
+	pipe(provider.fetch(token))
+		.tap(() => console.log(`[processTwitterAccount] Starting for account: ${accountId}`))
+		.map_err((e): TwitterProcessError => ({ kind: "fetch_failed", message: `Twitter fetch failed: ${e.kind}` }))
+		.flat_map(async ({ meta, tweets }) => {
+			const [metaVersion, tweetsResult] = await Promise.all([storeMeta(backend, accountId, meta), storeTweets(backend, accountId, tweets)]);
 
-	console.log("[processTwitterAccount] Completed:", {
-		tweets: totalTweets,
-		newTweets,
-	});
+			console.log("[processTwitterAccount] Completed:", {
+				tweets: tweetsResult.totalTweets,
+				newTweets: tweetsResult.newCount,
+			});
 
-	return ok({
-		account_id: accountId,
-		meta_version: metaVersion,
-		tweets_version: tweetsVersion,
-		stats: {
-			total_tweets: totalTweets,
-			new_tweets: newTweets,
-		},
-	});
-}
+			return ok<TwitterProcessResult>({
+				account_id: accountId,
+				meta_version: metaVersion,
+				tweets_version: tweetsResult.version,
+				stats: {
+					total_tweets: tweetsResult.totalTweets,
+					new_tweets: tweetsResult.newCount,
+				},
+			});
+		})
+		.result();
