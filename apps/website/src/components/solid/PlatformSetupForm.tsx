@@ -4,11 +4,6 @@ import { Show, createSignal } from "solid-js";
 
 export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
-type Props = {
-	platform: Platform;
-	onSuccess: () => void;
-};
-
 type PlatformConfig = {
 	tokenLabel: string;
 	tokenPlaceholder: string;
@@ -17,14 +12,14 @@ type PlatformConfig = {
 	helpText: string;
 };
 
-const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
-	github: {
-		tokenLabel: "Personal Access Token",
-		tokenPlaceholder: "ghp_xxxxxxxxxxxxxxxxxxxx",
-		usernameLabel: "GitHub Username",
-		usernamePlaceholder: "your-username",
-		helpText: "Generate a token at github.com/settings/tokens",
-	},
+type Props = {
+	platform: Platform;
+	onSuccess: () => void;
+};
+
+type ManualSetupPlatform = "bluesky" | "youtube" | "devpad";
+
+const PLATFORM_CONFIG: Record<ManualSetupPlatform, PlatformConfig> = {
 	bluesky: {
 		tokenLabel: "App Password",
 		tokenPlaceholder: "xxxx-xxxx-xxxx-xxxx",
@@ -46,24 +41,10 @@ const PLATFORM_CONFIG: Record<Platform, PlatformConfig> = {
 		usernamePlaceholder: "your-username",
 		helpText: "Generate a token in your Devpad settings",
 	},
-	reddit: {
-		tokenLabel: "Access Token",
-		tokenPlaceholder: "your-reddit-token",
-		usernameLabel: "Reddit Username",
-		usernamePlaceholder: "u/your-username",
-		helpText: "Connect via Reddit OAuth or use your API credentials",
-	},
-	twitter: {
-		tokenLabel: "Access Token",
-		tokenPlaceholder: "your-twitter-token",
-		usernameLabel: "Twitter Username",
-		usernamePlaceholder: "@your-username",
-		helpText: "Connect via Twitter OAuth to sync your tweets",
-	},
 };
 
 export default function PlatformSetupForm(props: Props) {
-	const config = () => PLATFORM_CONFIG[props.platform];
+	const config = () => PLATFORM_CONFIG[props.platform as ManualSetupPlatform];
 
 	const [token, setToken] = createSignal("");
 	const [username, setUsername] = createSignal("");

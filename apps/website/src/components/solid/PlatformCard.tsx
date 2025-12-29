@@ -63,6 +63,28 @@ function TwitterOAuthButton() {
 	);
 }
 
+function GitHubOAuthButton() {
+	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
+
+	const handleConnect = () => {
+		const apiKey = getApiKey();
+		if (!apiKey) {
+			console.error("No API key available for GitHub OAuth");
+			return;
+		}
+		window.location.href = `${apiUrl}/api/auth/github?key=${encodeURIComponent(apiKey)}`;
+	};
+
+	return (
+		<div class="oauth-setup">
+			<p class="muted text-sm">Connect your GitHub account to sync your commits and pull requests.</p>
+			<button type="button" onClick={handleConnect} class="oauth-button">
+				Connect with GitHub
+			</button>
+		</div>
+	);
+}
+
 type ActiveConnectionSettingsProps = {
 	platform: Platform;
 	connection: ConnectionWithSettings;
@@ -144,6 +166,9 @@ export default function PlatformCard(props: Props) {
 				</Match>
 				<Match when={state() === "not_configured" && props.platform === "twitter"}>
 					<TwitterOAuthButton />
+				</Match>
+				<Match when={state() === "not_configured" && props.platform === "github"}>
+					<GitHubOAuthButton />
 				</Match>
 				<Match when={state() === "not_configured"}>
 					<PlatformSetupForm platform={props.platform} onSuccess={props.onConnectionChange} />
