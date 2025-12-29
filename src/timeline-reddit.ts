@@ -9,24 +9,22 @@ export type RedditTimelineData = {
 };
 
 export async function loadRedditDataForAccount(backend: Backend, accountId: string): Promise<RedditTimelineData> {
-	const posts: RedditPost[] = [];
-	const comments: RedditComment[] = [];
-
-	const postsStoreResult = createRedditPostsStore(backend, accountId);
-	if (postsStoreResult.ok) {
-		const snapshotResult = await postsStoreResult.value.store.get_latest();
-		if (snapshotResult.ok && snapshotResult.value) {
-			posts.push(...snapshotResult.value.data.posts);
-		}
-	}
-
-	const commentsStoreResult = createRedditCommentsStore(backend, accountId);
-	if (commentsStoreResult.ok) {
-		const snapshotResult = await commentsStoreResult.value.store.get_latest();
-		if (snapshotResult.ok && snapshotResult.value) {
-			comments.push(...snapshotResult.value.data.comments);
-		}
-	}
+	const [posts, comments] = await Promise.all([
+		(async (): Promise<RedditPost[]> => {
+			const storeResult = createRedditPostsStore(backend, accountId);
+			if (!storeResult.ok) return [];
+			const snapshotResult = await storeResult.value.store.get_latest();
+			if (!snapshotResult.ok) return [];
+			return snapshotResult.value.data.posts;
+		})(),
+		(async (): Promise<RedditComment[]> => {
+			const storeResult = createRedditCommentsStore(backend, accountId);
+			if (!storeResult.ok) return [];
+			const snapshotResult = await storeResult.value.store.get_latest();
+			if (!snapshotResult.ok) return [];
+			return snapshotResult.value.data.comments;
+		})(),
+	]);
 
 	console.log(`[loadRedditDataForAccount] Loaded: ${posts.length} posts, ${comments.length} comments`);
 	return { posts, comments };
