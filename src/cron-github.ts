@@ -1,11 +1,14 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { FetchError, StoreError } from "./errors";
+import { createLogger } from "./logger";
 import { mergeByKey } from "./merge";
 import type { GitHubFetchResult } from "./platforms/github";
 import type { ProviderError } from "./platforms/types";
 import type { GitHubMetaStore, GitHubRepoCommitsStore, GitHubRepoPRsStore } from "./schema";
 import { createGitHubCommitsStore, createGitHubMetaStore, createGitHubPRsStore } from "./storage";
 import { type Result, err, ok, pipe, to_nullable } from "./utils";
+
+const log = createLogger("cron:github");
 
 export type GitHubProcessResult = {
 	account_id: string;
@@ -80,7 +83,7 @@ const storeCommits = async (backend: Backend, accountId: string, owner: string, 
 
 	return pipe(putResult)
 		.map(({ version }) => ({ owner, repo, version, newCount, total: merged.total_commits }))
-		.tap(({ newCount: n, total }) => console.log(`[processGitHubAccount] ${owner}/${repo} commits: ${n} new, ${total} total`))
+		.tap(({ newCount: n, total }) => log.debug("Stored commits", { owner, repo, new: n, total }))
 		.unwrap_or(defaultRepoStats(owner, repo));
 };
 
@@ -95,12 +98,12 @@ const storePRs = async (backend: Backend, accountId: string, owner: string, repo
 
 	return pipe(putResult)
 		.map(({ version }) => ({ owner, repo, version, newCount, total: merged.total_prs }))
-		.tap(({ newCount: n, total }) => console.log(`[processGitHubAccount] ${owner}/${repo} PRs: ${n} new, ${total} total`))
+		.tap(({ newCount: n, total }) => log.debug("Stored PRs", { owner, repo, new: n, total }))
 		.unwrap_or(defaultRepoStats(owner, repo));
 };
 
 export async function processGitHubAccount(backend: Backend, accountId: string, token: string, provider: GitHubProvider): Promise<Result<GitHubProcessResult, GitHubProcessError>> {
-	console.log(`[processGitHubAccount] Starting for account: ${accountId}`);
+	log.info("Processing account", { account_id: accountId });
 
 	const fetchResult = await provider.fetch(token);
 	if (!fetchResult.ok) {
@@ -140,14 +143,13 @@ export async function processGitHubAccount(backend: Backend, accountId: string, 
 		}
 	}
 
-	console.log("[processGitHubAccount] Completed:", {
+	log.info("Processing complete", {
+		account_id: accountId,
 		repos: repos.size,
-		commitStores: commitStores.length,
-		prStores: prStores.length,
-		totalCommits,
-		totalPRs,
-		newCommits,
-		newPRs,
+		total_commits: totalCommits,
+		new_commits: newCommits,
+		total_prs: totalPRs,
+		new_prs: newPRs,
 	});
 
 	return ok({

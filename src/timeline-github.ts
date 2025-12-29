@@ -1,7 +1,10 @@
 import type { Backend } from "@f0rbit/corpus";
+import { createLogger } from "./logger";
 import type { GitHubRaw, GitHubRepoCommit, GitHubRepoPR, TimelineItem } from "./schema";
 import { createGitHubCommitsStore, createGitHubPRsStore, listGitHubCommitStores, listGitHubPRStores } from "./storage";
 import { truncate } from "./utils";
+
+const log = createLogger("timeline:github");
 
 type CommitWithRepo = GitHubRepoCommit & { _repo: string };
 type PRWithRepo = GitHubRepoPR & { _repo: string };
@@ -49,7 +52,7 @@ export async function loadGitHubDataForAccount(backend: Backend, accountId: stri
 		})
 	);
 
-	console.log(`[loadGitHubDataForAccount] Loaded: ${commits.length} commits, ${prs.length} PRs`);
+	log.info("Loaded data", { account_id: accountId, commits: commits.length, prs: prs.length });
 	return { commits, prs };
 }
 
@@ -79,7 +82,7 @@ export function normalizeGitHub(data: GitHubTimelineData): TimelineItem[] {
 		});
 	}
 
-	console.log(`[normalizeGitHub] Total commits: ${data.commits.length}`);
+	log.debug("Normalized commits", { count: data.commits.length });
 
 	for (const pr of data.prs) {
 		items.push({
@@ -108,8 +111,8 @@ export function normalizeGitHub(data: GitHubTimelineData): TimelineItem[] {
 		});
 	}
 
-	console.log(`[normalizeGitHub] Total PRs: ${data.prs.length}`);
-	console.log(`[normalizeGitHub] Total timeline items: ${items.length}`);
+	log.debug("Normalized PRs", { count: data.prs.length });
+	log.info("Normalization complete", { total_items: items.length });
 	return items;
 }
 

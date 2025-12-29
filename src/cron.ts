@@ -6,6 +6,7 @@ import { processTwitterAccount } from "./cron-twitter";
 import type { Database } from "./db";
 import type { CronProcessError } from "./errors";
 import type { AppContext } from "./infrastructure";
+import { createLogger } from "./logger";
 import { GitHubProvider, type ProviderError, type ProviderFactory, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
@@ -16,6 +17,8 @@ import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
 import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
 import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
 import { type Result, decrypt, pipe, to_nullable, try_catch } from "./utils";
+
+const log = createLogger("cron");
 
 export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline, platformProcessors };
 export type { ProviderFactory, RawSnapshot, PlatformGroups, PlatformProcessor };
@@ -78,6 +81,8 @@ const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
 });
 
 export async function handleCron(ctx: AppContext): Promise<CronResult> {
+	log.info("Cron job starting");
+
 	const result: CronResult = {
 		processed_accounts: 0,
 		updated_users: [],
@@ -106,6 +111,8 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 		userAccounts.set(account.user_id, existing);
 	}
 
+	log.info("Processing accounts", { total: accountsWithUsers.length, users: userAccounts.size });
+
 	const updatedUsers = new Set<string>();
 
 	for (const [userId, userAccountsList] of userAccounts) {
@@ -123,7 +130,7 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 
 		for (const res of results) {
 			if (res.status === "rejected") {
-				console.error("Account processing failed:", res.reason);
+				log.error("Account processing failed", { reason: String(res.reason) });
 			}
 		}
 	}
@@ -136,6 +143,14 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 	}
 
 	result.updated_users = Array.from(updatedUsers);
+
+	log.info("Cron job completed", {
+		processed: result.processed_accounts,
+		timelines: result.timelines_generated,
+		updated_users: result.updated_users.length,
+		failed: result.failed_accounts.length,
+	});
+
 	return result;
 }
 
@@ -202,16 +217,16 @@ const logProcessError =
 	(e: CronProcessError): void => {
 		switch (e.kind) {
 			case "decryption_failed":
-				console.error(`Decryption failed for account ${accountId}: ${e.message}`);
+				log.error("Decryption failed", { account_id: accountId, message: e.message });
 				break;
 			case "fetch_failed":
-				console.error(`Fetch failed for account ${accountId}: ${e.message}`);
+				log.error("Fetch failed", { account_id: accountId, message: e.message });
 				break;
 			case "store_failed":
-				console.error(`Failed to create store for account ${accountId}: ${e.store_id}`);
+				log.error("Store creation failed", { account_id: accountId, store_id: e.store_id });
 				break;
 			case "put_failed":
-				console.error(`Failed to store raw data: ${e.message}`);
+				log.error("Store put failed", { account_id: accountId, message: e.message });
 				break;
 		}
 	};
@@ -269,13 +284,13 @@ type ProcessingError = { kind: string; message?: string };
 const processPlatformAccountWithProcessor = async (ctx: AppContext, account: AccountWithUser, processor: PlatformProcessor): Promise<RawSnapshot | null> => {
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
 		.map_err((e): ProcessingError => ({ kind: e.kind, message: e.message }))
-		.tap_err(() => console.error(`[cron] ${processor.platform} decryption failed for account:`, account.id))
+		.tap_err(() => log.error("Decryption failed", { platform: processor.platform, account_id: account.id }))
 		.flat_map(async (token): Promise<Result<PlatformProcessResult, ProcessingError>> => {
 			const provider = processor.createProvider(ctx);
 			return processor.processAccount(ctx.backend, account.id, token, provider);
 		})
 		.tap_err(e => {
-			console.error(`[cron] ${processor.platform} processing failed:`, account.id, e);
+			log.error("Processing failed", { platform: processor.platform, account_id: account.id, error: e });
 			recordFailure(ctx.db, account.id);
 		})
 		.tap(() => recordSuccess(ctx.db, account.id))
@@ -455,7 +470,7 @@ const normalizeOtherSnapshots = (snapshots: RawSnapshot[]): TimelineItem[] => {
 
 	for (const r of results) {
 		if (!r.ok) {
-			console.error(`[cron] Failed to normalize ${r.error.platform} data: ${r.error.message}`);
+			log.error("Normalization failed", { platform: r.error.platform, message: r.error.message });
 		}
 	}
 
@@ -463,8 +478,12 @@ const normalizeOtherSnapshots = (snapshots: RawSnapshot[]): TimelineItem[] => {
 };
 
 const generateTimeline = (userId: string, items: TimelineItem[]) => {
+	log.debug("Generating timeline", { user_id: userId, item_count: items.length });
+
 	const entries: TimelineEntry[] = groupCommits(items);
 	const dateGroups = groupByDate(entries);
+
+	log.debug("Timeline generated", { user_id: userId, entries: entries.length, date_groups: dateGroups.length });
 
 	return {
 		user_id: userId,
@@ -481,7 +500,7 @@ const storeTimeline = async (backend: Backend, userId: string, timeline: ReturnT
 	}));
 
 	await pipe(createTimelineStore(backend, userId))
-		.tap_err(() => console.error(`[cron] Failed to create timeline store for user ${userId}`))
+		.tap_err(() => log.error("Timeline store creation failed", { user_id: userId }))
 		.tap(async ({ store }) => {
 			await store.put(timeline, { parents });
 		})
@@ -502,12 +521,21 @@ const storeEmptyTimeline = async (backend: Backend, userId: string): Promise<voi
 };
 
 const combineUserTimeline = async (backend: Backend, userId: string, snapshots: RawSnapshot[]): Promise<void> => {
+	log.info("Building timeline", { user_id: userId, snapshot_count: snapshots.length });
+
 	if (snapshots.length === 0) {
 		await storeEmptyTimeline(backend, userId);
 		return;
 	}
 
 	const byPlatform = groupSnapshotsByPlatform(snapshots);
+
+	log.debug("Snapshots by platform", {
+		github: byPlatform.github.length,
+		reddit: byPlatform.reddit.length,
+		twitter: byPlatform.twitter.length,
+		other: byPlatform.other.length,
+	});
 
 	const [githubItems, redditItems, twitterItems] = await Promise.all([
 		loadPlatformItems(backend, byPlatform.github, loadGitHubDataForAccount, normalizeGitHub),
@@ -518,8 +546,22 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 	const otherItems = normalizeOtherSnapshots(byPlatform.other);
 	const allItems = [...githubItems, ...redditItems, ...twitterItems, ...otherItems];
 
+	log.info("Timeline items loaded", {
+		github: githubItems.length,
+		reddit: redditItems.length,
+		twitter: twitterItems.length,
+		other: otherItems.length,
+		total: allItems.length,
+	});
+
 	const timeline = generateTimeline(userId, allItems);
 	await storeTimeline(backend, userId, timeline, snapshots);
+
+	log.info("Timeline stored", {
+		user_id: userId,
+		date_groups: timeline.groups.length,
+		generated_at: timeline.generated_at,
+	});
 };
 
 const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> => {

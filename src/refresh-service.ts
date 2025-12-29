@@ -2,9 +2,12 @@ import { and, eq } from "drizzle-orm";
 import { processRedditAccount } from "./cron-reddit";
 import type { RefreshError } from "./errors";
 import type { AppContext } from "./infrastructure";
+import { createLogger } from "./logger";
 import { RedditProvider } from "./platforms/reddit";
 import { accountMembers, accounts } from "./schema";
 import { type Result, decrypt, err, match, ok, pipe } from "./utils";
+
+const log = createLogger("refresh");
 
 type AccountWithUser = {
 	id: string;
@@ -101,7 +104,7 @@ const processGitHubRefresh = async (ctx: AppContext, account: AccountWithUser, u
 				await combineUserTimeline(ctx.backend, userId, snapshots);
 			}
 		} catch (error) {
-			console.error("[refresh] GitHub background task failed:", error);
+			log.error("GitHub background task failed", { account_id: account.id, user_id: userId, error: String(error) });
 		}
 	};
 
@@ -133,10 +136,10 @@ const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, u
 				const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
 				await combineUserTimeline(ctx.backend, userId, snapshots);
 			} else {
-				console.error("[refresh] Reddit refresh failed:", result.error);
+				log.error("Reddit refresh failed", { account_id: account.id, error: result.error });
 			}
 		} catch (error) {
-			console.error("[refresh] Reddit background task failed:", error);
+			log.error("Reddit background task failed", { account_id: account.id, user_id: userId, error: String(error) });
 		}
 	};
 
@@ -163,6 +166,8 @@ const processGenericRefresh = async (ctx: AppContext, account: AccountWithUser, 
 };
 
 export const refreshSingleAccount = async (ctx: AppContext, accountId: string, userId: string): Promise<RefreshSingleResult> => {
+	log.info("Refreshing account", { account_id: accountId, user_id: userId });
+
 	const accountResult = await pipe(lookupAccount(ctx, accountId, userId)).result();
 
 	return match(
@@ -182,6 +187,8 @@ export const refreshSingleAccount = async (ctx: AppContext, accountId: string, u
 };
 
 export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promise<RefreshAllResult> => {
+	log.info("Refreshing all accounts", { user_id: userId });
+
 	const userAccounts = await ctx.db
 		.select({
 			id: accounts.id,
@@ -219,7 +226,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 					const snapshot = await processAccount(ctx, account);
 					if (snapshot) bgSucceeded++;
 				} catch (e) {
-					console.error(`[refresh-all] Failed to refresh GitHub account ${account.id}:`, e);
+					log.error("GitHub account refresh failed", { account_id: account.id, error: String(e) });
 				}
 			}
 
@@ -242,7 +249,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 						.result();
 
 					if (!tokenResult.ok) {
-						console.error("[refresh-all] Reddit token decryption failed for account:", account.id);
+						log.error("Reddit token decryption failed", { account_id: account.id });
 						continue;
 					}
 					const token = tokenResult.value;
@@ -251,7 +258,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 					const result = await processRedditAccount(ctx.backend, account.id, token, provider);
 					if (result.ok) bgSucceeded++;
 				} catch (e) {
-					console.error(`[refresh-all] Failed to refresh Reddit account ${account.id}:`, e);
+					log.error("Reddit account refresh failed", { account_id: account.id, error: String(e) });
 				}
 			}
 
@@ -273,7 +280,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 				succeeded++;
 			}
 		} catch (e) {
-			console.error(`[refresh-all] Failed to refresh account ${account.id}:`, e);
+			log.error("Account refresh failed", { account_id: account.id, error: String(e) });
 			failed++;
 		}
 	}
