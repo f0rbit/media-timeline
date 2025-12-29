@@ -1,7 +1,10 @@
+import { createLogger } from "../logger";
 import type { RedditComment, RedditCommentsStore, RedditMetaStore, RedditPost, RedditPostsStore } from "../schema";
 import type { Result } from "../utils";
 import { err, ok } from "../utils";
 import { type ProviderError, mapHttpError } from "./types";
+
+const log = createLogger("reddit");
 
 export type RedditProviderConfig = {
 	maxPosts: number;
@@ -31,25 +34,18 @@ export class RedditProvider {
 
 	async fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>> {
 		try {
-			console.log("[reddit] Starting fetch with config:", {
-				maxPosts: this.config.maxPosts,
-				maxComments: this.config.maxComments,
-			});
+			log.debug("Starting fetch", { maxPosts: this.config.maxPosts, maxComments: this.config.maxComments });
 
-			// 1. Fetch user info first
 			const userResult = await this.fetchUser(token);
 			if (!userResult.ok) return userResult;
 			const { username, meta } = userResult.value;
-			console.log("[reddit] Authenticated as:", username);
+			log.info("Authenticated as", username);
 
-			// 2. Fetch posts and comments in parallel
-			console.log("[reddit] Fetching posts and comments...");
 			const [postsResult, commentsResult] = await Promise.all([this.fetchPosts(token, username), this.fetchComments(token, username)]);
 
 			if (!postsResult.ok) return postsResult;
 			if (!commentsResult.ok) return commentsResult;
 
-			// 3. Update meta with active subreddits
 			const subreddits = new Set<string>();
 			for (const post of postsResult.value) {
 				subreddits.add(post.subreddit);
@@ -77,15 +73,11 @@ export class RedditProvider {
 				},
 			};
 
-			console.log("[reddit] Fetch complete:", {
-				posts: result.posts.total_posts,
-				comments: result.comments.total_comments,
-				subreddits: result.meta.subreddits_active.length,
-			});
+			log.info("Fetch complete", { posts: result.posts.total_posts, comments: result.comments.total_comments });
 
 			return ok(result);
 		} catch (error) {
-			console.error("[reddit] Fetch failed:", error);
+			log.error("Fetch failed", error);
 			return err(this.mapError(error));
 		}
 	}

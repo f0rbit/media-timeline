@@ -4,6 +4,7 @@ import { processGitHubAccount } from "./cron-github";
 import { processRedditAccount } from "./cron-reddit";
 import { processTwitterAccount } from "./cron-twitter";
 import type { Database } from "./db";
+import type { CronProcessError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { GitHubProvider, type ProviderError, type ProviderFactory, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
@@ -51,8 +52,6 @@ export type CronResult = {
 };
 
 type NormalizeError = { kind: "parse_error"; platform: string; message: string };
-
-type ProcessError = { kind: "decryption_failed"; message: string } | { kind: "fetch_failed"; message: string; status?: number } | { kind: "store_failed"; store_id: string } | { kind: "put_failed"; message: string };
 
 type TimelineEntry = TimelineItem | CommitGroup;
 
@@ -199,8 +198,8 @@ const recordSuccess = async (db: Database, accountId: string): Promise<void> => 
 };
 
 const logProcessError =
-	(accountId: string): ((e: ProcessError) => void) =>
-	(e: ProcessError): void => {
+	(accountId: string): ((e: CronProcessError) => void) =>
+	(e: CronProcessError): void => {
 		switch (e.kind) {
 			case "decryption_failed":
 				console.error(`Decryption failed for account ${accountId}: ${e.message}`);
@@ -217,7 +216,7 @@ const logProcessError =
 		}
 	};
 
-const toProcessError = (e: ProviderError): ProcessError => ({
+const toProcessError = (e: ProviderError): CronProcessError => ({
 	kind: "fetch_failed",
 	message: formatProviderError(e),
 	status: e.kind === "api_error" ? e.status : undefined,
@@ -296,7 +295,7 @@ const processPlatformAccountWithProcessor = async (ctx: AppContext, account: Acc
 
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-		.mapErr((e): ProcessError => ({ kind: "decryption_failed", message: e.message }))
+		.mapErr((e): CronProcessError => ({ kind: "decryption_failed", message: e.message }))
 		.flatMap(token => {
 			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
 			return pipe(result)
@@ -306,13 +305,13 @@ const processGenericAccount = async (ctx: AppContext, account: AccountWithUser):
 		})
 		.flatMap(rawData => {
 			return pipe(createRawStore(ctx.backend, account.platform, account.id))
-				.mapErr((e): ProcessError => ({ kind: "store_failed", store_id: e.store_id }))
+				.mapErr((e): CronProcessError => ({ kind: "store_failed", store_id: e.store_id }))
 				.map(({ store }) => ({ rawData, store }))
 				.result();
 		})
 		.flatMap(({ rawData, store }) => {
 			return pipe(store.put(rawData as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
-				.mapErr((e): ProcessError => ({ kind: "put_failed", message: String(e) }))
+				.mapErr((e): CronProcessError => ({ kind: "put_failed", message: String(e) }))
 				.map((result: { version: string }) => ({ rawData, version: result.version }))
 				.result();
 		})

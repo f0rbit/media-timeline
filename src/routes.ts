@@ -8,10 +8,11 @@ import type { Bindings } from "./bindings";
 import { deleteConnection } from "./connection-delete";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
+import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, validateOAuthQueryKey } from "./oauth-helpers";
 import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
 import { DateGroupSchema, accountMembers, accountSettings, accounts } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
-import { type FetchError, type Result, encrypt, err, fetchResult, match, ok, pipe, tryCatchAsync } from "./utils";
+import { type FetchError, type Result, encrypt, err, fetchResult, match, ok, pipe } from "./utils";
 
 type MembershipResult = Result<{ role: string }, { status: 404 | 403; error: string; message: string }>;
 
@@ -42,12 +43,6 @@ const getContext = (c: Context<{ Bindings: Bindings; Variables: Variables }>): A
 	const ctx = c.get("appContext");
 	if (!ctx) throw new Error("AppContext not set");
 	return ctx;
-};
-
-// Helper to get frontend URL for OAuth redirects
-const getFrontendUrl = (c: Context<{ Bindings: Bindings; Variables: Variables }>): string => {
-	// biome-ignore lint: env access
-	return (c.env as any).FRONTEND_URL || "http://localhost:4321";
 };
 
 const TimelineDataSchema = z.object({
@@ -210,228 +205,6 @@ export const connectionRoutes = new Hono<{ Bindings: Bindings; Variables: Variab
 export const authRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 type OAuthTokenResponse = { access_token: string; refresh_token?: string; expires_in: number };
-
-// === OAuth Shared Helpers ===
-
-type OAuthStateBase = { user_id: string; nonce: string };
-type OAuthState<T extends Record<string, unknown> = Record<string, never>> = OAuthStateBase & T;
-
-const validateOAuthQueryKey = async (c: Context<{ Bindings: Bindings; Variables: Variables }>, ctx: AppContext, platform: string): Promise<Result<string, Response>> => {
-	const apiKey = c.req.query("key");
-	if (!apiKey) {
-		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_auth`));
-	}
-
-	const { hashApiKey } = await import("./utils");
-	const { apiKeys } = await import("./schema");
-	const keyHash = await hashApiKey(apiKey);
-	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
-
-	if (!keyResult) {
-		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_auth`));
-	}
-
-	return ok(keyResult.user_id);
-};
-
-const encodeOAuthState = <T extends Record<string, unknown>>(userId: string, extra?: T): string => {
-	const stateData: OAuthState<T> = {
-		user_id: userId,
-		nonce: crypto.randomUUID(),
-		...(extra as T),
-	};
-	return btoa(JSON.stringify(stateData));
-};
-
-const decodeOAuthState = <T extends Record<string, unknown> = Record<string, never>>(
-	c: Context<{ Bindings: Bindings; Variables: Variables }>,
-	state: string | undefined,
-	platform: string,
-	requiredKeys: (keyof T)[] = []
-): Result<OAuthState<T>, Response> => {
-	if (!state) {
-		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_state`));
-	}
-
-	try {
-		const stateData = JSON.parse(atob(state)) as OAuthState<T>;
-		if (!stateData.user_id) throw new Error("No user_id in state");
-		for (const key of requiredKeys) {
-			if (!stateData[key]) throw new Error(`Missing ${String(key)} in state`);
-		}
-		return ok(stateData);
-	} catch {
-		console.error(`[${platform}-oauth] Invalid state parameter`);
-		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_state`));
-	}
-};
-
-// === Generic OAuth Callback Factory ===
-
-type Platform = "reddit" | "twitter";
-
-type OAuthCallbackConfig<TState extends Record<string, unknown> = Record<string, never>> = {
-	platform: Platform;
-	tokenUrl: string;
-	tokenAuthHeader: (clientId: string, clientSecret: string) => string;
-	tokenHeaders?: Record<string, string>;
-	tokenBody: (code: string, redirectUri: string, state: OAuthState<TState>) => URLSearchParams;
-	fetchUser: (accessToken: string) => Promise<{ id: string; username: string }>;
-	getSecrets: (env: Bindings) => { clientId: string | undefined; clientSecret: string | undefined };
-	stateKeys?: (keyof TState)[];
-};
-
-type HonoContext = Context<{ Bindings: Bindings; Variables: Variables }>;
-
-const createOAuthCallback = <TState extends Record<string, unknown> = Record<string, never>>(config: OAuthCallbackConfig<TState>) => {
-	return async (c: HonoContext) => {
-		const ctx = getContext(c);
-		const db = ctx.db;
-
-		const code = c.req.query("code");
-		const error = c.req.query("error");
-
-		if (error) {
-			console.error(`[${config.platform}-oauth] Authorization denied:`, error);
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=${config.platform}_auth_denied`);
-		}
-
-		if (!code) {
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=${config.platform}_no_code`);
-		}
-
-		const stateResult = decodeOAuthState<TState>(c, c.req.query("state"), config.platform, config.stateKeys);
-		if (!stateResult.ok) return stateResult.error;
-		const stateData = stateResult.value;
-		const userId = stateData.user_id;
-
-		const { clientId, clientSecret } = config.getSecrets(c.env);
-		const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/${config.platform}/callback`;
-
-		if (!clientId || !clientSecret) {
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=${config.platform}_not_configured`);
-		}
-
-		type TokenExchangeError = { kind: "token_exchange_failed"; message: string };
-		type UserFetchError = { kind: "user_fetch_failed"; message: string };
-
-		const tokenResult = await tryCatchAsync(
-			async () => {
-				const response = await fetch(config.tokenUrl, {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/x-www-form-urlencoded",
-						Authorization: config.tokenAuthHeader(clientId, clientSecret),
-						...config.tokenHeaders,
-					},
-					body: config.tokenBody(code, redirectUri, stateData),
-				});
-				if (!response.ok) throw new Error(`Token exchange failed: ${response.status}`);
-				return response.json() as Promise<{
-					access_token: string;
-					refresh_token?: string;
-					expires_in: number;
-					token_type: string;
-					scope: string;
-				}>;
-			},
-			(e): TokenExchangeError => ({ kind: "token_exchange_failed", message: String(e) })
-		);
-
-		if (!tokenResult.ok) {
-			console.error(`[${config.platform}-oauth] Token exchange failed:`, tokenResult.error.message);
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=${config.platform}_token_failed`);
-		}
-		const tokens = tokenResult.value;
-
-		const userResult = await tryCatchAsync(
-			() => config.fetchUser(tokens.access_token),
-			(e): UserFetchError => ({ kind: "user_fetch_failed", message: String(e) })
-		);
-
-		if (!userResult.ok) {
-			console.error(`[${config.platform}-oauth] Failed to get user info:`, userResult.error.message);
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=${config.platform}_user_failed`);
-		}
-		const userData = userResult.value;
-
-		const existing = await db
-			.select()
-			.from(accounts)
-			.where(and(eq(accounts.platform, config.platform), eq(accounts.platform_user_id, userData.id)))
-			.get();
-
-		const encryptedAccessTokenResult = await encrypt(tokens.access_token, ctx.encryptionKey);
-		if (!encryptedAccessTokenResult.ok) {
-			console.error(`[${config.platform}-oauth] Failed to encrypt access token`);
-			return c.redirect(`${getFrontendUrl(c)}/connections?error=${config.platform}_encryption_failed`);
-		}
-
-		const encryptedRefreshTokenResult = tokens.refresh_token ? await encrypt(tokens.refresh_token, ctx.encryptionKey) : null;
-
-		const encryptedAccessToken = encryptedAccessTokenResult.value;
-		const encryptedRefreshToken = encryptedRefreshTokenResult?.ok ? encryptedRefreshTokenResult.value : null;
-
-		const now = new Date().toISOString();
-		const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
-
-		if (existing) {
-			const existingMembership = await db
-				.select()
-				.from(accountMembers)
-				.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, existing.id)))
-				.get();
-
-			await db
-				.update(accounts)
-				.set({
-					access_token_encrypted: encryptedAccessToken,
-					refresh_token_encrypted: encryptedRefreshToken,
-					token_expires_at: tokenExpiresAt,
-					is_active: true,
-					updated_at: now,
-				})
-				.where(eq(accounts.id, existing.id));
-
-			if (!existingMembership) {
-				await db.insert(accountMembers).values({
-					id: crypto.randomUUID(),
-					user_id: userId,
-					account_id: existing.id,
-					role: "member",
-					created_at: now,
-				});
-			}
-		} else {
-			const accountId = crypto.randomUUID();
-			const memberId = crypto.randomUUID();
-
-			await db.batch([
-				db.insert(accounts).values({
-					id: accountId,
-					platform: config.platform,
-					platform_user_id: userData.id,
-					platform_username: userData.username,
-					access_token_encrypted: encryptedAccessToken,
-					refresh_token_encrypted: encryptedRefreshToken,
-					token_expires_at: tokenExpiresAt,
-					is_active: true,
-					created_at: now,
-					updated_at: now,
-				}),
-				db.insert(accountMembers).values({
-					id: memberId,
-					user_id: userId,
-					account_id: accountId,
-					role: "owner",
-					created_at: now,
-				}),
-			]);
-		}
-
-		return c.redirect(`${getFrontendUrl(c)}/connections?success=${config.platform}`);
-	};
-};
 
 // === Platform OAuth Configs ===
 

@@ -1,4 +1,5 @@
 import type { Backend } from "@f0rbit/corpus";
+import type { FetchError, StoreError } from "./errors";
 import { mergeByKey } from "./merge";
 import type { RedditFetchResult } from "./platforms/reddit";
 import type { ProviderError } from "./platforms/types";
@@ -19,7 +20,7 @@ export type RedditProcessResult = {
 	};
 };
 
-type ProcessError = { kind: "fetch_failed"; message: string } | { kind: "store_failed"; store_id: string };
+type RedditProcessError = FetchError | StoreError;
 
 const mergePosts = (existing: RedditPostsStore | null, incoming: RedditPostsStore): { merged: RedditPostsStore; newCount: number } => {
 	const { merged: posts, newCount } = mergeByKey(existing?.posts, incoming.posts, p => p.id);
@@ -53,7 +54,7 @@ type RedditProvider = {
 	fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>>;
 };
 
-export async function processRedditAccount(backend: Backend, accountId: string, token: string, provider: RedditProvider): Promise<Result<RedditProcessResult, ProcessError>> {
+export async function processRedditAccount(backend: Backend, accountId: string, token: string, provider: RedditProvider): Promise<Result<RedditProcessResult, RedditProcessError>> {
 	console.log(`[processRedditAccount] Starting for account: ${accountId}`);
 
 	const fetchResult = await provider.fetch(token);

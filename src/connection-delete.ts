@@ -1,6 +1,7 @@
 import type { Backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
 import type { Database } from "./db";
+import type { ConnectionError } from "./errors";
 import type { Platform } from "./schema";
 import { accountMembers, accountSettings, accounts, rateLimits } from "./schema/database";
 import {
@@ -30,7 +31,7 @@ export type DeleteConnectionResult = {
 	affected_users: string[];
 };
 
-export type DeleteConnectionError = { kind: "not_found" } | { kind: "forbidden"; message: string } | { kind: "database_error"; message: string };
+export type DeleteConnectionError = ConnectionError;
 
 type DeleteContext = {
 	db: Database;

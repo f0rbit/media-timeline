@@ -76,6 +76,7 @@ export type {
 	Payload,
 	Platform,
 	PostPayload,
+	PRCommit,
 	PullRequestPayload,
 	TaskPayload,
 	Timeline,
@@ -83,6 +84,7 @@ export type {
 	TimelineType,
 	VideoPayload,
 } from "./timeline";
+
 export {
 	CommentPayloadSchema,
 	CommitGroupSchema,

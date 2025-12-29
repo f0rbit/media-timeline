@@ -1,4 +1,5 @@
 import type { Backend } from "@f0rbit/corpus";
+import type { FetchError, StoreError } from "./errors";
 import { mergeByKey } from "./merge";
 import type { GitHubFetchResult } from "./platforms/github";
 import type { ProviderError } from "./platforms/types";
@@ -20,7 +21,7 @@ export type GitHubProcessResult = {
 	};
 };
 
-type ProcessError = { kind: "fetch_failed"; message: string } | { kind: "store_failed"; store_id: string };
+type GitHubProcessError = FetchError | StoreError;
 
 const mergeCommits = (existing: GitHubRepoCommitsStore | null, incoming: GitHubRepoCommitsStore): { merged: GitHubRepoCommitsStore; newCount: number } => {
 	const { merged: commits, newCount } = mergeByKey(existing?.commits, incoming.commits, c => c.sha);
@@ -57,7 +58,7 @@ type GitHubProvider = {
 	fetch(token: string): Promise<Result<GitHubFetchResult, ProviderError>>;
 };
 
-export async function processGitHubAccount(backend: Backend, accountId: string, token: string, provider: GitHubProvider): Promise<Result<GitHubProcessResult, ProcessError>> {
+export async function processGitHubAccount(backend: Backend, accountId: string, token: string, provider: GitHubProvider): Promise<Result<GitHubProcessResult, GitHubProcessError>> {
 	console.log(`[processGitHubAccount] Starting for account: ${accountId}`);
 
 	const fetchResult = await provider.fetch(token);

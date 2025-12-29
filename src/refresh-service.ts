@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { processRedditAccount } from "./cron-reddit";
+import type { RefreshError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { RedditProvider } from "./platforms/reddit";
 import { accountMembers, accounts } from "./schema";
@@ -14,8 +15,6 @@ type AccountWithUser = {
 	is_active: boolean;
 	user_id: string;
 };
-
-type RefreshError = { kind: "not_found"; message: string } | { kind: "inactive"; message: string } | { kind: "decryption_failed"; message: string } | { kind: "process_failed"; message: string };
 
 type RefreshSuccess = { status: "processing"; message: string; platform: "github" | "reddit" } | { status: "refreshed"; account_id: string } | { status: "skipped"; message: string };
 

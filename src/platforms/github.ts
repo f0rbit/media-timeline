@@ -1,7 +1,10 @@
 import { Octokit } from "octokit";
+import { createLogger } from "../logger";
 import type { GitHubMetaStore, GitHubRepoCommit, GitHubRepoCommitsStore, GitHubRepoMeta, GitHubRepoPR, GitHubRepoPRsStore } from "../schema";
 import { type Result, err, ok } from "../utils";
 import { type ProviderError, mapHttpError, toProviderError } from "./types";
+
+const log = createLogger("github");
 
 export type GitHubProviderConfig = {
 	maxRepos: number;
@@ -132,45 +135,33 @@ export class GitHubProvider {
 
 	async fetch(token: string): Promise<Result<GitHubFetchResult, ProviderError>> {
 		try {
-			console.log("[github] Starting fetch with config:", {
-				maxRepos: this.config.maxRepos,
-				maxCommitsPerRepo: this.config.maxCommitsPerRepo,
-				maxPRsPerRepo: this.config.maxPRsPerRepo,
-				concurrency: this.config.concurrency,
-			});
+			log.debug("Starting fetch", { maxRepos: this.config.maxRepos });
 
 			const octokit = new Octokit({
 				auth: token,
 				userAgent: "media-timeline/2.0.0",
 			});
 
-			console.log("[github] Fetching authenticated user...");
 			const userResult = await this.fetchUser(octokit);
 			if (!userResult.ok) return userResult;
 			const username = userResult.value;
-			console.log("[github] Authenticated as:", username);
+			log.info("Authenticated as", username);
 
-			console.log("[github] Fetching repositories...");
 			const reposResult = await this.fetchRepos(octokit);
 			if (!reposResult.ok) return reposResult;
 			const repos = reposResult.value;
-			console.log("[github] Found", repos.length, "repos (after filtering forks)");
+			log.debug("Found repos", { count: repos.length });
 
-			console.log("[github] Building metadata and fetching branches...");
 			const meta = await this.buildMeta(octokit, username, repos);
-			console.log("[github] Metadata built for", meta.repositories.length, "repos");
-
-			console.log("[github] Fetching commits and PRs for all repos...");
 			const repoDataMap = await this.fetchAllRepoData(octokit, meta.repositories, username);
-			console.log("[github] Fetch complete - processed", repoDataMap.size, "repos");
 
 			const totalCommits = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.commits.total_commits, 0);
 			const totalPRs = Array.from(repoDataMap.values()).reduce((sum, r) => sum + r.prs.total_prs, 0);
-			console.log("[github] Summary: repos=", repoDataMap.size, "commits=", totalCommits, "prs=", totalPRs);
+			log.info("Fetch complete", { repos: repoDataMap.size, commits: totalCommits, prs: totalPRs });
 
 			return ok({ meta, repos: repoDataMap });
 		} catch (error: unknown) {
-			console.error("[github] Fetch failed with error:", error);
+			log.error("Fetch failed", error);
 			return err(mapOctokitError(error));
 		}
 	}
@@ -196,13 +187,12 @@ export class GitHubProvider {
 					}) as Promise<OctokitResponse<RepoData[]>>,
 				this.config.maxRepos
 			);
-			console.log("[github] Raw repos fetched:", repos.length);
 
 			const filteredRepos = repos.filter(repo => !repo.fork);
-			console.log("[github] Repos after filtering forks:", filteredRepos.length, "(removed", repos.length - filteredRepos.length, "forks)");
+			log.debug("Fetched repos", { total: repos.length, afterFilter: filteredRepos.length });
 			return ok(filteredRepos);
 		} catch (error) {
-			console.error("[github] Failed to fetch repos:", error);
+			log.error("Failed to fetch repos", error);
 			return err(mapOctokitError(error));
 		}
 	}
@@ -257,8 +247,8 @@ export class GitHubProvider {
 			async (repoMeta): Promise<[string, { commits: GitHubRepoCommitsStore; prs: GitHubRepoPRsStore }]> => {
 				const [commits, prs] = await Promise.all([this.fetchRepoCommits(octokit, repoMeta, username), this.fetchRepoPRs(octokit, repoMeta, username)]);
 				processed++;
-				if (processed % 5 === 0 || processed === total) {
-					console.log(`[github] Progress: ${processed}/${total} repos (${repoMeta.full_name}: ${commits.total_commits} commits, ${prs.total_prs} PRs)`);
+				if (processed % 10 === 0 || processed === total) {
+					log.debug("Progress", { processed, total, repo: repoMeta.full_name });
 				}
 				return [repoMeta.full_name, { commits, prs }];
 			},
@@ -341,10 +331,6 @@ export class GitHubProvider {
 			);
 
 			const userPRs = allPRs.filter(pr => pr.user?.login.toLowerCase() === username.toLowerCase());
-			const filteredCount = allPRs.length - userPRs.length;
-			if (filteredCount > 0) {
-				console.log(`[github] ${repoMeta.full_name}: filtered out ${filteredCount} PRs not authored by ${username}`);
-			}
 
 			const prsWithCommits = await parallel_map(
 				userPRs,

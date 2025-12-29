@@ -1,4 +1,5 @@
 import type { Backend } from "@f0rbit/corpus";
+import type { FetchError, StoreError } from "./errors";
 import { mergeByKey } from "./merge";
 import type { TwitterFetchResult } from "./platforms/twitter";
 import type { ProviderError } from "./platforms/types";
@@ -16,7 +17,7 @@ export type TwitterProcessResult = {
 	};
 };
 
-type ProcessError = { kind: "fetch_failed"; message: string } | { kind: "store_failed"; store_id: string };
+type TwitterProcessError = FetchError | StoreError;
 
 const mergeTweets = (existing: TwitterTweetsStore | null, incoming: TwitterTweetsStore): { merged: TwitterTweetsStore; newCount: number } => {
 	const { merged: tweets, newCount } = mergeByKey(existing?.tweets, incoming.tweets, t => t.id);
@@ -41,7 +42,7 @@ type TwitterProvider = {
 	fetch(token: string): Promise<Result<TwitterFetchResult, ProviderError>>;
 };
 
-export async function processTwitterAccount(backend: Backend, accountId: string, token: string, provider: TwitterProvider): Promise<Result<TwitterProcessResult, ProcessError>> {
+export async function processTwitterAccount(backend: Backend, accountId: string, token: string, provider: TwitterProvider): Promise<Result<TwitterProcessResult, TwitterProcessError>> {
 	console.log(`[processTwitterAccount] Starting for account: ${accountId}`);
 
 	const fetchResult = await provider.fetch(token);
