@@ -3,9 +3,9 @@ import type { FetchError, StoreError } from "./errors";
 import { mergeByKey } from "./merge";
 import type { RedditFetchResult } from "./platforms/reddit";
 import type { ProviderError } from "./platforms/types";
-import type { RedditCommentsStore, RedditPostsStore } from "./schema";
+import type { RedditCommentsStore, RedditMetaStore, RedditPostsStore } from "./schema";
 import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "./storage";
-import { type Result, err, ok, to_nullable } from "./utils";
+import { type Result, ok, pipe, to_nullable } from "./utils";
 
 export type RedditProcessResult = {
 	account_id: string;
@@ -54,85 +54,72 @@ type RedditProvider = {
 	fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>>;
 };
 
-export async function processRedditAccount(backend: Backend, accountId: string, token: string, provider: RedditProvider): Promise<Result<RedditProcessResult, RedditProcessError>> {
-	console.log(`[processRedditAccount] Starting for account: ${accountId}`);
+type StoreStats = { version: string; newCount: number; total: number };
+const defaultStats: StoreStats = { version: "", newCount: 0, total: 0 };
 
-	const fetchResult = await provider.fetch(token);
-	if (!fetchResult.ok) {
-		return err({
-			kind: "fetch_failed",
-			message: `Reddit fetch failed: ${fetchResult.error.kind}`,
-		});
-	}
+const storeMeta = async (backend: Backend, accountId: string, meta: RedditMetaStore): Promise<string> => {
+	const storeResult = createRedditMetaStore(backend, accountId);
+	if (!storeResult.ok) return "";
 
-	const { meta, posts, comments } = fetchResult.value;
+	const putResult = await storeResult.value.store.put(meta);
+	return putResult.ok ? putResult.value.version : "";
+};
 
-	let metaVersion = "";
-	const metaStoreResult = createRedditMetaStore(backend, accountId);
-	if (metaStoreResult.ok) {
-		const putResult = await metaStoreResult.value.store.put(meta);
-		if (putResult.ok) {
-			metaVersion = putResult.value.version;
-		}
-	}
+const storePosts = async (backend: Backend, accountId: string, posts: RedditPostsStore): Promise<StoreStats> => {
+	const storeResult = createRedditPostsStore(backend, accountId);
+	if (!storeResult.ok) return defaultStats;
 
-	let postsVersion = "";
-	let newPosts = 0;
-	let totalPosts = 0;
-	const postsStoreResult = createRedditPostsStore(backend, accountId);
-	if (postsStoreResult.ok) {
-		const store = postsStoreResult.value.store;
-		const existingResult = await store.get_latest();
-		const existing = to_nullable(existingResult)?.data ?? null;
-		const { merged, newCount } = mergePosts(existing, posts);
-		newPosts = newCount;
-		totalPosts = merged.total_posts;
+	const store = storeResult.value.store;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
+	const { merged, newCount } = mergePosts(existing, posts);
+	const putResult = await store.put(merged);
 
-		const putResult = await store.put(merged);
-		if (putResult.ok) {
-			postsVersion = putResult.value.version;
-		}
+	return pipe(putResult)
+		.map(({ version }) => ({ version, newCount, total: merged.total_posts }))
+		.tap(({ newCount, total }) => console.log(`[processRedditAccount] Posts: ${newCount} new, ${total} total`))
+		.unwrap_or(defaultStats);
+};
 
-		console.log(`[processRedditAccount] Posts: ${newCount} new, ${merged.total_posts} total`);
-	}
+const storeComments = async (backend: Backend, accountId: string, comments: RedditCommentsStore): Promise<StoreStats> => {
+	const storeResult = createRedditCommentsStore(backend, accountId);
+	if (!storeResult.ok) return defaultStats;
 
-	let commentsVersion = "";
-	let newComments = 0;
-	let totalComments = 0;
-	const commentsStoreResult = createRedditCommentsStore(backend, accountId);
-	if (commentsStoreResult.ok) {
-		const store = commentsStoreResult.value.store;
-		const existingResult = await store.get_latest();
-		const existing = to_nullable(existingResult)?.data ?? null;
-		const { merged, newCount } = mergeComments(existing, comments);
-		newComments = newCount;
-		totalComments = merged.total_comments;
+	const store = storeResult.value.store;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
+	const { merged, newCount } = mergeComments(existing, comments);
+	const putResult = await store.put(merged);
 
-		const putResult = await store.put(merged);
-		if (putResult.ok) {
-			commentsVersion = putResult.value.version;
-		}
+	return pipe(putResult)
+		.map(({ version }) => ({ version, newCount, total: merged.total_comments }))
+		.tap(({ newCount, total }) => console.log(`[processRedditAccount] Comments: ${newCount} new, ${total} total`))
+		.unwrap_or(defaultStats);
+};
 
-		console.log(`[processRedditAccount] Comments: ${newCount} new, ${merged.total_comments} total`);
-	}
+export const processRedditAccount = (backend: Backend, accountId: string, token: string, provider: RedditProvider): Promise<Result<RedditProcessResult, RedditProcessError>> =>
+	pipe(provider.fetch(token))
+		.tap(() => console.log(`[processRedditAccount] Starting for account: ${accountId}`))
+		.map_err((e): RedditProcessError => ({ kind: "fetch_failed", message: `Reddit fetch failed: ${e.kind}` }))
+		.flat_map(async ({ meta, posts, comments }) => {
+			const [metaVersion, postsResult, commentsResult] = await Promise.all([storeMeta(backend, accountId, meta), storePosts(backend, accountId, posts), storeComments(backend, accountId, comments)]);
 
-	console.log("[processRedditAccount] Completed:", {
-		posts: totalPosts,
-		comments: totalComments,
-		newPosts,
-		newComments,
-	});
+			console.log("[processRedditAccount] Completed:", {
+				posts: postsResult.total,
+				comments: commentsResult.total,
+				newPosts: postsResult.newCount,
+				newComments: commentsResult.newCount,
+			});
 
-	return ok({
-		account_id: accountId,
-		meta_version: metaVersion,
-		posts_version: postsVersion,
-		comments_version: commentsVersion,
-		stats: {
-			total_posts: totalPosts,
-			total_comments: totalComments,
-			new_posts: newPosts,
-			new_comments: newComments,
-		},
-	});
-}
+			return ok({
+				account_id: accountId,
+				meta_version: metaVersion,
+				posts_version: postsResult.version,
+				comments_version: commentsResult.version,
+				stats: {
+					total_posts: postsResult.total,
+					total_comments: commentsResult.total,
+					new_posts: postsResult.newCount,
+					new_comments: commentsResult.newCount,
+				},
+			});
+		})
+		.result();
