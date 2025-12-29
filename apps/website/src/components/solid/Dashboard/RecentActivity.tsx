@@ -1,6 +1,6 @@
-import { For, Show } from "solid-js";
-import type { TimelineItem, CommitGroup } from "@/utils/api-client";
+import type { CommitGroup, TimelineItem } from "@/utils/api-client";
 import { formatRelativeTime } from "@/utils/formatters";
+import { For, Show } from "solid-js";
 import PlatformIcon from "../PlatformIcon";
 
 type RecentActivityProps = {

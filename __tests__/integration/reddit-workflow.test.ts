@@ -3,8 +3,8 @@ import { processRedditAccount } from "../../src/cron-reddit";
 import { RedditMemoryProvider } from "../../src/platforms/reddit-memory";
 import { loadRedditDataForAccount, normalizeReddit } from "../../src/timeline-reddit";
 import { at, first, unwrap } from "../../src/utils";
-import { ACCOUNTS, REDDIT_FIXTURES, USERS, makeRedditComment, makeRedditPost } from "./fixtures";
-import { type TestContext, createTestContext, seedAccount, seedUser } from "./setup";
+import { ACCOUNTS, PROFILES, REDDIT_FIXTURES, USERS, makeRedditComment, makeRedditPost } from "./fixtures";
+import { type TestContext, createTestContext, seedAccount, seedProfile, seedUser } from "./setup";
 
 describe("Reddit Integration", () => {
 	let ctx: TestContext;
@@ -20,7 +20,8 @@ describe("Reddit Integration", () => {
 	describe("processRedditAccount", () => {
 		it("should process a Reddit account with posts and comments", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 
 			const provider = new RedditMemoryProvider({
 				username: "testuser",
@@ -41,7 +42,8 @@ describe("Reddit Integration", () => {
 
 		it("should merge new posts with existing", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 
 			const provider = new RedditMemoryProvider({
 				posts: [makeRedditPost({ id: "post1", title: "First Post" })],
@@ -63,7 +65,8 @@ describe("Reddit Integration", () => {
 
 		it("should merge new comments with existing", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 
 			const provider = new RedditMemoryProvider({
 				posts: [],
@@ -85,7 +88,8 @@ describe("Reddit Integration", () => {
 
 		it("should update existing posts when they change", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 
 			const provider = new RedditMemoryProvider({
 				posts: [makeRedditPost({ id: "post1", title: "Original Title", score: 10 })],
@@ -107,7 +111,8 @@ describe("Reddit Integration", () => {
 
 		it("should handle empty posts and comments", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 
 			const provider = new RedditMemoryProvider({
 				posts: [],
@@ -127,7 +132,8 @@ describe("Reddit Integration", () => {
 
 		it("should handle provider errors gracefully", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 
 			const provider = new RedditMemoryProvider({});
 			provider.setSimulateRateLimit(true);
@@ -144,7 +150,8 @@ describe("Reddit Integration", () => {
 	describe("loadRedditDataForAccount", () => {
 		it("should load posts and comments from storage", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_reddit);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_reddit);
 
 			const provider = new RedditMemoryProvider({
 				posts: REDDIT_FIXTURES.multiplePosts(2),

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { type RateLimitState, initialState, isCircuitOpen, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
-import { ACCOUNTS, USERS } from "./fixtures";
-import { type TestContext, createTestContext, getAccount, getRateLimit, seedAccount, seedRateLimit, seedUser } from "./setup";
+import { ACCOUNTS, PROFILES, USERS } from "./fixtures";
+import { type TestContext, createTestContext, getAccount, getRateLimit, seedAccount, seedProfile, seedRateLimit, seedUser } from "./setup";
 
 const minutesFromNow = (minutes: number): Date => new Date(Date.now() + minutes * 60 * 1000);
 
@@ -103,7 +103,8 @@ describe("resilience", () => {
 
 		it("stores rate limit state in database", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const futureReset = minutesFromNow(60);
 			await seedRateLimit(ctx, ACCOUNTS.alice_github.id, {
@@ -216,7 +217,8 @@ describe("resilience", () => {
 
 		it("stores circuit breaker state in database", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const circuitOpen = minutesFromNow(5);
 			await seedRateLimit(ctx, ACCOUNTS.alice_github.id, {
@@ -259,7 +261,8 @@ describe("resilience", () => {
 
 		it("marks account inactive on auth expiry detection", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
 			const account = await getAccount(ctx, ACCOUNTS.alice_github.id);
 			expect(account).not.toBeNull();

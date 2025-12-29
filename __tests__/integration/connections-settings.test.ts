@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { ACCOUNTS, API_KEYS, USERS } from "./fixtures";
-import { type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedUser } from "./setup";
+import { ACCOUNTS, API_KEYS, PROFILES, USERS } from "./fixtures";
+import { type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedProfile, seedUser } from "./setup";
 
 type ErrorResponse = { error: string; message: string };
 type SettingsResponse = { settings: Record<string, unknown> };
@@ -31,7 +31,8 @@ describe("Connection Settings API", () => {
 	describe("PATCH /api/v1/connections/:account_id (status toggle)", () => {
 		it("toggles connection to inactive", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -52,7 +53,8 @@ describe("Connection Settings API", () => {
 
 		it("toggles connection to active", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, { ...ACCOUNTS.alice_github, is_active: false });
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, { ...ACCOUNTS.alice_github, is_active: false });
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -92,7 +94,8 @@ describe("Connection Settings API", () => {
 
 		it("returns 400 for invalid body", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -114,7 +117,8 @@ describe("Connection Settings API", () => {
 	describe("GET /api/v1/connections/:account_id/settings", () => {
 		it("returns empty settings for new account", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -145,7 +149,8 @@ describe("Connection Settings API", () => {
 	describe("PUT /api/v1/connections/:account_id/settings", () => {
 		it("creates settings for account", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -178,7 +183,8 @@ describe("Connection Settings API", () => {
 
 		it("updates existing settings", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -215,25 +221,22 @@ describe("Connection Settings API", () => {
 			expect(settings.settings.hidden_repos).toEqual(["alice/new-repo", "alice/another-repo"]);
 		});
 
-		it("returns 403 when member tries to update settings", async () => {
+		it("returns 404 when user tries to update settings for account they don't own", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedUser(ctx, USERS.bob);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github);
-
-			const timestamp = new Date().toISOString();
-			await ctx.d1.prepare("INSERT INTO account_members (id, user_id, account_id, role, created_at) VALUES (?, ?, ?, ?, ?)").bind(crypto.randomUUID(), USERS.bob.id, ACCOUNTS.shared_org_github.id, "member", timestamp).run();
-
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.shared_org_github.id}/settings`, {
+			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.bob_primary}`,
 					"Content-Type": "application/json",
 				},
 				body: JSON.stringify({
-					settings: { hidden_repos: ["org/repo"] },
+					settings: { hidden_repos: ["alice/repo"] },
 				}),
 			});
 
@@ -263,7 +266,8 @@ describe("Connection Settings API", () => {
 	describe("GET /api/v1/connections with include_settings", () => {
 		it("returns accounts with settings when include_settings=true", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -279,7 +283,7 @@ describe("Connection Settings API", () => {
 				}),
 			});
 
-			const res = await app.request("/api/v1/connections?include_settings=true", {
+			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}&include_settings=true`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -290,11 +294,12 @@ describe("Connection Settings API", () => {
 
 		it("returns accounts without settings when include_settings is not set", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections", {
+			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -307,7 +312,8 @@ describe("Connection Settings API", () => {
 	describe("GET /api/v1/connections/:account_id/repos", () => {
 		it("returns repos from GitHub meta store", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const metaData = {
@@ -368,7 +374,8 @@ describe("Connection Settings API", () => {
 
 		it("returns empty array when no raw data exists", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -383,7 +390,8 @@ describe("Connection Settings API", () => {
 
 		it("returns 400 for non-GitHub account", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_bluesky);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);

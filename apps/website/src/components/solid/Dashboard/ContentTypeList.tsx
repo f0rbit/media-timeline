@@ -1,11 +1,11 @@
-import { For } from "solid-js";
 import type { ContentTypeCount } from "@/utils/analytics";
+import CheckSquare from "lucide-solid/icons/check-square";
 import GitCommit from "lucide-solid/icons/git-commit-horizontal";
 import GitPullRequest from "lucide-solid/icons/git-pull-request";
 import MessageSquare from "lucide-solid/icons/message-square";
-import Reply from "lucide-solid/icons/reply";
 import Play from "lucide-solid/icons/play";
-import CheckSquare from "lucide-solid/icons/check-square";
+import Reply from "lucide-solid/icons/reply";
+import { For } from "solid-js";
 
 type ContentTypeListProps = {
 	types: ContentTypeCount[];

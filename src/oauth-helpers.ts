@@ -1,9 +1,9 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, or } from "drizzle-orm";
 import type { Context } from "hono";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
-import { accountMembers, accounts, apiKeys } from "./schema";
+import { accounts, apiKeys, profiles } from "./schema";
 import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch_async } from "./utils";
 
 type Variables = {
@@ -13,9 +13,9 @@ type Variables = {
 
 type HonoContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 
-export type Platform = "reddit" | "twitter";
+export type Platform = "reddit" | "twitter" | "github";
 
-export type OAuthStateBase = { user_id: string; nonce: string };
+export type OAuthStateBase = { user_id: string; profile_id: string; nonce: string };
 export type OAuthState<T extends Record<string, unknown> = Record<string, never>> = OAuthStateBase & T;
 
 export type TokenResponse = {
@@ -65,13 +65,49 @@ export const validateOAuthQueryKey = async (c: HonoContext, ctx: AppContext, pla
 	return ok(keyResult.user_id);
 };
 
+export type OAuthKeyAndProfileResult = { user_id: string; profile_id: string };
+
+export const validateOAuthQueryKeyAndProfile = async (c: HonoContext, ctx: AppContext, platform: string): Promise<Result<OAuthKeyAndProfileResult, Response>> => {
+	const apiKey = c.req.query("key");
+	if (!apiKey) {
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_auth`));
+	}
+
+	const profileIdOrSlug = c.req.query("profile_id") || c.req.query("profile");
+	if (!profileIdOrSlug) {
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_profile`));
+	}
+
+	const keyHash = await hash_api_key(apiKey);
+	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
+
+	if (!keyResult) {
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_auth`));
+	}
+
+	const userId = keyResult.user_id;
+
+	const profile = await ctx.db
+		.select({ id: profiles.id, user_id: profiles.user_id })
+		.from(profiles)
+		.where(and(eq(profiles.user_id, userId), or(eq(profiles.id, profileIdOrSlug), eq(profiles.slug, profileIdOrSlug))))
+		.get();
+
+	if (!profile) {
+		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_profile`));
+	}
+
+	return ok({ user_id: userId, profile_id: profile.id });
+};
+
 export const redirectWithError = (c: HonoContext, platform: Platform, errorCode: string): Response => c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_${errorCode}`);
 
 export const redirectWithSuccess = (c: HonoContext, platform: Platform): Response => c.redirect(`${getFrontendUrl(c)}/connections?success=${platform}`);
 
-export const encodeOAuthState = <T extends Record<string, unknown>>(userId: string, extra?: T): string => {
+export const encodeOAuthState = <T extends Record<string, unknown>>(userId: string, profileId: string, extra?: T): string => {
 	const stateData: OAuthState<T> = {
 		user_id: userId,
+		profile_id: profileId,
 		nonce: crypto.randomUUID(),
 		...(extra as T),
 	};
@@ -86,6 +122,7 @@ export const decodeOAuthState = <T extends Record<string, unknown> = Record<stri
 	try {
 		const stateData = JSON.parse(atob(state)) as OAuthState<T>;
 		if (!stateData.user_id) throw new Error("No user_id in state");
+		if (!stateData.profile_id) throw new Error("No profile_id in state");
 		for (const key of requiredKeys) {
 			if (!stateData[key]) throw new Error(`Missing ${String(key)} in state`);
 		}
@@ -170,33 +207,28 @@ export const encryptTokens = (tokens: TokenResponse, encryptionKey: string): Pro
 		})
 		.result();
 
-export const upsertOAuthAccount = (db: Database, encryptionKey: string, userId: string, platform: Platform, user: OAuthUser, tokens: TokenResponse): Promise<Result<string, OAuthError>> =>
+export const upsertOAuthAccount = (db: Database, encryptionKey: string, profileId: string, platform: Platform, user: OAuthUser, tokens: TokenResponse): Promise<Result<string, OAuthError>> =>
 	pipe(encryptTokens(tokens, encryptionKey))
 		.flat_map(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
 			const now = new Date().toISOString();
-			const tokenExpiresAt = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+			// GitHub tokens don't expire (expires_in is undefined), so tokenExpiresAt can be null
+			const tokenExpiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null;
 
 			const existing = await db
 				.select()
 				.from(accounts)
-				.where(and(eq(accounts.platform, platform), eq(accounts.platform_user_id, user.id)))
+				.where(and(eq(accounts.profile_id, profileId), eq(accounts.platform, platform), eq(accounts.platform_user_id, user.id)))
 				.get();
 
 			if (existing) {
-				return updateExistingAccount(db, existing.id, userId, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
+				return updateExistingAccount(db, existing.id, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
 			}
 
-			return createNewAccount(db, userId, platform, user, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
+			return createNewAccount(db, profileId, platform, user, encryptedAccessToken, encryptedRefreshToken, tokenExpiresAt, now);
 		})
 		.result();
 
-const updateExistingAccount = async (db: Database, accountId: string, userId: string, encryptedAccessToken: string, encryptedRefreshToken: string | null, tokenExpiresAt: string, now: string): Promise<Result<string, OAuthError>> => {
-	const existingMembership = await db
-		.select()
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, accountId)))
-		.get();
-
+const updateExistingAccount = async (db: Database, accountId: string, encryptedAccessToken: string, encryptedRefreshToken: string | null, tokenExpiresAt: string | null, now: string): Promise<Result<string, OAuthError>> => {
 	await db
 		.update(accounts)
 		.set({
@@ -208,53 +240,34 @@ const updateExistingAccount = async (db: Database, accountId: string, userId: st
 		})
 		.where(eq(accounts.id, accountId));
 
-	if (!existingMembership) {
-		await db.insert(accountMembers).values({
-			id: crypto.randomUUID(),
-			user_id: userId,
-			account_id: accountId,
-			role: "member",
-			created_at: now,
-		});
-	}
-
 	return ok(accountId);
 };
 
 const createNewAccount = async (
 	db: Database,
-	userId: string,
+	profileId: string,
 	platform: Platform,
 	user: OAuthUser,
 	encryptedAccessToken: string,
 	encryptedRefreshToken: string | null,
-	tokenExpiresAt: string,
+	tokenExpiresAt: string | null,
 	now: string
 ): Promise<Result<string, OAuthError>> => {
 	const accountId = crypto.randomUUID();
-	const memberId = crypto.randomUUID();
 
-	await db.batch([
-		db.insert(accounts).values({
-			id: accountId,
-			platform,
-			platform_user_id: user.id,
-			platform_username: user.username,
-			access_token_encrypted: encryptedAccessToken,
-			refresh_token_encrypted: encryptedRefreshToken,
-			token_expires_at: tokenExpiresAt,
-			is_active: true,
-			created_at: now,
-			updated_at: now,
-		}),
-		db.insert(accountMembers).values({
-			id: memberId,
-			user_id: userId,
-			account_id: accountId,
-			role: "owner",
-			created_at: now,
-		}),
-	]);
+	await db.insert(accounts).values({
+		id: accountId,
+		profile_id: profileId,
+		platform,
+		platform_user_id: user.id,
+		platform_username: user.username,
+		access_token_encrypted: encryptedAccessToken,
+		refresh_token_encrypted: encryptedRefreshToken,
+		token_expires_at: tokenExpiresAt,
+		is_active: true,
+		created_at: now,
+		updated_at: now,
+	});
 
 	return ok(accountId);
 };
@@ -284,7 +297,7 @@ export const createOAuthCallback = <TState extends Record<string, unknown> = Rec
 			)
 			.tap_err(e => console.error(`[${config.platform}-oauth] Failed to get user info:`, e.message))
 			.flat_map(({ tokens, user }) =>
-				pipe(upsertOAuthAccount(ctx.db, ctx.encryptionKey, stateData.user_id, config.platform, user, tokens))
+				pipe(upsertOAuthAccount(ctx.db, ctx.encryptionKey, stateData.profile_id, config.platform, user, tokens))
 					.map_err(e => toCallbackError(e, "save_failed"))
 					.result()
 			)

@@ -1,7 +1,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { z } from "zod";
 
-export { accountMembers, accountSettings, accounts, apiKeys, rateLimits, users } from "./database";
+export { accountSettings, accounts, apiKeys, profileFilters, profiles, rateLimits, users } from "./database";
 export {
 	type GitHubRepoCommit,
 	GitHubRepoCommitSchema,
@@ -107,6 +107,19 @@ export {
 	TwitterUserMetricsSchema,
 } from "./twitter-meta";
 export {
+	AddFilterSchema,
+	CreateProfileSchema,
+	FilterKeySchema,
+	FilterTypeSchema,
+	SlugSchema,
+	UpdateProfileSchema,
+	type AddFilterInput,
+	type CreateProfileInput,
+	type FilterKey,
+	type FilterType,
+	type UpdateProfileInput,
+} from "./profiles";
+export {
 	type TweetMedia,
 	TweetMediaSchema,
 	type TweetMetrics,
@@ -119,7 +132,7 @@ export {
 	TwitterTweetsStoreSchema,
 } from "./twitter-tweets";
 
-import type { accountMembers, accountSettings, accounts, apiKeys, rateLimits, users } from "./database";
+import type { accountSettings, accounts, apiKeys, rateLimits, users } from "./database";
 import type {
 	BlueskyAuthorSchema,
 	BlueskyFeedItemSchema,
@@ -162,9 +175,6 @@ export type NewUser = InferInsertModel<typeof users>;
 
 export type Account = InferSelectModel<typeof accounts>;
 export type NewAccount = InferInsertModel<typeof accounts>;
-
-export type AccountMember = InferSelectModel<typeof accountMembers>;
-export type NewAccountMember = InferInsertModel<typeof accountMembers>;
 
 export type ApiKey = InferSelectModel<typeof apiKeys>;
 export type NewApiKey = InferInsertModel<typeof apiKeys>;

@@ -1,13 +1,15 @@
 /// <reference types="@cloudflare/workers-types" />
 
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { authMiddleware } from "./auth";
+import { authMiddleware, getAuth } from "./auth";
 import { type Bindings, createContextFromBindings } from "./bindings";
 import { handleCron } from "./cron";
 import type { AppContext } from "./infrastructure";
 import { defaultProviderFactory } from "./platforms";
-import { authRoutes, connectionRoutes, timelineRoutes } from "./routes";
+import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "./routes";
+import { users } from "./schema";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -20,7 +22,7 @@ app.use(
 	"*",
 	cors({
 		origin: origin => {
-			const allowed = ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools"];
+			const allowed = ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools", "https://devpad.tools"];
 			if (!origin || allowed.includes(origin)) return origin;
 			if (origin.endsWith(".workers.dev")) return origin;
 			return null;
@@ -52,6 +54,30 @@ app.use("/api/*", async (c, next) => {
 app.route("/api/auth", authRoutes);
 app.route("/api/v1/timeline", timelineRoutes);
 app.route("/api/v1/connections", connectionRoutes);
+app.route("/api/v1/profiles", profileRoutes);
+
+// Get current user info
+app.get("/api/v1/me", async c => {
+	const auth = getAuth(c);
+	const ctx = c.get("appContext");
+
+	const user = await ctx.db.select().from(users).where(eq(users.id, auth.user_id)).get();
+
+	if (!user) {
+		return c.json({ error: "User not found" }, 404);
+	}
+
+	return c.json({
+		id: user.id,
+		name: user.name,
+		email: user.email,
+	});
+});
+
+// Logout - clear session by redirecting to devpad logout
+app.post("/api/auth/logout", c => {
+	return c.json({ redirect: "https://devpad.tools/logout" });
+});
 
 app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 

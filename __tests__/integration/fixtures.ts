@@ -520,10 +520,40 @@ export const API_KEYS = {
 	bob_primary: "mtl_bob_primary_key_ghi789",
 };
 
+export const PROFILES = {
+	alice_main: {
+		id: "profile-alice-main",
+		slug: "main",
+		name: "Alice Main Profile",
+		description: "My main public profile",
+	},
+	alice_work: {
+		id: "profile-alice-work",
+		slug: "work",
+		name: "Alice Work Profile",
+		description: "Work-related activity only",
+	},
+	bob_main: {
+		id: "profile-bob-main",
+		slug: "main",
+		name: "Bob Main Profile",
+	},
+	charlie_main: {
+		id: "profile-charlie-main",
+		slug: "main",
+		name: "Charlie Main Profile",
+	},
+	org_admin_main: {
+		id: "profile-org-admin-main",
+		slug: "main",
+		name: "Org Admin Profile",
+	},
+};
+
 export const makeTimelineItem = (
 	overrides: Partial<{
 		id: string;
-		platform: "github" | "bluesky" | "youtube" | "devpad" | "reddit";
+		platform: "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 		type: "commit" | "post" | "video" | "task" | "comment";
 		timestamp: string;
 		title: string;

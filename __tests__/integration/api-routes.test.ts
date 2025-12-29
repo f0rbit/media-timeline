@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { ACCOUNTS, API_KEYS, GITHUB_FIXTURES, USERS, makeTimelineItem } from "./fixtures";
-import { type TestContext, addAccountMember, createTestApp, createTestContext, seedAccount, seedApiKey, seedUser } from "./setup";
+import { ACCOUNTS, API_KEYS, GITHUB_FIXTURES, PROFILES, USERS, makeTimelineItem } from "./fixtures";
+import { type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedProfile, seedUser } from "./setup";
 
 type TimelineData = {
 	user_id: string;
@@ -9,10 +9,9 @@ type TimelineData = {
 };
 
 type ErrorResponse = { error: string; message: string };
-type AccountResponse = { accounts: Array<{ account_id: string; platform: string; role: string }> };
-type CreateConnectionResponse = { account_id: string; role: string };
+type AccountResponse = { accounts: Array<{ account_id: string; platform: string }> };
+type CreateConnectionResponse = { account_id: string };
 type DeleteResponse = { deleted: boolean };
-type AddMemberResponse = { member_id: string; role: string };
 
 type TimelineResponse = {
 	meta: { version: number; created_at: string };
@@ -175,7 +174,8 @@ describe("API routes", () => {
 	describe("GET /api/v1/timeline/:user_id/raw/:platform", () => {
 		it("returns raw platform data", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const rawData = GITHUB_FIXTURES.singleCommit();
@@ -225,12 +225,13 @@ describe("API routes", () => {
 	describe("GET /api/v1/connections", () => {
 		it("returns user accounts", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_bluesky);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_bluesky);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections", {
+			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -242,10 +243,11 @@ describe("API routes", () => {
 
 		it("returns empty array for user with no accounts", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections", {
+			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -258,6 +260,7 @@ describe("API routes", () => {
 	describe("POST /api/v1/connections", () => {
 		it("creates new account connection", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -270,18 +273,19 @@ describe("API routes", () => {
 				body: JSON.stringify({
 					platform: "github",
 					access_token: "ghp_test_token_123",
+					profile_id: PROFILES.alice_main.id,
 				}),
 			});
 
 			expect(res.status).toBe(201);
 			const data = (await res.json()) as CreateConnectionResponse;
 			expect(data.account_id).toBeDefined();
-			expect(data.role).toBe("owner");
 
-			const accounts = await ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(data.account_id).first<{ platform: string; access_token_encrypted: string }>();
+			const accounts = await ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(data.account_id).first<{ platform: string; access_token_encrypted: string; profile_id: string }>();
 
 			expect(accounts?.platform).toBe("github");
 			expect(accounts?.access_token_encrypted).toBeDefined();
+			expect(accounts?.profile_id).toBe(PROFILES.alice_main.id);
 		});
 
 		it("returns 400 when platform missing", async () => {
@@ -324,6 +328,7 @@ describe("API routes", () => {
 
 		it("encrypts tokens before storing", async () => {
 			await seedUser(ctx, USERS.alice);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const plainToken = "ghp_plain_text_token_should_be_encrypted";
@@ -338,6 +343,7 @@ describe("API routes", () => {
 				body: JSON.stringify({
 					platform: "github",
 					access_token: plainToken,
+					profile_id: PROFILES.alice_main.id,
 				}),
 			});
 
@@ -354,7 +360,8 @@ describe("API routes", () => {
 	describe("DELETE /api/v1/connections/:account_id", () => {
 		it("fully deletes account and associated data when owner", async () => {
 			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
@@ -364,28 +371,24 @@ describe("API routes", () => {
 			});
 
 			expect(res.status).toBe(200);
-			const data = (await res.json()) as { deleted: boolean; account_id: string; platform: string; deleted_stores: number; affected_users: number };
+			const data = (await res.json()) as { deleted: boolean; account_id: string; platform: string; deleted_stores: number };
 			expect(data.deleted).toBe(true);
 			expect(data.account_id).toBe(ACCOUNTS.alice_github.id);
 			expect(data.platform).toBe("github");
-			expect(data.affected_users).toBe(1);
 
 			const account = await ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first();
 			expect(account).toBeNull();
-
-			const members = await ctx.d1.prepare("SELECT * FROM account_members WHERE account_id = ?").bind(ACCOUNTS.alice_github.id).all();
-			expect(members.results.length).toBe(0);
 		});
 
-		it("returns 403 when member tries to delete", async () => {
+		it("returns 403 when user tries to delete account they don't own", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedUser(ctx, USERS.bob);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github);
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
+			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
+			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.shared_org_github.id}`, {
+			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.bob_primary}` },
 			});
@@ -393,7 +396,6 @@ describe("API routes", () => {
 			expect(res.status).toBe(403);
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Forbidden");
-			expect(data.message).toBe("Only owners can delete accounts");
 		});
 
 		it("returns 404 when account not found", async () => {
@@ -410,101 +412,6 @@ describe("API routes", () => {
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Not found");
 			expect(data.message).toBe("Account not found");
-		});
-	});
-
-	describe("POST /api/v1/connections/:account_id/members", () => {
-		it("adds member when owner", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
-
-			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/members`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${API_KEYS.alice_primary}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ user_id: USERS.bob.id }),
-			});
-
-			expect(res.status).toBe(201);
-			const data = (await res.json()) as AddMemberResponse;
-			expect(data.member_id).toBeDefined();
-			expect(data.role).toBe("member");
-
-			const membership = await ctx.d1.prepare("SELECT role FROM account_members WHERE user_id = ? AND account_id = ?").bind(USERS.bob.id, ACCOUNTS.alice_github.id).first<{ role: string }>();
-
-			expect(membership?.role).toBe("member");
-		});
-
-		it("returns 403 when non-owner tries to add", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-			await seedUser(ctx, USERS.charlie);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github);
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
-
-			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.shared_org_github.id}/members`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${API_KEYS.bob_primary}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ user_id: USERS.charlie.id }),
-			});
-
-			expect(res.status).toBe(403);
-			const data = (await res.json()) as ErrorResponse;
-			expect(data.error).toBe("Forbidden");
-			expect(data.message).toBe("Only owners can perform this action");
-		});
-
-		it("returns 409 when user already member", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedUser(ctx, USERS.bob);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github);
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
-			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
-
-			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.shared_org_github.id}/members`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${API_KEYS.alice_primary}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({ user_id: USERS.bob.id }),
-			});
-
-			expect(res.status).toBe(409);
-			const data = (await res.json()) as ErrorResponse;
-			expect(data.error).toBe("Conflict");
-			expect(data.message).toBe("User is already a member");
-		});
-
-		it("returns 400 when user_id missing", async () => {
-			await seedUser(ctx, USERS.alice);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.alice_github);
-			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
-
-			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/members`, {
-				method: "POST",
-				headers: {
-					Authorization: `Bearer ${API_KEYS.alice_primary}`,
-					"Content-Type": "application/json",
-				},
-				body: JSON.stringify({}),
-			});
-
-			expect(res.status).toBe(400);
-			const data = (await res.json()) as ErrorResponse;
-			expect(data.error).toBe("Bad request");
 		});
 	});
 
@@ -556,20 +463,13 @@ describe("API routes", () => {
 		it("all 403 errors have { error, message } format", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedUser(ctx, USERS.bob);
-			await seedAccount(ctx, USERS.alice.id, ACCOUNTS.shared_org_github);
-			await addAccountMember(ctx, USERS.bob.id, ACCOUNTS.shared_org_github.id, "member");
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
-			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
 
 			const app = createTestApp(ctx);
 
 			const forbiddenRequests = [
 				app.request("/api/v1/timeline/user-bob", {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
-				}),
-				app.request(`/api/v1/connections/${ACCOUNTS.shared_org_github.id}`, {
-					method: "DELETE",
-					headers: { Authorization: `Bearer ${API_KEYS.bob_primary}` },
 				}),
 			];
 

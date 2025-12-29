@@ -10,7 +10,7 @@ import { createLogger } from "./logger";
 import { GitHubProvider, type ProviderError, type ProviderFactory, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
-import { BlueskyRawSchema, type CommitGroup, DevpadRawSchema, type Platform, type TimelineItem, YouTubeRawSchema, accountMembers, accounts, rateLimits } from "./schema";
+import { BlueskyRawSchema, type CommitGroup, DevpadRawSchema, type Platform, type TimelineItem, YouTubeRawSchema, accounts, profiles, rateLimits } from "./schema";
 import { type RateLimitState, type RawData, createRawStore, createTimelineStore, rawStoreId, shouldFetch } from "./storage";
 import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
@@ -97,11 +97,11 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 			platform_user_id: accounts.platform_user_id,
 			access_token_encrypted: accounts.access_token_encrypted,
 			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			user_id: accountMembers.user_id,
+			user_id: profiles.user_id,
 			last_fetched_at: accounts.last_fetched_at,
 		})
 		.from(accounts)
-		.innerJoin(accountMembers, eq(accounts.id, accountMembers.account_id))
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
 		.where(eq(accounts.is_active, true));
 
 	const userAccounts = new Map<string, AccountWithUser[]>();

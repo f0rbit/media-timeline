@@ -1,11 +1,16 @@
 ---
+import ProfileSelector from "../components/solid/ProfileSelector.tsx";
+import { fetchProfilesServer } from "../utils/api-server";
 import Layout from "./Layout.astro";
 
 interface Props {
 	title?: string;
+	description?: string;
+	ogImage?: string;
+	noindex?: boolean;
 }
 
-const { title = "Media Timeline" } = Astro.props;
+const { title = "Media Timeline", description, ogImage, noindex } = Astro.props;
 
 const pages = [
 	{ name: "dashboard", href: "/dashboard" },
@@ -15,16 +20,35 @@ const pages = [
 
 const currentPath = Astro.url.pathname;
 const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
+
+const profileSlug = Astro.url.searchParams.get("profile");
+const initialProfiles = await fetchProfilesServer();
+const isAuthenticated = import.meta.env.DEV || initialProfiles.length > 0;
+
+const buildUrl = (path: string) => {
+	if (!profileSlug) return path;
+	return `${path}?profile=${encodeURIComponent(profileSlug)}`;
+};
 ---
 
-<Layout title={title}>
+<Layout title={title} description={description} ogImage={ogImage} noindex={noindex}>
   <body>
     <div id="container">
       <header>
-        <a href="/"><h5>media timeline</h5></a>
+        <div class="header-left">
+          <a href={buildUrl("/dashboard")}><h5>media timeline</h5></a>
+          <div class="profile-selector-wrapper">
+            <ProfileSelector 
+              client:load
+              currentSlug={profileSlug}
+              initialProfiles={initialProfiles}
+              isAuthenticated={isAuthenticated}
+            />
+          </div>
+        </div>
         <nav>
           {pages.map(p => (
-            <a href={p.href} class={active === p.name ? "active" : ""}>
+            <a href={buildUrl(p.href)} class={active === p.name ? "active" : ""}>
               {p.name}
             </a>
           ))}
@@ -43,5 +67,19 @@ const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
 <style>
   main {
     margin-top: 24px;
+  }
+  
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+  
+  /* Reserve space for profile selector to prevent layout shift */
+  .profile-selector-wrapper {
+    min-width: 100px;
+    min-height: 32px;
+    display: flex;
+    align-items: center;
   }
 </style>

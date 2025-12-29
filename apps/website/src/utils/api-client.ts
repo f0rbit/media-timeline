@@ -2,6 +2,8 @@ import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo,
 
 export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo, Platform, PlatformSettings, PostPayload, PRCommit, PullRequestPayload, TimelineItem, TimelineType };
 
+import { MOCK_API_KEY, MOCK_USER_ID, isDevMode } from "./mock-auth";
+
 type ApiClientConfig = {
 	baseUrl: string;
 	apiKey: string | null;
@@ -10,6 +12,13 @@ type ApiClientConfig = {
 let config: ApiClientConfig = {
 	baseUrl: import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787",
 	apiKey: null,
+};
+
+// Get effective API key - use mock key for localhost if no key explicitly set
+const getEffectiveApiKey = (): string | null => {
+	if (config.apiKey) return config.apiKey;
+	if (isDevMode()) return MOCK_API_KEY;
+	return null;
 };
 
 export function configureApi(newConfig: Partial<ApiClientConfig>): void {
@@ -24,9 +33,6 @@ export function getApiKey(): string | null {
 	return config.apiKey;
 }
 
-const MOCK_USER_ID = "mock-user-001";
-const MOCK_API_KEY = `mt_dev_${btoa(MOCK_USER_ID).slice(0, 24)}`;
-
 export function getMockApiKey(): string {
 	return MOCK_API_KEY;
 }
@@ -35,8 +41,9 @@ export function getMockUserId(): string {
 	return MOCK_USER_ID;
 }
 
+// Initialize mock auth for dev mode
 export function initMockAuth(): void {
-	if (import.meta.env.DEV) {
+	if (isDevMode()) {
 		setApiKey(MOCK_API_KEY);
 	}
 }
@@ -62,8 +69,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<A
 		...headers,
 	};
 
-	if (config.apiKey) {
-		requestHeaders.Authorization = `Bearer ${config.apiKey}`;
+	const apiKey = getEffectiveApiKey();
+	if (apiKey) {
+		requestHeaders.Authorization = `Bearer ${apiKey}`;
 	}
 
 	const url = `${config.baseUrl}/api/v1${path}`;
@@ -144,9 +152,9 @@ export type TimelineResponse = {
 };
 
 export const connections = {
-	list: () => api.get<ConnectionsResponse>("/connections"),
-	listWithSettings: () => api.get<ConnectionsWithSettingsResponse>("/connections?include_settings=true"),
-	create: (data: { platform: string; access_token: string; platform_username?: string }) => api.post<{ account_id: string }>("/connections", data),
+	list: (profileId: string) => api.get<ConnectionsResponse>(`/connections?profile_id=${profileId}`),
+	listWithSettings: (profileId: string) => api.get<ConnectionsWithSettingsResponse>(`/connections?profile_id=${profileId}&include_settings=true`),
+	create: (data: { platform: string; access_token: string; platform_username?: string; profile_id: string }) => api.post<{ account_id: string }>("/connections", data),
 	update: (accountId: string, data: { is_active?: boolean }) => api.patch<{ success: boolean; connection: Connection }>(`/connections/${accountId}`, data),
 	delete: (accountId: string) => api.delete<{ success: boolean }>(`/connections/${accountId}`),
 	refresh: (accountId: string) => api.post<{ status: string }>(`/connections/${accountId}/refresh`),
@@ -160,4 +168,61 @@ export const connections = {
 export const timeline = {
 	get: (userId: string) => api.get<TimelineResponse>(`/timeline/${userId}`),
 	getRaw: (userId: string, platform: string, accountId: string) => api.get<unknown>(`/timeline/${userId}/raw/${platform}?account_id=${accountId}`),
+};
+
+export type ProfileSummary = {
+	id: string;
+	slug: string;
+	name: string;
+	description: string | null;
+	created_at: string;
+};
+
+export type ProfilesListResponse = {
+	profiles: ProfileSummary[];
+};
+
+export type ProfileTimelineResponse = {
+	meta: {
+		profile_id: string;
+		profile_slug: string;
+		profile_name: string;
+		generated_at: string;
+	};
+	data: {
+		groups: TimelineGroup[];
+	};
+};
+
+export type ProfileWithRelations = {
+	id: string;
+	slug: string;
+	name: string;
+	description: string | null;
+	theme: string | null;
+	created_at: string;
+	updated_at: string;
+	filters: Array<{
+		id: string;
+		account_id: string;
+		filter_type: "include" | "exclude";
+		filter_key: string;
+		filter_value: string;
+	}>;
+};
+
+export type ProfileDetailResponse = {
+	profile: ProfileWithRelations;
+};
+
+export const profiles = {
+	list: () => api.get<ProfilesListResponse>("/profiles"),
+	get: (id: string) => api.get<ProfileDetailResponse>(`/profiles/${id}`),
+	getTimeline: (slug: string, params?: { limit?: number; before?: string }) => {
+		const query = new URLSearchParams();
+		if (params?.limit) query.set("limit", String(params.limit));
+		if (params?.before) query.set("before", params.before);
+		const queryString = query.toString();
+		return api.get<ProfileTimelineResponse>(`/profiles/${slug}/timeline${queryString ? `?${queryString}` : ""}`);
+	},
 };
