@@ -13,7 +13,7 @@ type Variables = {
 
 type HonoContext = Context<{ Bindings: Bindings; Variables: Variables }>;
 
-export type Platform = "reddit" | "twitter";
+export type Platform = "reddit" | "twitter" | "github";
 
 export type OAuthStateBase = { user_id: string; nonce: string };
 export type OAuthState<T extends Record<string, unknown> = Record<string, never>> = OAuthStateBase & T;

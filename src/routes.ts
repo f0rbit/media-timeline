@@ -387,6 +387,82 @@ authRoutes.get("/twitter", async c => {
 // GET /auth/twitter/callback - Handle Twitter OAuth callback
 authRoutes.get("/twitter/callback", createOAuthCallback(twitterOAuthConfig));
 
+// === GitHub OAuth ===
+
+const githubOAuthConfig: OAuthCallbackConfig = {
+	platform: "github",
+	tokenUrl: "https://github.com/login/oauth/access_token",
+	tokenAuthHeader: () => "",
+	tokenHeaders: { Accept: "application/json" },
+	tokenBody: (code, redirectUri) =>
+		new URLSearchParams({
+			client_id: "",
+			client_secret: "",
+			code,
+			redirect_uri: redirectUri,
+		}),
+	fetchUser: async (token): Promise<{ id: string; username: string }> => {
+		const response = await fetch("https://api.github.com/user", {
+			headers: {
+				Authorization: `Bearer ${token}`,
+				Accept: "application/json",
+				"User-Agent": "media-timeline/2.0.0",
+			},
+		});
+		if (!response.ok) throw new Error(`User fetch failed: ${response.status}`);
+		const data = (await response.json()) as { id: number; login: string };
+		return { id: String(data.id), username: data.login };
+	},
+	getSecrets: env => ({ clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET }),
+};
+
+// GET /auth/github - Initiate GitHub OAuth
+authRoutes.get("/github", async c => {
+	const ctx = getContext(c);
+
+	const keyValidation = await validateOAuthQueryKey(c, ctx, "github");
+	if (!keyValidation.ok) return keyValidation.error;
+	const userId = keyValidation.value;
+
+	const clientId = c.env.GITHUB_CLIENT_ID;
+	if (!clientId) {
+		return c.json({ error: "GitHub OAuth not configured" }, 500);
+	}
+
+	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/github/callback`;
+	const state = encodeOAuthState(userId);
+
+	const authUrl = new URL("https://github.com/login/oauth/authorize");
+	authUrl.searchParams.set("client_id", clientId);
+	authUrl.searchParams.set("redirect_uri", redirectUri);
+	authUrl.searchParams.set("scope", "read:user repo");
+	authUrl.searchParams.set("state", state);
+
+	return c.redirect(authUrl.toString());
+});
+
+// GET /auth/github/callback - Handle GitHub OAuth callback
+authRoutes.get("/github/callback", async c => {
+	const ctx = getContext(c);
+	if (!ctx) throw new Error("AppContext not set");
+
+	const clientId = c.env.GITHUB_CLIENT_ID;
+	const clientSecret = c.env.GITHUB_CLIENT_SECRET;
+
+	const configWithSecrets: OAuthCallbackConfig = {
+		...githubOAuthConfig,
+		tokenBody: (code, redirectUri) =>
+			new URLSearchParams({
+				client_id: clientId || "",
+				client_secret: clientSecret || "",
+				code,
+				redirect_uri: redirectUri,
+			}),
+	};
+
+	return createOAuthCallback(configWithSecrets)(c);
+});
+
 connectionRoutes.get("/", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
