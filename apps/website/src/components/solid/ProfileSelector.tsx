@@ -1,6 +1,6 @@
 import { createResource, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { isServer } from "solid-js/web";
-import { profiles, type ProfileSummary } from "../../utils/api-client";
+import { initMockAuth, profiles, type ProfileSummary } from "../../utils/api-client";
 
 type ProfileSelectorProps = {
 	currentSlug: string | null;
@@ -14,6 +14,8 @@ const fetchProfiles = async (): Promise<ProfileSummary[]> => {
 };
 
 export default function ProfileSelector(props: ProfileSelectorProps) {
+	initMockAuth();
+
 	const [isOpen, setIsOpen] = createSignal(false);
 	const [profileList] = createResource(fetchProfiles);
 	let containerRef: HTMLDivElement | undefined;
