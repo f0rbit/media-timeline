@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync, readdirSync } from "node:fs";
 import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
@@ -10,7 +10,7 @@ import { cors } from "hono/cors";
 import { authMiddleware } from "../src/auth";
 import type { Database as DrizzleDB } from "../src/db";
 import { type ProviderFactory, defaultProviderFactory } from "../src/platforms";
-import { authRoutes, connectionRoutes, timelineRoutes } from "../src/routes";
+import { authRoutes, connectionRoutes, timelineRoutes, profileRoutes } from "../src/routes";
 import * as schema from "../src/schema/database";
 import { hash_api_key } from "../src/utils";
 
@@ -25,91 +25,48 @@ const ENCRYPTION_KEY = "dev-encryption-key-32-bytes-ok!";
 const MOCK_USER_ID = "mock-user-001";
 const MOCK_API_KEY = `mt_dev_${Buffer.from(MOCK_USER_ID).toString("base64").slice(0, 24)}`;
 
-const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    email TEXT UNIQUE,
-    name TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
+/**
+ * Run Drizzle migrations from the migrations folder
+ */
+function runMigrations(sqliteDb: Database) {
+	// Create migrations tracking table
+	sqliteDb.exec(`
+		CREATE TABLE IF NOT EXISTS __drizzle_migrations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			hash TEXT NOT NULL,
+			created_at INTEGER NOT NULL
+		);
+	`);
 
-  CREATE TABLE IF NOT EXISTS accounts (
-    id TEXT PRIMARY KEY,
-    platform TEXT NOT NULL,
-    platform_user_id TEXT,
-    platform_username TEXT,
-    access_token_encrypted TEXT NOT NULL,
-    refresh_token_encrypted TEXT,
-    token_expires_at TEXT,
-    is_active INTEGER DEFAULT 1,
-    last_fetched_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
+	// Get applied migrations
+	const applied = new Set((sqliteDb.query("SELECT hash FROM __drizzle_migrations").all() as { hash: string }[]).map(row => row.hash));
 
-  CREATE INDEX IF NOT EXISTS idx_accounts_platform_user ON accounts(platform, platform_user_id);
+	// Read and apply pending migrations
+	const migrationsDir = "./migrations";
+	const migrationFiles = readdirSync(migrationsDir)
+		.filter(f => f.endsWith(".sql"))
+		.sort();
 
-  CREATE TABLE IF NOT EXISTS account_members (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id),
-    account_id TEXT NOT NULL REFERENCES accounts(id),
-    role TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    UNIQUE(user_id, account_id)
-  );
+	for (const file of migrationFiles) {
+		const hash = file.replace(".sql", "");
+		if (applied.has(hash)) continue;
 
-  CREATE INDEX IF NOT EXISTS idx_account_members_user ON account_members(user_id);
-  CREATE INDEX IF NOT EXISTS idx_account_members_account ON account_members(account_id);
+		console.log(`   Applying migration: ${file}`);
+		const sql = readFileSync(`${migrationsDir}/${file}`, "utf-8");
 
-  CREATE TABLE IF NOT EXISTS api_keys (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id),
-    key_hash TEXT NOT NULL UNIQUE,
-    name TEXT,
-    last_used_at TEXT,
-    created_at TEXT NOT NULL
-  );
+		// Split by statement breakpoint and execute each statement
+		const statements = sql
+			.split("--> statement-breakpoint")
+			.map(s => s.trim())
+			.filter(Boolean);
+		for (const statement of statements) {
+			sqliteDb.exec(statement);
+		}
 
-  CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
-
-  CREATE TABLE IF NOT EXISTS rate_limits (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL REFERENCES accounts(id),
-    remaining INTEGER,
-    limit_total INTEGER,
-    reset_at TEXT,
-    consecutive_failures INTEGER DEFAULT 0,
-    last_failure_at TEXT,
-    circuit_open_until TEXT,
-    updated_at TEXT NOT NULL,
-    UNIQUE(account_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS corpus_snapshots (
-    store_id TEXT NOT NULL,
-    version TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    tags TEXT,
-    metadata TEXT,
-    PRIMARY KEY (store_id, version)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_corpus_snapshots_store ON corpus_snapshots(store_id);
-  CREATE INDEX IF NOT EXISTS idx_corpus_snapshots_created ON corpus_snapshots(store_id, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS corpus_parents (
-    child_store_id TEXT NOT NULL,
-    child_version TEXT NOT NULL,
-    parent_store_id TEXT NOT NULL,
-    parent_version TEXT NOT NULL,
-    role TEXT,
-    PRIMARY KEY (child_store_id, child_version, parent_store_id, parent_version),
-    FOREIGN KEY (child_store_id, child_version) REFERENCES corpus_snapshots(store_id, version),
-    FOREIGN KEY (parent_store_id, parent_version) REFERENCES corpus_snapshots(store_id, version)
-  );
-`;
+		// Record migration
+		sqliteDb.exec(`INSERT INTO __drizzle_migrations (hash, created_at) VALUES ('${hash}', ${Date.now()})`);
+	}
+}
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -122,7 +79,10 @@ async function startDevServer() {
 	mkdirSync("local/corpus", { recursive: true });
 
 	const sqliteDb = new Database("local/dev.db");
-	sqliteDb.exec(SCHEMA);
+
+	console.log("📋 Running Drizzle migrations...");
+	runMigrations(sqliteDb);
+	console.log("✅ Migrations complete\n");
 
 	const db = drizzle(sqliteDb, { schema });
 	const dbWithBatch = Object.assign(db, {
@@ -221,6 +181,7 @@ async function startDevServer() {
 	app.route("/api/auth", authRoutes);
 	app.route("/api/v1/timeline", timelineRoutes);
 	app.route("/api/v1/connections", connectionRoutes);
+	app.route("/api/v1/profiles", profileRoutes);
 
 	app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 
