@@ -1,5 +1,6 @@
 ---
 import Layout from "./Layout.astro";
+import AuthStatus from "../components/solid/AuthStatus.tsx";
 
 interface Props {
 	title?: string;
@@ -31,6 +32,7 @@ const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
               {p.name}
             </a>
           ))}
+          <AuthStatus client:load />
         </nav>
       </header>
       <main class="flex-col">
