@@ -10,7 +10,7 @@ import { cors } from "hono/cors";
 import { authMiddleware } from "../src/auth";
 import type { Database as DrizzleDB } from "../src/db";
 import { type ProviderFactory, defaultProviderFactory } from "../src/platforms";
-import { authRoutes, connectionRoutes, timelineRoutes, profileRoutes } from "../src/routes";
+import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "../src/routes";
 import * as schema from "../src/schema/database";
 import { hash_api_key } from "../src/utils";
 

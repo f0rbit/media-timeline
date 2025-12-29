@@ -9,7 +9,6 @@ import MessageSquareText from "lucide-solid/icons/message-square-text";
 import Reply from "lucide-solid/icons/reply";
 import User from "lucide-solid/icons/user";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
-import { isServer } from "solid-js/web";
 
 const GithubUsernamesContext = createContext<string[]>([]);
 
@@ -26,15 +25,21 @@ type TimelineData = {
 	profileName?: string;
 };
 
-export default function TimelineList(props: { profileSlug?: string | null }) {
-	if (!isServer) {
-		initMockAuth();
-	}
+// Read profile slug from URL
+const getSlugFromUrl = () => {
+	if (typeof window === "undefined") return null;
+	return new URLSearchParams(window.location.search).get("profile");
+};
+
+export default function TimelineList() {
+	const profileSlug = () => getSlugFromUrl();
 
 	const [data] = createResource(
-		() => props.profileSlug,
+		// Source: only fetch when we have a slug
+		() => profileSlug(),
 		async (slug): Promise<TimelineData | null> => {
 			if (!slug) return null;
+			initMockAuth();
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
 			if (!result.ok) throw new Error(result.error.message);
 			return {
@@ -46,7 +51,7 @@ export default function TimelineList(props: { profileSlug?: string | null }) {
 	);
 
 	return (
-		<Show when={props.profileSlug} fallback={<NoProfileSelected />}>
+		<Show when={profileSlug()} fallback={<NoProfileSelected />}>
 			<div class="timeline">
 				<Show when={data.loading}>
 					<p class="tertiary">Loading timeline...</p>

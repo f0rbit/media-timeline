@@ -1,11 +1,11 @@
+import { type DashboardStats as Stats, calculateActivityByWeek, calculateContentTypes, calculateDashboardStats, calculatePlatformDistribution, getItemsForDate, getRecentItems } from "@/utils/analytics";
+import { type ApiResult, type TimelineResponse, getMockUserId, initMockAuth, timeline } from "@/utils/api-client";
 import { Show, createSignal } from "solid-js";
 import { createResource } from "solid-js";
-import { type ApiResult, type TimelineResponse, getMockUserId, initMockAuth, timeline } from "@/utils/api-client";
-import { type DashboardStats as Stats, calculateDashboardStats, calculatePlatformDistribution, calculateActivityByWeek, calculateContentTypes, getRecentItems, getItemsForDate } from "@/utils/analytics";
-import DashboardStats from "./DashboardStats";
-import PlatformDistribution from "./PlatformDistribution";
 import ActivityChart, { ActivityPreview } from "./ActivityChart";
 import ContentTypeList from "./ContentTypeList";
+import DashboardStats from "./DashboardStats";
+import PlatformDistribution from "./PlatformDistribution";
 import RecentActivity from "./RecentActivity";
 
 export default function Dashboard() {

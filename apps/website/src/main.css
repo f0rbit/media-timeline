@@ -2282,6 +2282,63 @@ footer {
 	color: var(--text-link);
 }
 
+.profile-selector-create-link {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	color: var(--text-link);
+	font-size: 0.875rem;
+	padding: 4px 10px;
+	border: 1px solid var(--input-border);
+	border-radius: 4px;
+	text-decoration: none;
+	transition: border-color 0.15s;
+}
+
+.profile-selector-create-link:hover {
+	border-color: var(--text-link);
+	filter: none;
+}
+
+/* Auth loading placeholder - matches profile-selector-button size */
+.auth-loading {
+	min-width: 100px;
+	height: 32px;
+	background: var(--input-background);
+	border-radius: 4px;
+	animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+	0%,
+	100% {
+		opacity: 0.4;
+	}
+	50% {
+		opacity: 0.7;
+	}
+}
+
+/* Login button - matches profile-selector-button styling */
+.auth-btn {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	background: none;
+	border: 1px solid var(--input-border);
+	border-radius: 4px;
+	padding: 4px 14px;
+	cursor: pointer;
+	color: var(--text-secondary);
+	font-size: 0.875rem;
+	transition: border-color 0.15s, color 0.15s;
+}
+
+.auth-btn:hover {
+	border-color: var(--text-link);
+	color: var(--text-primary);
+}
+
 /* ==========================================================================
    ACTIVE BADGE
    ========================================================================== */

@@ -1,8 +1,8 @@
-import PlatformIcon from "../solid/PlatformIcon";
+import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
 import GitCommit from "lucide-solid/icons/git-commit-horizontal";
 import MessageSquareText from "lucide-solid/icons/message-square-text";
-import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
-import { For, Switch, Match } from "solid-js";
+import { For, Match, Switch } from "solid-js";
+import PlatformIcon from "../solid/PlatformIcon";
 
 type MockCommit = {
 	sha: string;
