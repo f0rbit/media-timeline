@@ -1,5 +1,5 @@
 import { type DashboardStats as Stats, calculateActivityByWeek, calculateContentTypes, calculateDashboardStats, calculatePlatformDistribution, getItemsForDate, getRecentItems } from "@/utils/analytics";
-import { type ApiResult, type TimelineResponse, getMockUserId, initMockAuth, timeline } from "@/utils/api-client";
+import { type ApiResult, type ProfileTimelineResponse, initMockAuth, profiles } from "@/utils/api-client";
 import { Show, createSignal } from "solid-js";
 import { createResource } from "solid-js";
 import ActivityChart, { ActivityPreview } from "./ActivityChart";
@@ -8,14 +8,18 @@ import DashboardStats from "./DashboardStats";
 import PlatformDistribution from "./PlatformDistribution";
 import RecentActivity from "./RecentActivity";
 
-export default function Dashboard() {
+type DashboardProps = {
+	profileSlug?: string;
+};
+
+export default function Dashboard(props: DashboardProps) {
 	initMockAuth();
-	const userId = getMockUserId();
 
 	const [data] = createResource(
-		() => userId,
-		async id => {
-			const result: ApiResult<TimelineResponse> = await timeline.get(id);
+		() => props.profileSlug,
+		async slug => {
+			if (!slug) return null;
+			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
 			if (result.ok === false) throw new Error(result.error.message);
 			return result.data;
 		}
@@ -23,23 +27,31 @@ export default function Dashboard() {
 
 	return (
 		<div class="dashboard">
-			<Show when={data.loading}>
-				<p class="tertiary">Loading dashboard...</p>
+			<Show when={!props.profileSlug}>
+				<div class="empty-state">
+					<p>Select a profile to view the dashboard.</p>
+				</div>
 			</Show>
 
-			<Show when={data.error}>
-				<p class="error-icon">Failed to load dashboard: {data.error.message}</p>
-			</Show>
+			<Show when={props.profileSlug}>
+				<Show when={data.loading}>
+					<p class="tertiary">Loading dashboard...</p>
+				</Show>
 
-			<Show when={data()} keyed>
-				{response => <DashboardContent response={response} />}
+				<Show when={data.error}>
+					<p class="error-icon">Failed to load dashboard: {data.error.message}</p>
+				</Show>
+
+				<Show when={data()} keyed>
+					{response => <DashboardContent response={response} />}
+				</Show>
 			</Show>
 		</div>
 	);
 }
 
 type DashboardContentProps = {
-	response: TimelineResponse;
+	response: ProfileTimelineResponse;
 };
 
 function DashboardContent(props: DashboardContentProps) {

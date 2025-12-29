@@ -1,6 +1,8 @@
 ---
 import Dashboard from "../../components/solid/Dashboard/Dashboard";
 import AppLayout from "../../layouts/AppLayout.astro";
+
+const profileSlug = Astro.url.searchParams.get("profile");
 ---
 
 <AppLayout 
@@ -12,5 +14,5 @@ import AppLayout from "../../layouts/AppLayout.astro";
     <h1 class="page-title">Dashboard</h1>
     <p class="description">Your activity overview and insights.</p>
   </section>
-  <Dashboard client:load />
+  <Dashboard client:load profileSlug={profileSlug} />
 </AppLayout>
