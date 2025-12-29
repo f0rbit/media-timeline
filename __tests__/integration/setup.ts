@@ -116,6 +116,7 @@ const SCHEMA = `
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE,
     name TEXT,
+    devpad_user_id TEXT UNIQUE,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );

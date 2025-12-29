@@ -2,13 +2,20 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 
 export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
-export const users = sqliteTable("users", {
-	id: text("id").primaryKey(),
-	email: text("email").unique(),
-	name: text("name"),
-	created_at: text("created_at").notNull(),
-	updated_at: text("updated_at").notNull(),
-});
+export const users = sqliteTable(
+	"users",
+	{
+		id: text("id").primaryKey(),
+		email: text("email").unique(),
+		name: text("name"),
+		devpad_user_id: text("devpad_user_id"),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		devpad_user_idx: uniqueIndex("idx_users_devpad_user_id").on(table.devpad_user_id),
+	})
+);
 
 export const accounts = sqliteTable(
 	"accounts",

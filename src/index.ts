@@ -20,7 +20,7 @@ app.use(
 	"*",
 	cors({
 		origin: origin => {
-			const allowed = ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools"];
+			const allowed = ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools", "https://devpad.tools"];
 			if (!origin || allowed.includes(origin)) return origin;
 			if (origin.endsWith(".workers.dev")) return origin;
 			return null;
