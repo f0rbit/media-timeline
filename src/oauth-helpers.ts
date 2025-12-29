@@ -261,6 +261,10 @@ const createNewAccount = async (
 	return ok(accountId);
 };
 
+type OAuthCallbackError = OAuthError & { errorCode: string };
+
+const toCallbackError = (error: OAuthError, errorCode: string): OAuthCallbackError => ({ ...error, errorCode });
+
 export const createOAuthCallback = <TState extends Record<string, unknown> = Record<string, never>>(config: OAuthCallbackConfig<TState>) => {
 	return async (c: HonoContext) => {
 		const ctx = c.get("appContext");
@@ -271,24 +275,24 @@ export const createOAuthCallback = <TState extends Record<string, unknown> = Rec
 
 		const { code, stateData, redirectUri, clientId, clientSecret } = validation.value;
 
-		const tokens = await exchangeCodeForTokens(code, redirectUri, clientId, clientSecret, config, stateData);
-		if (!tokens.ok) {
-			console.error(`[${config.platform}-oauth] Token exchange failed:`, tokens.error.message);
-			return redirectWithError(c, config.platform, "token_failed");
-		}
+		const result = await pipe(exchangeCodeForTokens(code, redirectUri, clientId, clientSecret, config, stateData))
+			.map_err(e => toCallbackError(e, "token_failed"))
+			.tap_err(e => console.error(`[${config.platform}-oauth] Token exchange failed:`, e.message))
+			.flat_map(tokens =>
+				pipe(fetchOAuthUserProfile(tokens.access_token, config))
+					.map_err(e => toCallbackError(e, "user_failed"))
+					.map(user => ({ tokens, user }))
+					.result()
+			)
+			.tap_err(e => console.error(`[${config.platform}-oauth] Failed to get user info:`, e.message))
+			.flat_map(({ tokens, user }) =>
+				pipe(upsertOAuthAccount(ctx.db, ctx.encryptionKey, stateData.user_id, config.platform, user, tokens))
+					.map_err(e => toCallbackError(e, "save_failed"))
+					.result()
+			)
+			.tap_err(e => console.error(`[${config.platform}-oauth] Failed to save account:`, e.message))
+			.result();
 
-		const user = await fetchOAuthUserProfile(tokens.value.access_token, config);
-		if (!user.ok) {
-			console.error(`[${config.platform}-oauth] Failed to get user info:`, user.error.message);
-			return redirectWithError(c, config.platform, "user_failed");
-		}
-
-		const accountResult = await upsertOAuthAccount(ctx.db, ctx.encryptionKey, stateData.user_id, config.platform, user.value, tokens.value);
-		if (!accountResult.ok) {
-			console.error(`[${config.platform}-oauth] Failed to save account:`, accountResult.error.message);
-			return redirectWithError(c, config.platform, "save_failed");
-		}
-
-		return redirectWithSuccess(c, config.platform);
+		return result.ok ? redirectWithSuccess(c, config.platform) : redirectWithError(c, config.platform, result.error.errorCode);
 	};
 };
