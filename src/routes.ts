@@ -12,7 +12,7 @@ import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, valida
 import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
 import { DateGroupSchema, accountMembers, accountSettings, accounts } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
-import { type FetchError, type Result, encrypt, err, fetch_result, match, ok, pipe } from "./utils";
+import { type FetchError, type Result, encrypt, err, fetch_result, match, ok, pipe, uuid } from "./utils";
 
 type MembershipResult = Result<{ role: string }, { status: 404 | 403; error: string; message: string }>;
 
@@ -827,3 +827,5 @@ connectionRoutes.get("/:account_id/subreddits", async c => {
 		username: latest.value.data.username,
 	});
 });
+
+export { profileRoutes } from "./routes-profiles";

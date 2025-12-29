@@ -7,7 +7,7 @@ import { type Bindings, createContextFromBindings } from "./bindings";
 import { handleCron } from "./cron";
 import type { AppContext } from "./infrastructure";
 import { defaultProviderFactory } from "./platforms";
-import { authRoutes, connectionRoutes, timelineRoutes } from "./routes";
+import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "./routes";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -52,6 +52,7 @@ app.use("/api/*", async (c, next) => {
 app.route("/api/auth", authRoutes);
 app.route("/api/v1/timeline", timelineRoutes);
 app.route("/api/v1/connections", connectionRoutes);
+app.route("/api/v1/profiles", profileRoutes);
 
 app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 
