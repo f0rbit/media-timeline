@@ -1,7 +1,10 @@
 import type { Backend } from "@f0rbit/corpus";
+import { createLogger } from "./logger";
 import type { TimelineItem, TweetMedia, TwitterMetaStore, TwitterTweet } from "./schema";
 import { createTwitterMetaStore, createTwitterTweetsStore } from "./storage";
 import { truncate } from "./utils";
+
+const log = createLogger("timeline:twitter");
 
 export type TwitterTimelineData = {
 	tweets: TwitterTweet[];
@@ -27,7 +30,7 @@ export async function loadTwitterDataForAccount(backend: Backend, accountId: str
 		})(),
 	]);
 
-	console.log(`[loadTwitterDataForAccount] Loaded: ${tweetsData.tweets.length} tweets, ${tweetsData.media.length} media`);
+	log.info("Loaded data", { account_id: accountId, tweets: tweetsData.tweets.length, media: tweetsData.media.length });
 	return { tweets: tweetsData.tweets, media: tweetsData.media, meta };
 }
 
@@ -64,6 +67,6 @@ export function normalizeTwitter(data: TwitterTimelineData): TimelineItem[] {
 		});
 	}
 
-	console.log(`[normalizeTwitter] Generated ${items.length} timeline items`);
+	log.info("Normalization complete", { total_items: items.length });
 	return items;
 }

@@ -1,5 +1,8 @@
+import { createLogger } from "./logger";
 import type { CommitGroup, CommitPayload, DateGroup, PullRequestPayload, TimelineItem } from "./schema";
 import { extract_date_key } from "./utils";
+
+const log = createLogger("timeline");
 
 type TimelineEntry = TimelineItem | CommitGroup;
 type CommitItem = TimelineItem & { payload: CommitPayload };
@@ -143,6 +146,8 @@ export const combineTimelines = (items: TimelineItem[]): TimelineItem[] => [...i
  * 4. PRs get enriched with their commit details
  */
 export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
+	log.debug("Grouping commits", { total_items: items.length });
+
 	// Step 1: Deduplicate commits that belong to PRs
 	const { orphanCommits, enrichedPRs, otherItems } = deduplicateCommitsFromPRs(items);
 
@@ -164,10 +169,16 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 	});
 
 	// Step 3: Combine all entries
-	return [...commitGroups, ...enrichedPRs, ...otherItems];
+	const result = [...commitGroups, ...enrichedPRs, ...otherItems];
+
+	log.debug("Commit grouping complete", { commit_groups: commitGroups.length, total_entries: result.length });
+
+	return result;
 };
 
 export const groupByDate = (entries: TimelineEntry[]): DateGroup[] => {
+	log.debug("Grouping by date", { total_entries: entries.length });
+
 	const sorted = [...entries].sort(compareTimestampDesc);
 
 	const grouped = sorted.reduce<Map<string, TimelineEntry[]>>((acc, entry) => {
@@ -177,9 +188,13 @@ export const groupByDate = (entries: TimelineEntry[]): DateGroup[] => {
 		return acc;
 	}, new Map());
 
-	return Array.from(grouped.entries())
+	const result = Array.from(grouped.entries())
 		.sort(([a], [b]) => b.localeCompare(a))
 		.map(([date, items]) => ({ date, items }));
+
+	log.debug("Date grouping complete", { date_groups: result.length });
+
+	return result;
 };
 
 export type { TimelineEntry };

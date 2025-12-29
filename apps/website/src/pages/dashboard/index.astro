@@ -1,0 +1,12 @@
+---
+import Dashboard from "../../components/solid/Dashboard/Dashboard";
+import AppLayout from "../../layouts/AppLayout.astro";
+---
+
+<AppLayout title="Dashboard | Media Timeline">
+  <section>
+    <h3>Dashboard</h3>
+    <p class="description">Your activity overview and insights.</p>
+  </section>
+  <Dashboard client:load />
+</AppLayout>

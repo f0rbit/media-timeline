@@ -1,11 +1,14 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { FetchError, StoreError } from "./errors";
+import { createLogger } from "./logger";
 import { mergeByKey } from "./merge";
 import type { TwitterFetchResult } from "./platforms/twitter";
 import type { ProviderError } from "./platforms/types";
 import type { TwitterMetaStore, TwitterTweetsStore } from "./schema";
 import { createTwitterMetaStore, createTwitterTweetsStore } from "./storage";
 import { type Result, ok, pipe, to_nullable } from "./utils";
+
+const log = createLogger("cron:twitter");
 
 export type TwitterProcessResult = {
 	account_id: string;
@@ -63,20 +66,21 @@ const storeTweets = async (backend: Backend, accountId: string, tweets: TwitterT
 
 	if (!putResult.ok) return defaultStats;
 
-	console.log(`[processTwitterAccount] Tweets: ${newCount} new, ${merged.total_tweets} total`);
+	log.debug("Stored tweets", { new: newCount, total: merged.total_tweets });
 	return { version: putResult.value.version, newCount, totalTweets: merged.total_tweets };
 };
 
 export const processTwitterAccount = (backend: Backend, accountId: string, token: string, provider: TwitterProvider): Promise<Result<TwitterProcessResult, TwitterProcessError>> =>
 	pipe(provider.fetch(token))
-		.tap(() => console.log(`[processTwitterAccount] Starting for account: ${accountId}`))
+		.tap(() => log.info("Processing account", { account_id: accountId }))
 		.map_err((e): TwitterProcessError => ({ kind: "fetch_failed", message: `Twitter fetch failed: ${e.kind}` }))
 		.flat_map(async ({ meta, tweets }) => {
 			const [metaVersion, tweetsResult] = await Promise.all([storeMeta(backend, accountId, meta), storeTweets(backend, accountId, tweets)]);
 
-			console.log("[processTwitterAccount] Completed:", {
-				tweets: tweetsResult.totalTweets,
-				newTweets: tweetsResult.newCount,
+			log.info("Processing complete", {
+				account_id: accountId,
+				total_tweets: tweetsResult.totalTweets,
+				new_tweets: tweetsResult.newCount,
 			});
 
 			return ok<TwitterProcessResult>({

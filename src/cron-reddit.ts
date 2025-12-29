@@ -1,11 +1,14 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { FetchError, StoreError } from "./errors";
+import { createLogger } from "./logger";
 import { mergeByKey } from "./merge";
 import type { RedditFetchResult } from "./platforms/reddit";
 import type { ProviderError } from "./platforms/types";
 import type { RedditCommentsStore, RedditMetaStore, RedditPostsStore } from "./schema";
 import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "./storage";
 import { type Result, ok, pipe, to_nullable } from "./utils";
+
+const log = createLogger("cron:reddit");
 
 export type RedditProcessResult = {
 	account_id: string;
@@ -76,7 +79,7 @@ const storePosts = async (backend: Backend, accountId: string, posts: RedditPost
 
 	return pipe(putResult)
 		.map(({ version }) => ({ version, newCount, total: merged.total_posts }))
-		.tap(({ newCount, total }) => console.log(`[processRedditAccount] Posts: ${newCount} new, ${total} total`))
+		.tap(({ newCount: n, total }) => log.debug("Stored posts", { new: n, total }))
 		.unwrap_or(defaultStats);
 };
 
@@ -91,22 +94,23 @@ const storeComments = async (backend: Backend, accountId: string, comments: Redd
 
 	return pipe(putResult)
 		.map(({ version }) => ({ version, newCount, total: merged.total_comments }))
-		.tap(({ newCount, total }) => console.log(`[processRedditAccount] Comments: ${newCount} new, ${total} total`))
+		.tap(({ newCount: n, total }) => log.debug("Stored comments", { new: n, total }))
 		.unwrap_or(defaultStats);
 };
 
 export const processRedditAccount = (backend: Backend, accountId: string, token: string, provider: RedditProvider): Promise<Result<RedditProcessResult, RedditProcessError>> =>
 	pipe(provider.fetch(token))
-		.tap(() => console.log(`[processRedditAccount] Starting for account: ${accountId}`))
+		.tap(() => log.info("Processing account", { account_id: accountId }))
 		.map_err((e): RedditProcessError => ({ kind: "fetch_failed", message: `Reddit fetch failed: ${e.kind}` }))
 		.flat_map(async ({ meta, posts, comments }) => {
 			const [metaVersion, postsResult, commentsResult] = await Promise.all([storeMeta(backend, accountId, meta), storePosts(backend, accountId, posts), storeComments(backend, accountId, comments)]);
 
-			console.log("[processRedditAccount] Completed:", {
+			log.info("Processing complete", {
+				account_id: accountId,
 				posts: postsResult.total,
 				comments: commentsResult.total,
-				newPosts: postsResult.newCount,
-				newComments: commentsResult.newCount,
+				new_posts: postsResult.newCount,
+				new_comments: commentsResult.newCount,
 			});
 
 			return ok({

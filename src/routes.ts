@@ -512,11 +512,14 @@ connectionRoutes.delete("/:account_id", async c => {
 				}
 			};
 
-			// Regenerate timelines - in production use waitUntil, in dev await directly
+			// Regenerate timelines - in production use waitUntil, in dev run async
 			try {
 				c.executionCtx.waitUntil(regenerateTimelines());
 			} catch {
-				// Dev server doesn't have ExecutionContext - run synchronously
+				// Dev server doesn't have ExecutionContext - run async
+				regenerateTimelines().catch(err => {
+					console.error("[connection-delete] Timeline regeneration failed:", err);
+				});
 			}
 
 			return c.json({
@@ -601,7 +604,10 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 		try {
 			c.executionCtx.waitUntil(backgroundTask());
 		} catch {
-			// Dev server doesn't have ExecutionContext
+			// Dev server doesn't have ExecutionContext - run async
+			backgroundTask().catch(err => {
+				console.error("[refresh] Background task failed:", err);
+			});
 		}
 	}
 
@@ -622,7 +628,10 @@ connectionRoutes.post("/refresh-all", async c => {
 		try {
 			c.executionCtx.waitUntil(task());
 		} catch {
-			// Dev server doesn't have ExecutionContext
+			// Dev server doesn't have ExecutionContext - run async
+			task().catch(err => {
+				console.error("[refresh-all] Background task failed:", err);
+			});
 		}
 	}
 

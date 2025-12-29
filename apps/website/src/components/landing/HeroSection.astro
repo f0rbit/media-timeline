@@ -1,0 +1,169 @@
+---
+import PlatformOrbit from "./PlatformOrbit";
+---
+
+<section class="hero-section">
+	<div class="orbit-wrapper">
+		<PlatformOrbit client:load />
+	</div>
+	<div class="hero-content">
+		<h1>Your digital footprint, one timeline.</h1>
+		<p class="description">
+			Aggregate activity from GitHub, Reddit, Twitter, and more into a single, beautiful timeline.
+		</p>
+		<div class="hero-cta">
+			<a href="/connections" class="btn-primary">Get Started</a>
+			<a href="#preview" class="btn-secondary">View Demo</a>
+		</div>
+	</div>
+</section>
+
+<style>
+	.hero-section {
+		position: relative;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		padding: 8rem 0;
+		text-align: center;
+		min-height: 400px;
+	}
+
+	.orbit-wrapper {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+	}
+
+	.hero-content {
+		position: relative;
+		z-index: 1;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 16px;
+		max-width: 500px;
+	}
+
+	h1 {
+		font-size: 2.5rem;
+		font-weight: 700;
+		letter-spacing: -0.02em;
+		line-height: 1.1;
+	}
+
+	.hero-cta {
+		display: flex;
+		gap: 12px;
+		margin-top: 8px;
+	}
+
+	.btn-primary,
+	.btn-secondary {
+		line-height: 1rem;
+		padding: 5px 16px;
+		border-radius: 4px;
+		font-size: 0.875rem;
+		text-decoration: none;
+		transition: background 0.15s, color 0.15s, border-color 0.15s;
+		padding-bottom: 4px;
+	}
+
+	.btn-primary {
+		color: var(--text-link);
+		border: 1px solid var(--text-link);
+	}
+
+	.btn-primary:hover {
+		background: var(--text-link);
+		color: var(--bg-primary);
+		filter: none;
+	}
+
+	.btn-secondary {
+		color: var(--text-secondary);
+		border: 1px solid var(--input-border);
+	}
+
+	.btn-secondary:hover {
+		color: var(--text-primary);
+		border-color: var(--text-tertiary);
+		filter: none;
+	}
+
+	@media (max-width: 768px) {
+		.hero-section {
+			padding: 4rem 0;
+		}
+
+		h1 {
+			font-size: 1.75rem;
+		}
+
+		.hero-cta {
+			flex-direction: column;
+			width: 100%;
+		}
+
+		.btn-primary,
+		.btn-secondary {
+			text-align: center;
+		}
+	}
+</style>
+
+<style is:global>
+	.orbit-wrapper,
+	.orbit-wrapper > astro-island,
+	.orbit-wrapper > astro-island > .orbit-container {
+		position: absolute !important;
+		inset: 0;
+		display: block;
+	}
+
+	.orbit-icon {
+		position: absolute;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 12px;
+		border: 1px solid var(--input-border);
+		border-radius: 8px;
+		color: var(--platform-color, var(--text-secondary));
+		background: var(--bg-primary);
+		transition: border-color 0.15s;
+		animation: float 4s ease-in-out infinite;
+		pointer-events: auto;
+	}
+
+	.orbit-icon:hover {
+		border-color: var(--text-tertiary);
+	}
+
+	@keyframes float {
+		0%, 100% { transform: translateY(0px); }
+		50% { transform: translateY(-8px); }
+	}
+
+	/* Position icons around the hero */
+	.orbit-icon:nth-child(1) { left: 15%; top: 20%; animation-delay: 0s; }
+	.orbit-icon:nth-child(2) { right: 15%; top: 25%; animation-delay: 0.5s; }
+	.orbit-icon:nth-child(3) { left: 18%; bottom: 25%; animation-delay: 1s; }
+	.orbit-icon:nth-child(4) { right: 18%; bottom: 20%; animation-delay: 1.5s; }
+	.orbit-icon:nth-child(5) { left: 28%; top: 8%; animation-delay: 2s; }
+	.orbit-icon:nth-child(6) { right: 28%; bottom: 8%; animation-delay: 2.5s; }
+
+	@media (max-width: 768px) {
+		.orbit-icon {
+			padding: 8px;
+		}
+
+		.orbit-icon:nth-child(1) { left: 5%; top: 10%; }
+		.orbit-icon:nth-child(2) { right: 5%; top: 15%; }
+		.orbit-icon:nth-child(3) { left: 8%; bottom: 15%; }
+		.orbit-icon:nth-child(4) { right: 8%; bottom: 10%; }
+		.orbit-icon:nth-child(5) { left: 25%; top: 2%; }
+		.orbit-icon:nth-child(6) { right: 25%; bottom: 2%; }
+	}
+</style>

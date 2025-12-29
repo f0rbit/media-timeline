@@ -1,7 +1,10 @@
 import type { Backend } from "@f0rbit/corpus";
+import { createLogger } from "./logger";
 import type { RedditComment, RedditPost, TimelineItem } from "./schema";
 import { createRedditCommentsStore, createRedditPostsStore } from "./storage";
 import { truncate } from "./utils";
+
+const log = createLogger("timeline:reddit");
 
 export type RedditTimelineData = {
 	posts: RedditPost[];
@@ -26,7 +29,7 @@ export async function loadRedditDataForAccount(backend: Backend, accountId: stri
 		})(),
 	]);
 
-	console.log(`[loadRedditDataForAccount] Loaded: ${posts.length} posts, ${comments.length} comments`);
+	log.info("Loaded data", { account_id: accountId, posts: posts.length, comments: comments.length });
 	return { posts, comments };
 }
 
@@ -91,6 +94,6 @@ export function normalizeReddit(data: RedditTimelineData, _username: string): Ti
 		});
 	}
 
-	console.log(`[normalizeReddit] Generated ${items.length} timeline items`);
+	log.info("Normalization complete", { total_items: items.length });
 	return items;
 }
