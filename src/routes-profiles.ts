@@ -6,8 +6,8 @@ import { type AuthContext, getAuth } from "./auth";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
-import { accountMembers, accounts, profileFilters, profileVisibility, profiles } from "./schema/database";
-import { AddFilterSchema, CreateProfileSchema, UpdateProfileSchema, UpdateVisibilitySchema } from "./schema/profiles";
+import { accounts, profileFilters, profiles } from "./schema/database";
+import { AddFilterSchema, CreateProfileSchema, UpdateProfileSchema } from "./schema/profiles";
 import { generateProfileTimeline } from "./timeline-profile";
 import { type Result, err, ok, uuid } from "./utils";
 
@@ -41,17 +41,17 @@ const requireProfileOwnership = async (db: Database, userId: string, profileId: 
 };
 
 const requireAccountOwnership = async (db: Database, userId: string, accountId: string): Promise<AccountOwnershipResult> => {
-	const membership = await db
-		.select({ role: accountMembers.role })
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, accountId)))
-		.get();
+	const account = await db.select({ id: accounts.id, user_id: profiles.user_id }).from(accounts).innerJoin(profiles, eq(accounts.profile_id, profiles.id)).where(eq(accounts.id, accountId)).get();
 
-	if (!membership) {
+	if (!account) {
 		return err({ status: 404, error: "Not found", message: "Account not found or no access" });
 	}
 
-	return ok({ role: membership.role });
+	if (account.user_id !== userId) {
+		return err({ status: 403, error: "Forbidden", message: "You do not own this account" });
+	}
+
+	return ok({ role: "owner" });
 };
 
 const checkSlugUniqueness = async (db: Database, userId: string, slug: string, excludeProfileId?: string): Promise<boolean> => {
@@ -74,12 +74,6 @@ type ProfileWithRelations = {
 	theme: string | null;
 	created_at: string;
 	updated_at: string;
-	visibility: Array<{
-		account_id: string;
-		platform: string;
-		platform_username: string | null;
-		is_visible: boolean;
-	}>;
 	filters: Array<{
 		id: string;
 		account_id: string;
@@ -92,26 +86,6 @@ type ProfileWithRelations = {
 const loadProfileWithRelations = async (db: Database, profileId: string, userId: string): Promise<ProfileWithRelations | null> => {
 	const profile = await db.select().from(profiles).where(eq(profiles.id, profileId)).get();
 	if (!profile || profile.user_id !== userId) return null;
-
-	const userAccounts = await db
-		.select({
-			id: accounts.id,
-			platform: accounts.platform,
-			platform_username: accounts.platform_username,
-		})
-		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(eq(accountMembers.user_id, userId));
-
-	const visibilityRows = await db.select().from(profileVisibility).where(eq(profileVisibility.profile_id, profileId));
-	const visibilityMap = new Map(visibilityRows.map(v => [v.account_id, v.is_visible ?? true]));
-
-	const visibility = userAccounts.map(account => ({
-		account_id: account.id,
-		platform: account.platform,
-		platform_username: account.platform_username,
-		is_visible: visibilityMap.get(account.id) ?? true,
-	}));
 
 	const filterRows = await db.select().from(profileFilters).where(eq(profileFilters.profile_id, profileId));
 
@@ -131,7 +105,6 @@ const loadProfileWithRelations = async (db: Database, profileId: string, userId:
 		theme: profile.theme,
 		created_at: profile.created_at,
 		updated_at: profile.updated_at,
-		visibility,
 		filters,
 	};
 };
@@ -278,93 +251,6 @@ profileRoutes.delete("/:id", async c => {
 	await ctx.db.delete(profiles).where(eq(profiles.id, profileId));
 
 	return c.json({ deleted: true, id: profileId });
-});
-
-profileRoutes.get("/:id/visibility", async c => {
-	const auth = getAuth(c);
-	const ctx = getContext(c);
-	const profileId = c.req.param("id");
-
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
-	if (!ownershipResult.ok) {
-		const { status, error, message } = ownershipResult.error;
-		return c.json({ error, message }, status);
-	}
-
-	const userAccounts = await ctx.db
-		.select({
-			account_id: accounts.id,
-			platform: accounts.platform,
-			platform_username: accounts.platform_username,
-			visibility_is_visible: profileVisibility.is_visible,
-		})
-		.from(accounts)
-		.innerJoin(accountMembers, eq(accounts.id, accountMembers.account_id))
-		.leftJoin(profileVisibility, and(eq(accounts.id, profileVisibility.account_id), eq(profileVisibility.profile_id, profileId)))
-		.where(eq(accountMembers.user_id, auth.user_id));
-
-	const visibility = userAccounts.map(row => ({
-		account_id: row.account_id,
-		platform: row.platform,
-		platform_username: row.platform_username,
-		is_visible: row.visibility_is_visible ?? true,
-	}));
-
-	return c.json({ visibility });
-});
-
-profileRoutes.put("/:id/visibility", async c => {
-	const auth = getAuth(c);
-	const ctx = getContext(c);
-	const profileId = c.req.param("id");
-
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
-	if (!ownershipResult.ok) {
-		const { status, error, message } = ownershipResult.error;
-		return c.json({ error, message }, status);
-	}
-
-	const parseResult = UpdateVisibilitySchema.safeParse(await c.req.json());
-	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
-	}
-
-	const { visibility: visibilityUpdates } = parseResult.data;
-
-	const userAccountIds = await ctx.db.select({ account_id: accountMembers.account_id }).from(accountMembers).where(eq(accountMembers.user_id, auth.user_id));
-
-	const ownedAccountIds = new Set(userAccountIds.map(a => a.account_id));
-
-	const invalidAccountIds = visibilityUpdates.filter(v => !ownedAccountIds.has(v.account_id)).map(v => v.account_id);
-
-	if (invalidAccountIds.length > 0) {
-		return c.json({ error: "Forbidden", message: `Cannot set visibility for accounts you don't own: ${invalidAccountIds.join(", ")}` }, 403);
-	}
-
-	const now = new Date().toISOString();
-
-	for (const update of visibilityUpdates) {
-		const existing = await ctx.db
-			.select({ id: profileVisibility.id })
-			.from(profileVisibility)
-			.where(and(eq(profileVisibility.profile_id, profileId), eq(profileVisibility.account_id, update.account_id)))
-			.get();
-
-		if (existing) {
-			await ctx.db.update(profileVisibility).set({ is_visible: update.is_visible, updated_at: now }).where(eq(profileVisibility.id, existing.id));
-		} else {
-			await ctx.db.insert(profileVisibility).values({
-				id: crypto.randomUUID(),
-				profile_id: profileId,
-				account_id: update.account_id,
-				is_visible: update.is_visible,
-				created_at: now,
-				updated_at: now,
-			});
-		}
-	}
-
-	return c.json({ updated: true, count: visibilityUpdates.length });
 });
 
 profileRoutes.get("/:id/filters", async c => {

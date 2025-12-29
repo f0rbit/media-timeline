@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { Database } from "./db";
 import type { ConnectionError } from "./errors";
 import type { Platform } from "./schema";
-import { accountMembers, accountSettings, accounts, rateLimits } from "./schema/database";
+import { accountSettings, accounts, profiles, rateLimits } from "./schema/database";
 import {
 	createGitHubCommitsStore,
 	createGitHubMetaStore,
@@ -171,9 +171,9 @@ const deleteCorpusStores = async (backend: Backend, account: AccountInfo): Promi
 };
 
 const getAffectedUsers = async (db: Database, accountId: string): Promise<string[]> => {
-	const members = await db.select({ user_id: accountMembers.user_id }).from(accountMembers).where(eq(accountMembers.account_id, accountId));
+	const account = await db.select({ user_id: profiles.user_id }).from(accounts).innerJoin(profiles, eq(accounts.profile_id, profiles.id)).where(eq(accounts.id, accountId)).get();
 
-	return members.map(m => m.user_id);
+	return account ? [account.user_id] : [];
 };
 
 type TableDeletion = {
@@ -198,7 +198,6 @@ const deleteDbRecords = async (db: Database, accountId: string): Promise<Result<
 	const deletions: TableDeletion[] = [
 		{ name: "rate_limits", execute: () => db.delete(rateLimits).where(eq(rateLimits.account_id, accountId)) },
 		{ name: "account_settings", execute: () => db.delete(accountSettings).where(eq(accountSettings.account_id, accountId)) },
-		{ name: "account_members", execute: () => db.delete(accountMembers).where(eq(accountMembers.account_id, accountId)) },
 		{ name: "account", execute: () => db.delete(accounts).where(eq(accounts.id, accountId)) },
 	];
 
@@ -211,36 +210,37 @@ const deleteDbRecords = async (db: Database, accountId: string): Promise<Result<
 	return ok(undefined);
 };
 
-type Member = { role: string; user_id: string };
+type AccountWithOwner = { id: string; platform: Platform; user_id: string };
 
-const validateOwnership = (members: Member[], requestingUserId: string, accountId: string): Result<Member, DeleteConnectionError> => {
-	const membership = members.find(m => m.user_id === requestingUserId);
-	if (!membership) {
-		log("auth", "Account not found for user", { accountId, requestingUserId });
+const validateOwnership = (account: AccountWithOwner | null, requestingUserId: string, accountId: string): Result<AccountWithOwner, DeleteConnectionError> => {
+	if (!account) {
+		log("auth", "Account not found", { accountId, requestingUserId });
 		return err({ kind: "not_found" });
 	}
-	if (membership.role !== "owner") {
-		log("auth", "User is not owner", { accountId, requestingUserId, role: membership.role });
-		return err({ kind: "forbidden", message: "Only owners can delete accounts" });
+	if (account.user_id !== requestingUserId) {
+		log("auth", "User does not own account", { accountId, requestingUserId, owner: account.user_id });
+		return err({ kind: "forbidden", message: "You do not own this account" });
 	}
 	log("auth", "Authorization check passed", { accountId, requestingUserId });
-	return ok(membership);
-};
-
-type Account = { id: string; platform: Platform };
-
-const fetchAccount = async (db: Database, accountId: string): Promise<Result<Account, DeleteConnectionError>> => {
-	const account = await db.select().from(accounts).where(eq(accounts.id, accountId)).get();
-	if (!account) {
-		log("fetch", "Account not found in database", { accountId });
-		return err({ kind: "not_found" });
-	}
-	log("fetch", "Account found", { accountId, platform: account.platform });
 	return ok(account);
 };
 
+const fetchAccountWithOwner = async (db: Database, accountId: string): Promise<AccountWithOwner | null> => {
+	const result = await db
+		.select({
+			id: accounts.id,
+			platform: accounts.platform,
+			user_id: profiles.user_id,
+		})
+		.from(accounts)
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(eq(accounts.id, accountId))
+		.get();
+	return result ?? null;
+};
+
 type DeletionContext = {
-	account: Account;
+	account: AccountWithOwner;
 	affectedUsers: string[];
 	deletedStores: string[];
 };
@@ -248,18 +248,17 @@ type DeletionContext = {
 export async function deleteConnection(ctx: DeleteContext, accountId: string, requestingUserId: string): Promise<Result<DeleteConnectionResult, DeleteConnectionError>> {
 	log("start", "Beginning connection deletion", { accountId, requestingUserId });
 
-	const members = await ctx.db.select({ role: accountMembers.role, user_id: accountMembers.user_id }).from(accountMembers).where(eq(accountMembers.account_id, accountId)).all();
+	const account = await fetchAccountWithOwner(ctx.db, accountId);
 
-	return pipe(validateOwnership(members, requestingUserId, accountId))
-		.flat_map(() => fetchAccount(ctx.db, accountId))
-		.flat_map(async (account): Promise<Result<DeletionContext, DeleteConnectionError>> => {
+	return pipe(validateOwnership(account, requestingUserId, accountId))
+		.flat_map(async (validatedAccount): Promise<Result<DeletionContext, DeleteConnectionError>> => {
 			const affectedUsers = await getAffectedUsers(ctx.db, accountId);
 			log("users", "Found affected users", { count: affectedUsers.length, users: affectedUsers });
 
-			const deletedStores = await deleteCorpusStores(ctx.backend, { id: account.id, platform: account.platform });
+			const deletedStores = await deleteCorpusStores(ctx.backend, { id: validatedAccount.id, platform: validatedAccount.platform });
 			log("corpus", "Corpus stores deleted", { count: deletedStores.length, stores: deletedStores });
 
-			return ok({ account, affectedUsers, deletedStores });
+			return ok({ account: validatedAccount, affectedUsers, deletedStores });
 		})
 		.flat_map(async ({ account, affectedUsers, deletedStores }): Promise<Result<DeleteConnectionResult, DeleteConnectionError>> => {
 			const dbResult = await deleteDbRecords(ctx.db, accountId);

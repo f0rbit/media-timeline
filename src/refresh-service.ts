@@ -4,7 +4,7 @@ import type { RefreshError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { createLogger } from "./logger";
 import { RedditProvider } from "./platforms/reddit";
-import { accountMembers, accounts } from "./schema";
+import { accounts, profiles } from "./schema";
 import { type Result, decrypt, err, match, ok, pipe } from "./utils";
 
 const log = createLogger("refresh");
@@ -52,11 +52,11 @@ const lookupAccount = async (ctx: AppContext, accountId: string, userId: string)
 			access_token_encrypted: accounts.access_token_encrypted,
 			refresh_token_encrypted: accounts.refresh_token_encrypted,
 			is_active: accounts.is_active,
-			user_id: accountMembers.user_id,
+			user_id: profiles.user_id,
 		})
 		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, userId), eq(accounts.id, accountId)))
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(and(eq(profiles.user_id, userId), eq(accounts.id, accountId)))
 		.get();
 
 	if (!row) {
@@ -86,11 +86,11 @@ const fetchUserAccounts = async (ctx: AppContext, userId: string) =>
 			platform_user_id: accounts.platform_user_id,
 			access_token_encrypted: accounts.access_token_encrypted,
 			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			user_id: accountMembers.user_id,
+			user_id: profiles.user_id,
 		})
 		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, userId), eq(accounts.is_active, true)));
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(and(eq(profiles.user_id, userId), eq(accounts.is_active, true)));
 
 const processGitHubRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
 	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
@@ -196,11 +196,11 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 			platform_user_id: accounts.platform_user_id,
 			access_token_encrypted: accounts.access_token_encrypted,
 			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			user_id: accountMembers.user_id,
+			user_id: profiles.user_id,
 		})
 		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, userId), eq(accounts.is_active, true)));
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(and(eq(profiles.user_id, userId), eq(accounts.is_active, true)));
 
 	if (userAccounts.length === 0) {
 		return {

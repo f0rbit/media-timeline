@@ -3,7 +3,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "./db";
 import { createLogger } from "./logger";
 import type { CommitGroup, DateGroup, Platform, TimelineItem } from "./schema";
-import { accountMembers, accounts, profileFilters, profileVisibility, profiles } from "./schema/database";
+import { accounts, profileFilters, profiles } from "./schema/database";
 import type { Profile, ProfileFilter } from "./schema/database";
 import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
@@ -38,11 +38,11 @@ type ProfileTimelineResult = {
 
 type ProfileSettings = {
 	profile: Profile;
-	visibleAccountIds: string[];
+	accountIds: string[];
 	filters: ProfileFilter[];
 };
 
-type ProfileTimelineError = { kind: "profile_not_found" } | { kind: "no_visible_accounts" } | { kind: "timeline_generation_failed"; message: string };
+type ProfileTimelineError = { kind: "profile_not_found" } | { kind: "no_accounts" } | { kind: "timeline_generation_failed"; message: string };
 
 type AccountInfo = {
 	id: string;
@@ -59,42 +59,24 @@ export async function loadProfileSettings(db: Database, profileId: string): Prom
 
 	if (!profile) return null;
 
-	const userAccountIds = await db.select({ account_id: accountMembers.account_id }).from(accountMembers).where(eq(accountMembers.user_id, profile.user_id));
+	const profileAccounts = await db
+		.select({ id: accounts.id })
+		.from(accounts)
+		.where(and(eq(accounts.profile_id, profileId), eq(accounts.is_active, true)));
 
-	const allAccountIds = userAccountIds.map(a => a.account_id);
-
-	if (allAccountIds.length === 0) {
-		return {
-			profile,
-			visibleAccountIds: [],
-			filters: [],
-		};
-	}
-
-	const visibilityRows = await db
-		.select({
-			account_id: profileVisibility.account_id,
-			is_visible: profileVisibility.is_visible,
-		})
-		.from(profileVisibility)
-		.where(eq(profileVisibility.profile_id, profileId));
-
-	const visibilityMap = new Map(visibilityRows.map(v => [v.account_id, v.is_visible ?? true]));
-
-	const visibleAccountIds = allAccountIds.filter(accountId => visibilityMap.get(accountId) ?? true);
+	const accountIds = profileAccounts.map(a => a.id);
 
 	const filterRows = await db.select().from(profileFilters).where(eq(profileFilters.profile_id, profileId));
 
 	log.debug("Loaded profile settings", {
 		profile_id: profileId,
-		total_accounts: allAccountIds.length,
-		visible_accounts: visibleAccountIds.length,
+		account_count: accountIds.length,
 		filters: filterRows.length,
 	});
 
 	return {
 		profile,
-		visibleAccountIds,
+		accountIds,
 		filters: filterRows,
 	};
 }
@@ -370,10 +352,10 @@ export async function generateProfileTimeline(options: ProfileTimelineOptions): 
 		return err({ kind: "profile_not_found" });
 	}
 
-	const { profile, visibleAccountIds, filters } = settings;
+	const { profile, accountIds, filters } = settings;
 
-	if (visibleAccountIds.length === 0) {
-		log.info("No visible accounts for profile", { profile_id: profileId });
+	if (accountIds.length === 0) {
+		log.info("No accounts for profile", { profile_id: profileId });
 		return ok({
 			meta: {
 				profile_id: profile.id,
@@ -385,7 +367,7 @@ export async function generateProfileTimeline(options: ProfileTimelineOptions): 
 		});
 	}
 
-	const accountList = await loadAccountsForIds(db, visibleAccountIds);
+	const accountList = await loadAccountsForIds(db, accountIds);
 	const accountsByPlatform = groupAccountsByPlatform(accountList);
 
 	log.debug("Loading items for accounts", {

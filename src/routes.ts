@@ -8,30 +8,35 @@ import type { Bindings } from "./bindings";
 import { deleteConnection } from "./connection-delete";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
-import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, validateOAuthQueryKey } from "./oauth-helpers";
+import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, validateOAuthQueryKeyAndProfile } from "./oauth-helpers";
 import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
-import { DateGroupSchema, accountMembers, accountSettings, accounts } from "./schema";
+import { DateGroupSchema, accountSettings, accounts, profiles } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
 import { type FetchError, type Result, encrypt, err, fetch_result, match, ok, pipe, uuid } from "./utils";
 
-type MembershipResult = Result<{ role: string }, { status: 404 | 403; error: string; message: string }>;
+type AccountOwnershipResult = Result<{ account_id: string; profile_id: string }, { status: 404 | 403; error: string; message: string }>;
 
-const requireMembership = async (db: Database, userId: string, accountId: string, requiredRole?: "owner"): Promise<MembershipResult> => {
-	const membership = await db
-		.select({ role: accountMembers.role })
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, userId), eq(accountMembers.account_id, accountId)))
+const requireAccountOwnership = async (db: Database, userId: string, accountId: string): Promise<AccountOwnershipResult> => {
+	const result = await db
+		.select({
+			account_id: accounts.id,
+			profile_id: accounts.profile_id,
+			user_id: profiles.user_id,
+		})
+		.from(accounts)
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(eq(accounts.id, accountId))
 		.get();
 
-	if (!membership) {
-		return err({ status: 404, error: "Not found", message: "Account not found or no access" });
+	if (!result) {
+		return err({ status: 404, error: "Not found", message: "Account not found" });
 	}
 
-	if (requiredRole && membership.role !== requiredRole) {
-		return err({ status: 403, error: "Forbidden", message: `Only ${requiredRole}s can perform this action` });
+	if (result.user_id !== userId) {
+		return err({ status: 403, error: "Forbidden", message: "You do not own this account" });
 	}
 
-	return ok({ role: membership.role });
+	return ok({ account_id: result.account_id, profile_id: result.profile_id });
 };
 
 type Variables = {
@@ -74,16 +79,13 @@ type TimelineGetError = { kind: "store_error"; status: 500 } | { kind: "not_foun
 type RawRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; message: string };
 
 const CreateConnectionBodySchema = z.object({
+	profile_id: z.string().min(1),
 	platform: z.enum(["github", "bluesky", "youtube", "devpad", "reddit", "twitter"]),
 	access_token: z.string().min(1),
 	refresh_token: z.string().optional(),
 	platform_user_id: z.string().optional(),
 	platform_username: z.string().optional(),
 	token_expires_at: z.string().optional(),
-});
-
-const AddMemberBodySchema = z.object({
-	user_id: z.string().min(1),
 });
 
 const UpdateConnectionStatusSchema = z.object({
@@ -111,8 +113,8 @@ timelineRoutes.get("/:user_id", async c => {
 	const githubAccounts = await ctx.db
 		.select({ platform_username: accounts.platform_username })
 		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, userId), eq(accounts.platform, "github"), eq(accounts.is_active, true)));
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(and(eq(profiles.user_id, userId), eq(accounts.platform, "github"), eq(accounts.is_active, true)));
 
 	const githubUsernames = githubAccounts.map(a => a.platform_username).filter((u): u is string => u !== null);
 
@@ -288,9 +290,9 @@ export const refreshRedditToken = async (refreshToken: string, clientId: string,
 authRoutes.get("/reddit", async c => {
 	const ctx = getContext(c);
 
-	const keyValidation = await validateOAuthQueryKey(c, ctx, "reddit");
-	if (!keyValidation.ok) return keyValidation.error;
-	const userId = keyValidation.value;
+	const validation = await validateOAuthQueryKeyAndProfile(c, ctx, "reddit");
+	if (!validation.ok) return validation.error;
+	const { user_id, profile_id } = validation.value;
 
 	const clientId = c.env.REDDIT_CLIENT_ID;
 	if (!clientId) {
@@ -298,7 +300,7 @@ authRoutes.get("/reddit", async c => {
 	}
 
 	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/reddit/callback`;
-	const state = encodeOAuthState(userId);
+	const state = encodeOAuthState(user_id, profile_id);
 
 	const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
 	authUrl.searchParams.set("client_id", clientId);
@@ -357,9 +359,9 @@ export const refreshTwitterToken = async (refreshToken: string, clientId: string
 authRoutes.get("/twitter", async c => {
 	const ctx = getContext(c);
 
-	const keyValidation = await validateOAuthQueryKey(c, ctx, "twitter");
-	if (!keyValidation.ok) return keyValidation.error;
-	const userId = keyValidation.value;
+	const validation = await validateOAuthQueryKeyAndProfile(c, ctx, "twitter");
+	if (!validation.ok) return validation.error;
+	const { user_id, profile_id } = validation.value;
 
 	const clientId = c.env.TWITTER_CLIENT_ID;
 	if (!clientId) {
@@ -370,7 +372,7 @@ authRoutes.get("/twitter", async c => {
 
 	const codeVerifier = generateCodeVerifier();
 	const codeChallenge = await generateCodeChallenge(codeVerifier);
-	const state = encodeOAuthState(userId, { code_verifier: codeVerifier });
+	const state = encodeOAuthState(user_id, profile_id, { code_verifier: codeVerifier });
 
 	const authUrl = new URL("https://twitter.com/i/oauth2/authorize");
 	authUrl.searchParams.set("client_id", clientId);
@@ -420,9 +422,9 @@ const githubOAuthConfig: OAuthCallbackConfig = {
 authRoutes.get("/github", async c => {
 	const ctx = getContext(c);
 
-	const keyValidation = await validateOAuthQueryKey(c, ctx, "github");
-	if (!keyValidation.ok) return keyValidation.error;
-	const userId = keyValidation.value;
+	const validation = await validateOAuthQueryKeyAndProfile(c, ctx, "github");
+	if (!validation.ok) return validation.error;
+	const { user_id, profile_id } = validation.value;
 
 	const clientId = c.env.GITHUB_CLIENT_ID;
 	if (!clientId) {
@@ -430,7 +432,7 @@ authRoutes.get("/github", async c => {
 	}
 
 	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/github/callback`;
-	const state = encodeOAuthState(userId);
+	const state = encodeOAuthState(user_id, profile_id);
 
 	const authUrl = new URL("https://github.com/login/oauth/authorize");
 	authUrl.searchParams.set("client_id", clientId);
@@ -467,20 +469,34 @@ connectionRoutes.get("/", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
 	const includeSettings = c.req.query("include_settings") === "true";
+	const profileId = c.req.query("profile_id");
+
+	if (!profileId) {
+		return c.json({ error: "Bad request", message: "profile_id query parameter required" }, 400);
+	}
+
+	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profileId)).get();
+
+	if (!profile) {
+		return c.json({ error: "Not found", message: "Profile not found" }, 404);
+	}
+
+	if (profile.user_id !== auth.user_id) {
+		return c.json({ error: "Forbidden", message: "You do not own this profile" }, 403);
+	}
 
 	const results = await ctx.db
 		.select({
 			account_id: accounts.id,
+			profile_id: accounts.profile_id,
 			platform: accounts.platform,
 			platform_username: accounts.platform_username,
 			is_active: accounts.is_active,
 			last_fetched_at: accounts.last_fetched_at,
-			role: accountMembers.role,
-			created_at: accountMembers.created_at,
+			created_at: accounts.created_at,
 		})
-		.from(accountMembers)
-		.innerJoin(accounts, eq(accountMembers.account_id, accounts.id))
-		.where(eq(accountMembers.user_id, auth.user_id));
+		.from(accounts)
+		.where(eq(accounts.profile_id, profileId));
 
 	if (!includeSettings) {
 		return c.json({ accounts: results });
@@ -514,9 +530,18 @@ connectionRoutes.post("/", async c => {
 	}
 	const body = parseResult.data;
 
+	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, body.profile_id)).get();
+
+	if (!profile) {
+		return c.json({ error: "Not found", message: "Profile not found" }, 404);
+	}
+
+	if (profile.user_id !== auth.user_id) {
+		return c.json({ error: "Forbidden", message: "You do not own this profile" }, 403);
+	}
+
 	const now = new Date().toISOString();
 	const accountId = crypto.randomUUID();
-	const memberId = crypto.randomUUID();
 
 	const result = await pipe(encrypt(body.access_token, ctx.encryptionKey))
 		.flat_map(encrypted_access_token =>
@@ -527,33 +552,25 @@ connectionRoutes.post("/", async c => {
 				: Promise.resolve(ok({ encrypted_access_token, encrypted_refresh_token: null as string | null }))
 		)
 		.tap(async ({ encrypted_access_token, encrypted_refresh_token }) => {
-			await ctx.db.batch([
-				ctx.db.insert(accounts).values({
-					id: accountId,
-					platform: body.platform,
-					platform_user_id: body.platform_user_id ?? null,
-					platform_username: body.platform_username ?? null,
-					access_token_encrypted: encrypted_access_token,
-					refresh_token_encrypted: encrypted_refresh_token,
-					token_expires_at: body.token_expires_at ?? null,
-					is_active: true,
-					created_at: now,
-					updated_at: now,
-				}),
-				ctx.db.insert(accountMembers).values({
-					id: memberId,
-					user_id: auth.user_id,
-					account_id: accountId,
-					role: "owner",
-					created_at: now,
-				}),
-			]);
+			await ctx.db.insert(accounts).values({
+				id: accountId,
+				profile_id: body.profile_id,
+				platform: body.platform,
+				platform_user_id: body.platform_user_id ?? null,
+				platform_username: body.platform_username ?? null,
+				access_token_encrypted: encrypted_access_token,
+				refresh_token_encrypted: encrypted_refresh_token,
+				token_expires_at: body.token_expires_at ?? null,
+				is_active: true,
+				created_at: now,
+				updated_at: now,
+			});
 		})
 		.result();
 
 	return match(
 		result,
-		() => c.json({ account_id: accountId, role: "owner" }, 201) as Response,
+		() => c.json({ account_id: accountId, profile_id: body.profile_id }, 201) as Response,
 		() => c.json({ error: "Internal error", message: "Failed to encrypt token" }, 500) as Response
 	);
 });
@@ -562,6 +579,12 @@ connectionRoutes.delete("/:account_id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
+
+	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	if (!ownershipResult.ok) {
+		const { status, error, message } = ownershipResult.error;
+		return c.json({ error, message }, status);
+	}
 
 	return match(
 		await deleteConnection({ db: ctx.db, backend: ctx.backend }, accountId, auth.user_id),
@@ -577,11 +600,11 @@ connectionRoutes.delete("/:account_id", async c => {
 							platform_user_id: accounts.platform_user_id,
 							access_token_encrypted: accounts.access_token_encrypted,
 							refresh_token_encrypted: accounts.refresh_token_encrypted,
-							user_id: accountMembers.user_id,
+							user_id: profiles.user_id,
 						})
 						.from(accounts)
-						.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-						.where(and(eq(accountMembers.user_id, userId), eq(accounts.is_active, true)));
+						.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+						.where(and(eq(profiles.user_id, userId), eq(accounts.is_active, true)));
 
 					const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
 					await combineUserTimeline(ctx.backend, userId, snapshots);
@@ -616,46 +639,6 @@ connectionRoutes.delete("/:account_id", async c => {
 			return c.json({ error: label, message }, status as 404 | 403 | 500) as Response;
 		}
 	);
-});
-
-connectionRoutes.post("/:account_id/members", async c => {
-	const auth = getAuth(c);
-	const ctx = getContext(c);
-	const accountId = c.req.param("account_id");
-	const parseResult = AddMemberBodySchema.safeParse(await c.req.json());
-	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
-	}
-	const body = parseResult.data;
-
-	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId, "owner");
-	if (!membershipResult.ok) {
-		const { status, error, message } = membershipResult.error;
-		return c.json({ error, message }, status);
-	}
-
-	const existingMember = await ctx.db
-		.select({ id: accountMembers.id })
-		.from(accountMembers)
-		.where(and(eq(accountMembers.user_id, body.user_id), eq(accountMembers.account_id, accountId)))
-		.get();
-
-	if (existingMember) {
-		return c.json({ error: "Conflict", message: "User is already a member" }, 409);
-	}
-
-	const memberId = crypto.randomUUID();
-	const now = new Date().toISOString();
-
-	await ctx.db.insert(accountMembers).values({
-		id: memberId,
-		user_id: body.user_id,
-		account_id: accountId,
-		role: "member",
-		created_at: now,
-	});
-
-	return c.json({ member_id: memberId, role: "member" }, 201);
 });
 
 connectionRoutes.post("/:account_id/refresh", async c => {
@@ -726,9 +709,9 @@ connectionRoutes.patch("/:account_id", async c => {
 
 	const body = parseResult.data;
 
-	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId);
-	if (!membershipResult.ok) {
-		const { status, error, message } = membershipResult.error;
+	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	if (!ownershipResult.ok) {
+		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
@@ -745,9 +728,9 @@ connectionRoutes.get("/:account_id/settings", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId);
-	if (!membershipResult.ok) {
-		const { status, error, message } = membershipResult.error;
+	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	if (!ownershipResult.ok) {
+		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
@@ -776,9 +759,9 @@ connectionRoutes.put("/:account_id/settings", async c => {
 
 	const body = parseResult.data;
 
-	const membershipResult = await requireMembership(ctx.db, auth.user_id, accountId, "owner");
-	if (!membershipResult.ok) {
-		const { status, error, message } = membershipResult.error;
+	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	if (!ownershipResult.ok) {
+		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
@@ -825,15 +808,13 @@ connectionRoutes.get("/:account_id/repos", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	const account = await ctx.db
-		.select({
-			id: accounts.id,
-			platform: accounts.platform,
-		})
-		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
-		.get();
+	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	if (!ownershipResult.ok) {
+		const { status, error, message } = ownershipResult.error;
+		return c.json({ error, message }, status);
+	}
+
+	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accountId)).get();
 
 	if (!account) {
 		return c.json({ error: "Not found", message: "Account not found" }, 404);
@@ -870,15 +851,13 @@ connectionRoutes.get("/:account_id/subreddits", async c => {
 	const ctx = getContext(c);
 	const accountId = c.req.param("account_id");
 
-	const account = await ctx.db
-		.select({
-			id: accounts.id,
-			platform: accounts.platform,
-		})
-		.from(accounts)
-		.innerJoin(accountMembers, eq(accountMembers.account_id, accounts.id))
-		.where(and(eq(accountMembers.user_id, auth.user_id), eq(accounts.id, accountId)))
-		.get();
+	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	if (!ownershipResult.ok) {
+		const { status, error, message } = ownershipResult.error;
+		return c.json({ error, message }, status);
+	}
+
+	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accountId)).get();
 
 	if (!account) {
 		return c.json({ error: "Not found", message: "Account not found" }, 404);
