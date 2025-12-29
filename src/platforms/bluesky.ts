@@ -1,6 +1,6 @@
 import { type BlueskyFeedItem, type BlueskyRaw, BlueskyRawSchema, type PostPayload, type TimelineItem } from "../schema";
 import { try_catch_async } from "../utils";
-import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderState, simulateErrors } from "./memory-base";
+import { BaseMemoryProvider } from "./memory-base";
 import { type FetchResult, type Provider, type ProviderError, toProviderError } from "./types";
 
 // === PROVIDER (real API) ===
@@ -116,34 +116,22 @@ export type BlueskyMemoryConfig = {
 	cursor?: string;
 };
 
-export class BlueskyMemoryProvider implements Provider<BlueskyRaw>, MemoryProviderControls {
+export class BlueskyMemoryProvider extends BaseMemoryProvider<BlueskyRaw> implements Provider<BlueskyRaw> {
 	readonly platform = "bluesky";
 	private config: BlueskyMemoryConfig;
-	private state: MemoryProviderState;
 
 	constructor(config: BlueskyMemoryConfig = {}) {
+		super();
 		this.config = config;
-		this.state = createMemoryProviderState();
 	}
 
-	async fetch(_token: string): Promise<FetchResult<BlueskyRaw>> {
-		return simulateErrors(this.state, () => ({
+	protected getData(): BlueskyRaw {
+		return {
 			feed: this.config.feed ?? [],
 			cursor: this.config.cursor,
 			fetched_at: new Date().toISOString(),
-		}));
+		};
 	}
-
-	getCallCount = () => this.state.call_count;
-	reset = () => {
-		this.state.call_count = 0;
-	};
-	setSimulateRateLimit = (value: boolean) => {
-		this.state.simulate_rate_limit = value;
-	};
-	setSimulateAuthExpired = (value: boolean) => {
-		this.state.simulate_auth_expired = value;
-	};
 
 	setFeed(feed: BlueskyFeedItem[]): void {
 		this.config.feed = feed;

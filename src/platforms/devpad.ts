@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { type DevpadRaw, type DevpadTask, DevpadTaskSchema, type TaskPayload, type TimelineItem } from "../schema";
 import { try_catch_async } from "../utils";
-import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderControlMethods, createMemoryProviderState, simulateErrors } from "./memory-base";
+import { BaseMemoryProvider } from "./memory-base";
 import { type FetchResult, type Provider, type ProviderError, toProviderError } from "./types";
 
 // === PROVIDER (real API) ===
@@ -91,29 +91,21 @@ export type DevpadMemoryConfig = {
 	tasks?: DevpadTask[];
 };
 
-export class DevpadMemoryProvider implements Provider<DevpadRaw>, MemoryProviderControls {
+export class DevpadMemoryProvider extends BaseMemoryProvider<DevpadRaw> implements Provider<DevpadRaw> {
 	readonly platform = "devpad";
 	private config: DevpadMemoryConfig;
-	private state: MemoryProviderState;
-	private controls: MemoryProviderControls;
 
 	constructor(config: DevpadMemoryConfig = {}) {
+		super();
 		this.config = config;
-		this.state = createMemoryProviderState();
-		this.controls = createMemoryProviderControlMethods(this.state);
 	}
 
-	async fetch(_token: string): Promise<FetchResult<DevpadRaw>> {
-		return simulateErrors(this.state, () => ({
+	protected getData(): DevpadRaw {
+		return {
 			tasks: this.config.tasks ?? [],
 			fetched_at: new Date().toISOString(),
-		}));
+		};
 	}
-
-	getCallCount = () => this.controls.getCallCount();
-	reset = () => this.controls.reset();
-	setSimulateRateLimit = (value: boolean) => this.controls.setSimulateRateLimit(value);
-	setSimulateAuthExpired = (value: boolean) => this.controls.setSimulateAuthExpired(value);
 
 	setTasks(tasks: DevpadTask[]): void {
 		this.config.tasks = tasks;

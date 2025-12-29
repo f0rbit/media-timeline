@@ -49,3 +49,34 @@ export const createMemoryProviderControlMethods = (state: MemoryProviderState): 
 		state.simulate_auth_expired = value;
 	},
 });
+
+export abstract class BaseMemoryProvider<TRaw> implements MemoryProviderControls {
+	abstract readonly platform: string;
+	protected state: MemoryProviderState;
+	protected simulationConfig: SimulationConfig;
+
+	constructor(simulationConfig: SimulationConfig = {}) {
+		this.state = createMemoryProviderState();
+		this.simulationConfig = simulationConfig;
+	}
+
+	protected abstract getData(): TRaw;
+
+	async fetch(_token: string): Promise<FetchResult<TRaw>> {
+		return simulateErrors(this.state, () => this.getData(), this.simulationConfig);
+	}
+
+	getCallCount = () => this.state.call_count;
+
+	reset = () => {
+		this.state.call_count = 0;
+	};
+
+	setSimulateRateLimit = (value: boolean) => {
+		this.state.simulate_rate_limit = value;
+	};
+
+	setSimulateAuthExpired = (value: boolean) => {
+		this.state.simulate_auth_expired = value;
+	};
+}

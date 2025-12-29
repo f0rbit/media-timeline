@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { type TimelineItem, type VideoPayload, type YouTubeRaw, YouTubeRawSchema, type YouTubeVideo } from "../schema";
-import { type Result, err, ok } from "../utils";
-import { type MemoryProviderControls, type MemoryProviderState, createMemoryProviderState, simulateErrors } from "./memory-base";
+import { try_catch_async } from "../utils";
+import { BaseMemoryProvider } from "./memory-base";
 import type { FetchResult, Provider, ProviderError } from "./types";
 import { toProviderError } from "./types";
 
@@ -124,14 +124,6 @@ const handleYouTubeResponse = async (response: Response): Promise<YouTubeRaw> =>
 	return validated.data;
 };
 
-const try_catch_async_local = async <T, E>(fn: () => Promise<T>, map_error: (e: unknown) => E): Promise<Result<T, E>> => {
-	try {
-		return ok(await fn());
-	} catch (e) {
-		return err(map_error(e));
-	}
-};
-
 export class YouTubeProvider implements Provider<YouTubeRaw> {
 	readonly platform = "youtube";
 	private config: YouTubeProviderConfig;
@@ -149,7 +141,7 @@ export class YouTubeProvider implements Provider<YouTubeRaw> {
 		});
 		const url = `https://www.googleapis.com/youtube/v3/playlistItems?${params}`;
 
-		return try_catch_async_local(
+		return try_catch_async(
 			async () =>
 				handleYouTubeResponse(
 					await fetch(url, {
@@ -198,41 +190,22 @@ export type YouTubeMemoryConfig = {
 	next_page_token?: string;
 };
 
-export class YouTubeMemoryProvider implements Provider<YouTubeRaw>, MemoryProviderControls {
+export class YouTubeMemoryProvider extends BaseMemoryProvider<YouTubeRaw> implements Provider<YouTubeRaw> {
 	readonly platform = "youtube";
 	private config: YouTubeMemoryConfig;
-	private state: MemoryProviderState;
 
 	constructor(config: YouTubeMemoryConfig = {}) {
+		super({ rate_limit_retry_after: 3600 });
 		this.config = config;
-		this.state = createMemoryProviderState();
 	}
 
-	async fetch(_token: string): Promise<FetchResult<YouTubeRaw>> {
-		return simulateErrors(
-			this.state,
-			() => ({
-				items: this.config.items ?? [],
-				nextPageToken: this.config.next_page_token,
-				fetched_at: new Date().toISOString(),
-			}),
-			{ rate_limit_retry_after: 3600 }
-		);
+	protected getData(): YouTubeRaw {
+		return {
+			items: this.config.items ?? [],
+			nextPageToken: this.config.next_page_token,
+			fetched_at: new Date().toISOString(),
+		};
 	}
-
-	getCallCount = () => this.state.call_count;
-
-	reset = () => {
-		this.state.call_count = 0;
-	};
-
-	setSimulateRateLimit = (value: boolean) => {
-		this.state.simulate_rate_limit = value;
-	};
-
-	setSimulateAuthExpired = (value: boolean) => {
-		this.state.simulate_auth_expired = value;
-	};
 
 	setItems(items: YouTubeVideo[]): void {
 		this.config.items = items;
