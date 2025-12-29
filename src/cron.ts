@@ -264,33 +264,34 @@ const platformProcessors = new Map<Platform, PlatformProcessor>([
 	],
 ]);
 
+type ProcessingError = { kind: string; message?: string };
+
 const processPlatformAccountWithProcessor = async (ctx: AppContext, account: AccountWithUser, processor: PlatformProcessor): Promise<RawSnapshot | null> => {
-	const decryptResult = await decrypt(account.access_token_encrypted, ctx.encryptionKey);
-	if (!decryptResult.ok) {
-		console.error(`[cron] ${processor.platform} decryption failed for account:`, account.id);
-		return null;
-	}
-
-	const provider = processor.createProvider(ctx);
-	const result = await processor.processAccount(ctx.backend, account.id, decryptResult.value, provider);
-
-	if (!result.ok) {
-		console.error(`[cron] ${processor.platform} processing failed:`, account.id, result.error);
-		await recordFailure(ctx.db, account.id);
-		return null;
-	}
-
-	await recordSuccess(ctx.db, account.id);
-
-	return {
-		account_id: account.id,
-		platform: processor.platform,
-		version: result.value.meta_version,
-		data: {
-			type: `${processor.platform}_multi_store`,
-			...result.value.stats,
-		},
-	};
+	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
+		.map_err((e): ProcessingError => ({ kind: e.kind, message: e.message }))
+		.tap_err(() => console.error(`[cron] ${processor.platform} decryption failed for account:`, account.id))
+		.flat_map(async (token): Promise<Result<PlatformProcessResult, ProcessingError>> => {
+			const provider = processor.createProvider(ctx);
+			return processor.processAccount(ctx.backend, account.id, token, provider);
+		})
+		.tap_err(e => {
+			console.error(`[cron] ${processor.platform} processing failed:`, account.id, e);
+			recordFailure(ctx.db, account.id);
+		})
+		.tap(() => recordSuccess(ctx.db, account.id))
+		.map(
+			(result): RawSnapshot => ({
+				account_id: account.id,
+				platform: processor.platform,
+				version: result.meta_version,
+				data: {
+					type: `${processor.platform}_multi_store`,
+					...result.stats,
+				},
+			})
+		)
+		.unwrap_or(null as unknown as RawSnapshot)
+		.then(r => r as RawSnapshot | null);
 };
 
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
