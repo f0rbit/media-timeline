@@ -2,7 +2,8 @@ import type { Backend } from "@f0rbit/corpus";
 import { eq } from "drizzle-orm";
 import type { Database } from "./db";
 import type { ConnectionError } from "./errors";
-import type { Platform } from "./schema";
+import { createLogger } from "./logger";
+import type { AccountId, Platform, UserId } from "./schema";
 import { accountSettings, accounts, profiles, rateLimits } from "./schema/database";
 import {
 	createGitHubCommitsStore,
@@ -23,6 +24,8 @@ import {
 	redditPostsStoreId,
 } from "./storage";
 import { type Result, err, ok, pipe, try_catch_async } from "./utils";
+
+const log = createLogger("connection:delete");
 
 export type DeleteConnectionResult = {
 	account_id: string;
@@ -72,15 +75,12 @@ type AccountInfo = {
 	platform: Platform;
 };
 
-const log = (step: string, message: string, data?: Record<string, unknown>) => {
-	console.log(`[delete-connection:${step}]`, message, data ? JSON.stringify(data) : "");
-};
-
 const resolveStoreFromId = (backend: Backend, storeId: string) => {
 	const parsed = parseStoreId(storeId);
 	if (!parsed.ok) return null;
 
-	switch (parsed.value.type) {
+	const storeType = parsed.value.type;
+	switch (storeType) {
 		case "github_meta":
 			return createGitHubMetaStore(backend, parsed.value.accountId);
 		case "github_commits":
@@ -99,16 +99,20 @@ const resolveStoreFromId = (backend: Backend, storeId: string) => {
 			return createTwitterTweetsStore(backend, parsed.value.accountId);
 		case "raw":
 			return createRawStore(backend, parsed.value.platform, parsed.value.accountId);
+		default: {
+			const _exhaustiveCheck: never = storeType;
+			return null;
+		}
 	}
 };
 
 const deleteStoreSnapshots = async (backend: Backend, storeId: string): Promise<boolean> => {
-	log("store", `Deleting snapshots for store: ${storeId}`);
+	log.info("Deleting snapshots for store", { step: "store", storeId });
 
 	const storeResult = resolveStoreFromId(backend, storeId);
 
 	if (!storeResult || !storeResult.ok) {
-		log("store", `Store not found: ${storeId}`);
+		log.info("Store not found", { step: "store", storeId });
 		return false;
 	}
 
@@ -120,29 +124,29 @@ const deleteStoreSnapshots = async (backend: Backend, storeId: string): Promise<
 		if (deleteResult.ok) {
 			deletedCount++;
 		} else {
-			log("store", `Failed to delete snapshot ${snapshot.version}`, { error: deleteResult.error });
+			log.warn("Failed to delete snapshot", { step: "store", version: snapshot.version, error: deleteResult.error });
 		}
 	}
 
-	log("store", `Deleted ${deletedCount} snapshots from ${storeId}`);
+	log.info("Deleted snapshots", { step: "store", deletedCount, storeId });
 	return deletedCount > 0;
 };
 
 const deleteGitHubStores = async (backend: Backend, accountId: string): Promise<string[]> => {
 	const deletedStores: string[] = [];
 
-	log("github", "Listing commit stores for account", { accountId });
+	log.info("Listing commit stores for account", { step: "github", accountId });
 	const commitStores = await listGitHubCommitStores(backend, accountId);
-	log("github", `Found ${commitStores.length} commit stores`);
+	log.info("Found commit stores", { step: "github", count: commitStores.length });
 
 	for (const { storeId } of commitStores) {
 		const deleted = await deleteStoreSnapshots(backend, storeId);
 		if (deleted) deletedStores.push(storeId);
 	}
 
-	log("github", "Listing PR stores for account", { accountId });
+	log.info("Listing PR stores for account", { step: "github", accountId });
 	const prStores = await listGitHubPRStores(backend, accountId);
-	log("github", `Found ${prStores.length} PR stores`);
+	log.info("Found PR stores", { step: "github", count: prStores.length });
 
 	for (const { storeId } of prStores) {
 		const deleted = await deleteStoreSnapshots(backend, storeId);
@@ -150,7 +154,7 @@ const deleteGitHubStores = async (backend: Backend, accountId: string): Promise<
 	}
 
 	const metaStoreId = githubMetaStoreId(accountId);
-	log("github", "Deleting meta store", { storeId: metaStoreId });
+	log.info("Deleting meta store", { step: "github", storeId: metaStoreId });
 	const metaDeleted = await deleteStoreSnapshots(backend, metaStoreId);
 	if (metaDeleted) deletedStores.push(metaStoreId);
 
@@ -161,17 +165,17 @@ const deleteRedditStores = async (backend: Backend, accountId: string): Promise<
 	const deletedStores: string[] = [];
 
 	const metaStoreId = redditMetaStoreId(accountId);
-	log("reddit", "Deleting meta store", { storeId: metaStoreId });
+	log.info("Deleting meta store", { step: "reddit", storeId: metaStoreId });
 	const metaDeleted = await deleteStoreSnapshots(backend, metaStoreId);
 	if (metaDeleted) deletedStores.push(metaStoreId);
 
 	const postsStoreId = redditPostsStoreId(accountId);
-	log("reddit", "Deleting posts store", { storeId: postsStoreId });
+	log.info("Deleting posts store", { step: "reddit", storeId: postsStoreId });
 	const postsDeleted = await deleteStoreSnapshots(backend, postsStoreId);
 	if (postsDeleted) deletedStores.push(postsStoreId);
 
 	const commentsStoreId = redditCommentsStoreId(accountId);
-	log("reddit", "Deleting comments store", { storeId: commentsStoreId });
+	log.info("Deleting comments store", { step: "reddit", storeId: commentsStoreId });
 	const commentsDeleted = await deleteStoreSnapshots(backend, commentsStoreId);
 	if (commentsDeleted) deletedStores.push(commentsStoreId);
 
@@ -180,13 +184,13 @@ const deleteRedditStores = async (backend: Backend, accountId: string): Promise<
 
 const deleteRawStore = async (backend: Backend, platform: string, accountId: string): Promise<string[]> => {
 	const storeId = `raw/${platform}/${accountId}`;
-	log("raw", "Deleting raw store", { storeId });
+	log.info("Deleting raw store", { step: "raw", storeId });
 	const deleted = await deleteStoreSnapshots(backend, storeId);
 	return deleted ? [storeId] : [];
 };
 
 const deleteCorpusStores = async (backend: Backend, account: AccountInfo): Promise<string[]> => {
-	log("corpus", "Deleting corpus stores", { platform: account.platform, accountId: account.id });
+	log.info("Deleting corpus stores", { step: "corpus", platform: account.platform, accountId: account.id });
 
 	if (account.platform === "github") {
 		return deleteGitHubStores(backend, account.id);
@@ -211,13 +215,13 @@ type TableDeletion = {
 };
 
 const deleteTable = async (deletion: TableDeletion, accountId: string): Promise<Result<void, DeleteConnectionError>> => {
-	log("db", `Deleting ${deletion.name}`, { accountId });
+	log.info("Deleting table", { step: "db", table: deletion.name, accountId });
 	return try_catch_async(
 		async () => {
 			await deletion.execute();
 		},
 		(e): DeleteConnectionError => {
-			log("db", `Failed to delete ${deletion.name}`, { error: String(e) });
+			log.error("Failed to delete table", { step: "db", table: deletion.name, error: String(e) });
 			return { kind: "database_error", message: `Failed to delete ${deletion.name}: ${String(e)}` };
 		}
 	);
@@ -235,7 +239,7 @@ const deleteDbRecords = async (db: Database, accountId: string): Promise<Result<
 		if (!result.ok) return result;
 	}
 
-	log("db", "All database records deleted", { accountId });
+	log.info("All database records deleted", { step: "db", accountId });
 	return ok(undefined);
 };
 
@@ -245,10 +249,10 @@ const validateOwnership = (account: AccountWithOwner | null, requestingUserId: s
 	const result = validateAccountOwnership(account, requestingUserId);
 	if (!result.ok) {
 		const logData = result.error.kind === "not_found" ? { accountId, requestingUserId } : { accountId, requestingUserId, owner: account?.user_id };
-		log("auth", result.error.kind === "not_found" ? "Account not found" : "User does not own account", logData);
+		log.warn(result.error.kind === "not_found" ? "Account not found" : "User does not own account", { step: "auth", ...logData });
 		return result;
 	}
-	log("auth", "Authorization check passed", { accountId, requestingUserId });
+	log.info("Authorization check passed", { step: "auth", accountId, requestingUserId });
 	return result;
 };
 
@@ -272,34 +276,35 @@ type DeletionContext = {
 	deletedStores: string[];
 };
 
-export async function deleteConnection(ctx: DeleteContext, accountId: string, requestingUserId: string): Promise<Result<DeleteConnectionResult, DeleteConnectionError>> {
-	log("start", "Beginning connection deletion", { accountId, requestingUserId });
+export async function deleteConnection(ctx: DeleteContext, accId: AccountId, requestingUserId: UserId): Promise<Result<DeleteConnectionResult, DeleteConnectionError>> {
+	log.info("Beginning connection deletion", { step: "start", accountId: accId, requestingUserId });
 
-	const account = await fetchAccountWithOwner(ctx.db, accountId);
+	const account = await fetchAccountWithOwner(ctx.db, accId);
 
-	return pipe(validateOwnership(account, requestingUserId, accountId))
+	return pipe(validateOwnership(account, requestingUserId, accId))
 		.flat_map(async (validatedAccount): Promise<Result<DeletionContext, DeleteConnectionError>> => {
-			const affectedUsers = await getAffectedUsers(ctx.db, accountId);
-			log("users", "Found affected users", { count: affectedUsers.length, users: affectedUsers });
+			const affectedUsers = await getAffectedUsers(ctx.db, accId);
+			log.info("Found affected users", { step: "users", count: affectedUsers.length, users: affectedUsers });
 
 			const deletedStores = await deleteCorpusStores(ctx.backend, { id: validatedAccount.id, platform: validatedAccount.platform });
-			log("corpus", "Corpus stores deleted", { count: deletedStores.length, stores: deletedStores });
+			log.info("Corpus stores deleted", { step: "corpus", count: deletedStores.length, stores: deletedStores });
 
 			return ok({ account: validatedAccount, affectedUsers, deletedStores });
 		})
 		.flat_map(async ({ account, affectedUsers, deletedStores }): Promise<Result<DeleteConnectionResult, DeleteConnectionError>> => {
-			const dbResult = await deleteDbRecords(ctx.db, accountId);
+			const dbResult = await deleteDbRecords(ctx.db, accId);
 			if (!dbResult.ok) return dbResult;
 
-			log("complete", "Connection deletion completed", {
-				accountId,
+			log.info("Connection deletion completed", {
+				step: "complete",
+				accountId: accId,
 				platform: account.platform,
 				deletedStores: deletedStores.length,
 				affectedUsers: affectedUsers.length,
 			});
 
 			return ok({
-				account_id: accountId,
+				account_id: accId,
 				platform: account.platform,
 				deleted_stores: deletedStores,
 				affected_users: affectedUsers,
