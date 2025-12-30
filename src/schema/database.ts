@@ -2,7 +2,7 @@ import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqli
 import type { Platform } from "./platforms";
 
 export const users = sqliteTable(
-	"users",
+	"media_users",
 	{
 		id: text("id").primaryKey(),
 		email: text("email").unique(),
@@ -12,12 +12,12 @@ export const users = sqliteTable(
 		updated_at: text("updated_at").notNull(),
 	},
 	table => ({
-		devpad_user_idx: uniqueIndex("idx_users_devpad_user_id").on(table.devpad_user_id),
+		devpad_user_idx: uniqueIndex("idx_media_users_devpad_user_id").on(table.devpad_user_id),
 	})
 );
 
 export const profiles = sqliteTable(
-	"profiles",
+	"media_profiles",
 	{
 		id: text("id").primaryKey(),
 		user_id: text("user_id")
@@ -31,13 +31,13 @@ export const profiles = sqliteTable(
 		updated_at: text("updated_at").notNull(),
 	},
 	table => ({
-		user_idx: index("idx_profiles_user").on(table.user_id),
-		user_slug_idx: uniqueIndex("idx_profiles_user_slug").on(table.user_id, table.slug),
+		user_idx: index("idx_media_profiles_user").on(table.user_id),
+		user_slug_idx: uniqueIndex("idx_media_profiles_user_slug").on(table.user_id, table.slug),
 	})
 );
 
 export const accounts = sqliteTable(
-	"accounts",
+	"media_accounts",
 	{
 		id: text("id").primaryKey(),
 		profile_id: text("profile_id")
@@ -55,13 +55,13 @@ export const accounts = sqliteTable(
 		updated_at: text("updated_at").notNull(),
 	},
 	table => ({
-		profile_idx: index("idx_accounts_profile").on(table.profile_id),
-		profile_platform_user_idx: uniqueIndex("idx_accounts_profile_platform_user").on(table.profile_id, table.platform, table.platform_user_id),
+		profile_idx: index("idx_media_accounts_profile").on(table.profile_id),
+		profile_platform_user_idx: uniqueIndex("idx_media_accounts_profile_platform_user").on(table.profile_id, table.platform, table.platform_user_id),
 	})
 );
 
 export const apiKeys = sqliteTable(
-	"api_keys",
+	"media_api_keys",
 	{
 		id: text("id").primaryKey(),
 		user_id: text("user_id")
@@ -73,12 +73,12 @@ export const apiKeys = sqliteTable(
 		created_at: text("created_at").notNull(),
 	},
 	table => ({
-		user_idx: index("idx_api_keys_user").on(table.user_id),
+		user_idx: index("idx_media_api_keys_user").on(table.user_id),
 	})
 );
 
 export const rateLimits = sqliteTable(
-	"rate_limits",
+	"media_rate_limits",
 	{
 		id: text("id").primaryKey(),
 		account_id: text("account_id")
@@ -93,12 +93,12 @@ export const rateLimits = sqliteTable(
 		updated_at: text("updated_at").notNull(),
 	},
 	table => ({
-		account_idx: uniqueIndex("idx_rate_limits_account").on(table.account_id),
+		account_idx: uniqueIndex("idx_media_rate_limits_account").on(table.account_id),
 	})
 );
 
 export const accountSettings = sqliteTable(
-	"account_settings",
+	"media_account_settings",
 	{
 		id: text("id").primaryKey(),
 		account_id: text("account_id")
@@ -110,13 +110,13 @@ export const accountSettings = sqliteTable(
 		updated_at: text("updated_at").notNull(),
 	},
 	table => ({
-		account_key_idx: uniqueIndex("idx_account_settings_unique").on(table.account_id, table.setting_key),
-		account_idx: index("idx_account_settings_account").on(table.account_id),
+		account_key_idx: uniqueIndex("idx_media_account_settings_unique").on(table.account_id, table.setting_key),
+		account_idx: index("idx_media_account_settings_account").on(table.account_id),
 	})
 );
 
 export const corpusSnapshots = sqliteTable(
-	"corpus_snapshots",
+	"media_corpus_snapshots",
 	{
 		store_id: text("store_id").notNull(),
 		version: text("version").notNull(),
@@ -126,14 +126,14 @@ export const corpusSnapshots = sqliteTable(
 		metadata: text("metadata"),
 	},
 	table => ({
-		pk: uniqueIndex("corpus_snapshots_pk").on(table.store_id, table.version),
-		store_idx: index("idx_corpus_snapshots_store").on(table.store_id),
-		created_idx: index("idx_corpus_snapshots_created").on(table.store_id, table.created_at),
+		pk: uniqueIndex("media_corpus_snapshots_pk").on(table.store_id, table.version),
+		store_idx: index("idx_media_corpus_snapshots_store").on(table.store_id),
+		created_idx: index("idx_media_corpus_snapshots_created").on(table.store_id, table.created_at),
 	})
 );
 
 export const corpusParents = sqliteTable(
-	"corpus_parents",
+	"media_corpus_parents",
 	{
 		child_store_id: text("child_store_id").notNull(),
 		child_version: text("child_version").notNull(),
@@ -142,12 +142,12 @@ export const corpusParents = sqliteTable(
 		role: text("role"),
 	},
 	table => ({
-		pk: uniqueIndex("corpus_parents_pk").on(table.child_store_id, table.child_version, table.parent_store_id, table.parent_version),
+		pk: uniqueIndex("media_corpus_parents_pk").on(table.child_store_id, table.child_version, table.parent_store_id, table.parent_version),
 	})
 );
 
 export const profileFilters = sqliteTable(
-	"profile_filters",
+	"media_profile_filters",
 	{
 		id: text("id").primaryKey(),
 		profile_id: text("profile_id")
@@ -163,8 +163,8 @@ export const profileFilters = sqliteTable(
 		updated_at: text("updated_at").notNull(),
 	},
 	table => ({
-		profile_idx: index("idx_profile_filters_profile").on(table.profile_id),
-		account_idx: index("idx_profile_filters_account").on(table.account_id),
+		profile_idx: index("idx_media_profile_filters_profile").on(table.profile_id),
+		account_idx: index("idx_media_profile_filters_account").on(table.account_id),
 	})
 );
 

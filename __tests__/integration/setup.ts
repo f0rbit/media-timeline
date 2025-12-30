@@ -123,7 +123,7 @@ export type TestContext = {
 const ENCRYPTION_KEY = "test-encryption-key-32-bytes-long!";
 
 const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS users (
+  CREATE TABLE IF NOT EXISTS media_users (
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE,
     name TEXT,
@@ -132,9 +132,9 @@ const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS profiles (
+  CREATE TABLE IF NOT EXISTS media_profiles (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id),
+    user_id TEXT NOT NULL REFERENCES media_users(id),
     slug TEXT NOT NULL,
     name TEXT NOT NULL,
     description TEXT,
@@ -143,12 +143,12 @@ const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_profiles_user ON profiles(user_id);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_profiles_user_slug ON profiles(user_id, slug);
+  CREATE INDEX IF NOT EXISTS idx_media_profiles_user ON media_profiles(user_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_media_profiles_user_slug ON media_profiles(user_id, slug);
 
-  CREATE TABLE IF NOT EXISTS accounts (
+  CREATE TABLE IF NOT EXISTS media_accounts (
     id TEXT PRIMARY KEY,
-    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL REFERENCES media_profiles(id) ON DELETE CASCADE,
     platform TEXT NOT NULL,
     platform_user_id TEXT,
     platform_username TEXT,
@@ -161,23 +161,23 @@ const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_accounts_profile ON accounts(profile_id);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_accounts_profile_platform_user ON accounts(profile_id, platform, platform_user_id);
+  CREATE INDEX IF NOT EXISTS idx_media_accounts_profile ON media_accounts(profile_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_media_accounts_profile_platform_user ON media_accounts(profile_id, platform, platform_user_id);
 
-  CREATE TABLE IF NOT EXISTS api_keys (
+  CREATE TABLE IF NOT EXISTS media_api_keys (
     id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES users(id),
+    user_id TEXT NOT NULL REFERENCES media_users(id),
     key_hash TEXT NOT NULL UNIQUE,
     name TEXT,
     last_used_at TEXT,
     created_at TEXT NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+  CREATE INDEX IF NOT EXISTS idx_media_api_keys_user ON media_api_keys(user_id);
 
-  CREATE TABLE IF NOT EXISTS rate_limits (
+  CREATE TABLE IF NOT EXISTS media_rate_limits (
     id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL REFERENCES accounts(id),
+    account_id TEXT NOT NULL REFERENCES media_accounts(id),
     remaining INTEGER,
     limit_total INTEGER,
     reset_at TEXT,
@@ -188,19 +188,19 @@ const SCHEMA = `
     UNIQUE(account_id)
   );
 
-  CREATE TABLE IF NOT EXISTS account_settings (
+  CREATE TABLE IF NOT EXISTS media_account_settings (
     id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES media_accounts(id) ON DELETE CASCADE,
     setting_key TEXT NOT NULL,
     setting_value TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
 
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_account_settings_unique ON account_settings(account_id, setting_key);
-  CREATE INDEX IF NOT EXISTS idx_account_settings_account ON account_settings(account_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_media_account_settings_unique ON media_account_settings(account_id, setting_key);
+  CREATE INDEX IF NOT EXISTS idx_media_account_settings_account ON media_account_settings(account_id);
 
-  CREATE TABLE IF NOT EXISTS corpus_snapshots (
+  CREATE TABLE IF NOT EXISTS media_corpus_snapshots (
     store_id TEXT NOT NULL,
     version TEXT NOT NULL,
     content_hash TEXT NOT NULL,
@@ -210,24 +210,24 @@ const SCHEMA = `
     PRIMARY KEY (store_id, version)
   );
 
-  CREATE INDEX IF NOT EXISTS idx_corpus_snapshots_store ON corpus_snapshots(store_id);
-  CREATE INDEX IF NOT EXISTS idx_corpus_snapshots_created ON corpus_snapshots(store_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_media_corpus_snapshots_store ON media_corpus_snapshots(store_id);
+  CREATE INDEX IF NOT EXISTS idx_media_corpus_snapshots_created ON media_corpus_snapshots(store_id, created_at DESC);
 
-  CREATE TABLE IF NOT EXISTS corpus_parents (
+  CREATE TABLE IF NOT EXISTS media_corpus_parents (
     child_store_id TEXT NOT NULL,
     child_version TEXT NOT NULL,
     parent_store_id TEXT NOT NULL,
     parent_version TEXT NOT NULL,
     role TEXT,
     PRIMARY KEY (child_store_id, child_version, parent_store_id, parent_version),
-    FOREIGN KEY (child_store_id, child_version) REFERENCES corpus_snapshots(store_id, version),
-    FOREIGN KEY (parent_store_id, parent_version) REFERENCES corpus_snapshots(store_id, version)
+    FOREIGN KEY (child_store_id, child_version) REFERENCES media_corpus_snapshots(store_id, version),
+    FOREIGN KEY (parent_store_id, parent_version) REFERENCES media_corpus_snapshots(store_id, version)
   );
 
-  CREATE TABLE IF NOT EXISTS profile_filters (
+  CREATE TABLE IF NOT EXISTS media_profile_filters (
     id TEXT PRIMARY KEY,
-    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
-    account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    profile_id TEXT NOT NULL REFERENCES media_profiles(id) ON DELETE CASCADE,
+    account_id TEXT NOT NULL REFERENCES media_accounts(id) ON DELETE CASCADE,
     filter_type TEXT NOT NULL,
     filter_key TEXT NOT NULL,
     filter_value TEXT NOT NULL,
@@ -235,8 +235,8 @@ const SCHEMA = `
     updated_at TEXT NOT NULL
   );
 
-  CREATE INDEX IF NOT EXISTS idx_profile_filters_profile ON profile_filters(profile_id);
-  CREATE INDEX IF NOT EXISTS idx_profile_filters_account ON profile_filters(account_id);
+  CREATE INDEX IF NOT EXISTS idx_media_profile_filters_profile ON media_profile_filters(profile_id);
+  CREATE INDEX IF NOT EXISTS idx_media_profile_filters_account ON media_profile_filters(account_id);
 `;
 
 export const encryptToken = async (plaintext: string, key: string = ENCRYPTION_KEY): Promise<string> => {
