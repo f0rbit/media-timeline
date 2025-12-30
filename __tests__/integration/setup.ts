@@ -366,7 +366,7 @@ export const createTestCorpus = (): TestCorpus => {
 	const stores = new Map<string, Store<Record<string, unknown>>>();
 
 	const createRawStore = (platform: Platform, accountId: string): Store<Record<string, unknown>> => {
-		const storeId = `raw/${platform}/${accountId}`;
+		const storeId = `media/raw/${platform}/${accountId}`;
 		const existing = stores.get(storeId);
 		if (existing) return existing;
 
@@ -382,7 +382,7 @@ export const createTestCorpus = (): TestCorpus => {
 	};
 
 	const createTimelineStore = (userId: string): Store<Record<string, unknown>> => {
-		const storeId = `timeline/${userId}`;
+		const storeId = `media/timeline/${userId}`;
 		const existing = stores.get(storeId);
 		if (existing) return existing;
 
@@ -398,7 +398,7 @@ export const createTestCorpus = (): TestCorpus => {
 	};
 
 	const createGitHubMetaStore = (accountId: string): Store<Record<string, unknown>> => {
-		const storeId = `github/${accountId}/meta`;
+		const storeId = `media/github/${accountId}/meta`;
 		const existing = stores.get(storeId);
 		if (existing) return existing;
 
@@ -428,13 +428,13 @@ export const createTestCorpus = (): TestCorpus => {
 		return store;
 	};
 
-	const createGitHubCommitsStore = (accountId: string, owner: string, repo: string): Store<Record<string, unknown>> => createGenericStore(`github/${accountId}/commits/${owner}/${repo}`);
+	const createGitHubCommitsStore = (accountId: string, owner: string, repo: string): Store<Record<string, unknown>> => createGenericStore(`media/github/${accountId}/commits/${owner}/${repo}`);
 
-	const createRedditPostsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`reddit/${accountId}/posts`);
+	const createRedditPostsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`media/reddit/${accountId}/posts`);
 
-	const createRedditCommentsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`reddit/${accountId}/comments`);
+	const createRedditCommentsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`media/reddit/${accountId}/comments`);
 
-	const createTwitterTweetsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`twitter/${accountId}/tweets`);
+	const createTwitterTweetsStore = (accountId: string): Store<Record<string, unknown>> => createGenericStore(`media/twitter/${accountId}/tweets`);
 
 	return {
 		backend,
