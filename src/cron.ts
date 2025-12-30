@@ -7,7 +7,7 @@ import type { Database } from "./db";
 import type { CronProcessError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { createLogger } from "./logger";
-import { GitHubProvider, type ProviderError, type ProviderFactory, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
+import { GitHubProvider, type ProviderError, type ProviderFactory, getPlatformCapabilities, getPlatformsWithMultiStore, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
 import { BlueskyRawSchema, type CommitGroup, DevpadRawSchema, type Platform, type TimelineItem, YouTubeRawSchema, accounts, profiles, rateLimits } from "./schema";
@@ -16,11 +16,11 @@ import { groupByDate, groupCommits } from "./timeline";
 import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
 import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
 import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
-import { type Result, decrypt, pipe, to_nullable, try_catch } from "./utils";
+import { type Result, decrypt, pipe, to_nullable, try_catch, uuid } from "./utils";
 
 const log = createLogger("cron");
 
-export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline, platformProcessors };
+export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline, getPlatformProcessor };
 export type { ProviderFactory, RawSnapshot, PlatformGroups, PlatformProcessor };
 
 type RawSnapshot = {
@@ -60,15 +60,14 @@ type TimelineEntry = TimelineItem | CommitGroup;
 
 const parseDate = (iso: string | null): Date | null => (iso ? new Date(iso) : null);
 
-// Twitter has a 100 posts/month cap on Free tier, so we only fetch every 3 days
-const TWITTER_FETCH_INTERVAL_DAYS = 3;
-
-const shouldFetchTwitter = (lastFetchedAt: string | null): boolean => {
+const shouldFetchForPlatform = (platform: Platform, lastFetchedAt: string | null): boolean => {
+	const capabilities = getPlatformCapabilities(platform);
+	if (!capabilities.fetchIntervalDays) return true;
 	if (!lastFetchedAt) return true;
 	const lastFetch = new Date(lastFetchedAt);
 	const now = new Date();
 	const daysSinceLastFetch = (now.getTime() - lastFetch.getTime()) / (1000 * 60 * 60 * 24);
-	return daysSinceLastFetch >= TWITTER_FETCH_INTERVAL_DAYS;
+	return daysSinceLastFetch >= capabilities.fetchIntervalDays;
 };
 
 const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
@@ -176,7 +175,7 @@ const recordFailure = async (db: Database, accountId: string): Promise<void> => 
 	await db
 		.insert(rateLimits)
 		.values({
-			id: crypto.randomUUID(),
+			id: uuid(),
 			account_id: accountId,
 			consecutive_failures: 1,
 			last_failure_at: now,
@@ -197,7 +196,7 @@ const recordSuccess = async (db: Database, accountId: string): Promise<void> => 
 	await db
 		.insert(rateLimits)
 		.values({
-			id: crypto.randomUUID(),
+			id: uuid(),
 			account_id: accountId,
 			consecutive_failures: 0,
 			updated_at: now,
@@ -249,35 +248,39 @@ type PlatformProcessor = {
 	processAccount: (backend: Backend, accountId: string, token: string, provider: unknown) => Promise<Result<PlatformProcessResult, { kind: string; message?: string }>>;
 };
 
-const platformProcessors = new Map<Platform, PlatformProcessor>([
-	[
-		"github",
-		{
-			platform: "github" as const,
-			shouldFetch: () => true,
-			createProvider: (ctx: AppContext) => ctx.gitHubProvider ?? new GitHubProvider(),
-			processAccount: processGitHubAccount as PlatformProcessor["processAccount"],
-		},
-	],
-	[
-		"reddit",
-		{
-			platform: "reddit" as const,
-			shouldFetch: () => true,
-			createProvider: () => new RedditProvider(),
-			processAccount: processRedditAccount as PlatformProcessor["processAccount"],
-		},
-	],
-	[
-		"twitter",
-		{
-			platform: "twitter" as const,
-			shouldFetch: (_account: AccountWithUser, lastFetched: string | null) => shouldFetchTwitter(lastFetched),
-			createProvider: (ctx: AppContext) => ctx.twitterProvider ?? new TwitterProvider(),
-			processAccount: processTwitterAccount as PlatformProcessor["processAccount"],
-		},
-	],
-]);
+const getPlatformProcessor = (platform: Platform): PlatformProcessor | null => {
+	switch (platform) {
+		case "github":
+			return {
+				platform: "github" as const,
+				shouldFetch: () => true,
+				createProvider: (ctx: AppContext) => ctx.gitHubProvider ?? new GitHubProvider(),
+				processAccount: processGitHubAccount as PlatformProcessor["processAccount"],
+			};
+		case "reddit":
+			return {
+				platform: "reddit" as const,
+				shouldFetch: () => true,
+				createProvider: () => new RedditProvider(),
+				processAccount: processRedditAccount as PlatformProcessor["processAccount"],
+			};
+		case "twitter":
+			return {
+				platform: "twitter" as const,
+				shouldFetch: (_account: AccountWithUser, lastFetched: string | null) => shouldFetchForPlatform("twitter", lastFetched),
+				createProvider: (ctx: AppContext) => ctx.twitterProvider ?? new TwitterProvider(),
+				processAccount: processTwitterAccount as PlatformProcessor["processAccount"],
+			};
+		case "bluesky":
+		case "youtube":
+		case "devpad":
+			return null;
+		default: {
+			const _exhaustiveCheck: never = platform;
+			return null;
+		}
+	}
+};
 
 type ProcessingError = { kind: string; message?: string };
 
@@ -361,7 +364,7 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		return null;
 	}
 
-	const processor = platformProcessors.get(account.platform as Platform);
+	const processor = getPlatformProcessor(account.platform as Platform);
 
 	if (!processor) {
 		return processGenericAccount(ctx, account);
@@ -440,8 +443,6 @@ const gatherLatestSnapshots = async (backend: Backend, accounts: AccountWithUser
 	return results.filter((s): s is RawSnapshot => s !== null);
 };
 
-const MULTI_STORE_PLATFORMS = ["github", "reddit", "twitter"] as const;
-
 type PlatformGroups = {
 	github: RawSnapshot[];
 	reddit: RawSnapshot[];
@@ -449,11 +450,16 @@ type PlatformGroups = {
 	other: RawSnapshot[];
 };
 
+const isMultiStore = (platform: string): boolean => {
+	const multiStorePlatforms = getPlatformsWithMultiStore();
+	return multiStorePlatforms.includes(platform as Platform);
+};
+
 const groupSnapshotsByPlatform = (snapshots: RawSnapshot[]): PlatformGroups => ({
 	github: snapshots.filter(s => s.platform === "github"),
 	reddit: snapshots.filter(s => s.platform === "reddit"),
 	twitter: snapshots.filter(s => s.platform === "twitter"),
-	other: snapshots.filter(s => !MULTI_STORE_PLATFORMS.includes(s.platform as (typeof MULTI_STORE_PLATFORMS)[number])),
+	other: snapshots.filter(s => !isMultiStore(s.platform)),
 });
 
 const loadPlatformItems = async <T>(backend: Backend, snapshots: RawSnapshot[], loader: (backend: Backend, accountId: string) => Promise<T>, normalizer: (data: T) => TimelineItem[]): Promise<TimelineItem[]> => {
@@ -567,11 +573,11 @@ const combineUserTimeline = async (backend: Backend, userId: string, snapshots: 
 const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], NormalizeError> => {
 	return try_catch(
 		() => {
-			switch (snapshot.platform as Platform) {
+			const platform = snapshot.platform as Platform;
+			switch (platform) {
 				case "github":
 				case "reddit":
 				case "twitter":
-					// Handled separately via multi-store in combineUserTimeline
 					return [];
 				case "bluesky": {
 					const blueskyParsed = BlueskyRawSchema.parse(snapshot.data);
@@ -585,8 +591,11 @@ const normalizeSnapshot = (snapshot: RawSnapshot): Result<TimelineItem[], Normal
 					const devpadParsed = DevpadRawSchema.parse(snapshot.data);
 					return normalizeDevpad(devpadParsed);
 				}
-				default:
+				default: {
+					const _exhaustiveCheck: never = platform;
+					log.warn("Unknown platform in normalizeSnapshot", { platform: snapshot.platform });
 					return [];
+				}
 			}
 		},
 		(e): NormalizeError => ({ kind: "parse_error", platform: snapshot.platform, message: String(e) })
