@@ -4,7 +4,7 @@ import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { accounts, apiKeys, profiles } from "./schema";
-import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch_async } from "./utils";
+import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -21,9 +21,84 @@ export type OAuthState<T extends Record<string, unknown> = Record<string, never>
 export type TokenResponse = {
 	access_token: string;
 	refresh_token?: string;
-	expires_in: number;
+	expires_in?: number;
 	token_type: string;
 	scope: string;
+};
+
+// Pure function error types
+export type DecodeStateError = { kind: "no_state" } | { kind: "invalid_base64" } | { kind: "invalid_json" } | { kind: "missing_user_id" } | { kind: "missing_profile_id" } | { kind: "missing_required_key"; key: string };
+
+export type TokenValidationError = { kind: "missing_access_token" } | { kind: "invalid_token_type"; got: string };
+
+export type ValidatedTokens = {
+	access_token: string;
+	refresh_token?: string;
+	expires_in?: number;
+	token_type: string;
+	scope?: string;
+};
+
+// Pure function: decode OAuth state data without Response/HonoContext dependency
+export const decodeOAuthStateData = <T extends Record<string, unknown>>(state: string | undefined, requiredKeys: (keyof T)[] = []): Result<OAuthState<T>, DecodeStateError> => {
+	if (!state) return err({ kind: "no_state" });
+
+	const base64Result = try_catch(
+		() => atob(state),
+		(): DecodeStateError => ({ kind: "invalid_base64" })
+	);
+	if (!base64Result.ok) return base64Result;
+
+	const jsonResult = try_catch(
+		() => JSON.parse(base64Result.value) as OAuthState<T>,
+		(): DecodeStateError => ({ kind: "invalid_json" })
+	);
+	if (!jsonResult.ok) return jsonResult;
+
+	const stateData = jsonResult.value;
+
+	if (!stateData.user_id) return err({ kind: "missing_user_id" });
+	if (!stateData.profile_id) return err({ kind: "missing_profile_id" });
+
+	for (const key of requiredKeys) {
+		if (!stateData[key]) return err({ kind: "missing_required_key", key: String(key) });
+	}
+
+	return ok(stateData);
+};
+
+// Pure function: calculate token expiry with injectable "now" for testing
+export const calculateTokenExpiry = (expiresIn: number | undefined, now: Date = new Date()): string | null => (expiresIn ? new Date(now.getTime() + expiresIn * 1000).toISOString() : null);
+
+// Pure function: validate token response structure
+export const validateTokenResponse = (response: unknown): Result<ValidatedTokens, TokenValidationError> => {
+	if (typeof response !== "object" || response === null) {
+		return err({ kind: "missing_access_token" });
+	}
+
+	const obj = response as Record<string, unknown>;
+
+	if (typeof obj.access_token !== "string" || obj.access_token === "") {
+		return err({ kind: "missing_access_token" });
+	}
+
+	if (obj.token_type !== undefined && typeof obj.token_type !== "string") {
+		return err({ kind: "invalid_token_type", got: String(obj.token_type) });
+	}
+
+	const tokenType = (obj.token_type as string) || "Bearer";
+	const normalizedTokenType = tokenType.toLowerCase();
+	if (normalizedTokenType !== "bearer" && normalizedTokenType !== "mac") {
+		return err({ kind: "invalid_token_type", got: tokenType });
+	}
+
+	return ok({
+		access_token: obj.access_token,
+		refresh_token: typeof obj.refresh_token === "string" ? obj.refresh_token : undefined,
+		expires_in: typeof obj.expires_in === "number" ? obj.expires_in : undefined,
+		token_type: tokenType,
+		scope: typeof obj.scope === "string" ? obj.scope : undefined,
+	});
 };
 
 export type OAuthUser = {
@@ -115,22 +190,17 @@ export const encodeOAuthState = <T extends Record<string, unknown>>(userId: stri
 };
 
 export const decodeOAuthState = <T extends Record<string, unknown> = Record<string, never>>(c: HonoContext, state: string | undefined, platform: Platform, requiredKeys: (keyof T)[] = []): Result<OAuthState<T>, Response> => {
-	if (!state) {
-		return err(redirectWithError(c, platform, "no_state"));
+	const result = decodeOAuthStateData<T>(state, requiredKeys);
+
+	if (!result.ok) {
+		const errorCode = result.error.kind === "no_state" ? "no_state" : "invalid_state";
+		if (errorCode === "invalid_state") {
+			console.error(`[${platform}-oauth] Invalid state parameter`);
+		}
+		return err(redirectWithError(c, platform, errorCode));
 	}
 
-	try {
-		const stateData = JSON.parse(atob(state)) as OAuthState<T>;
-		if (!stateData.user_id) throw new Error("No user_id in state");
-		if (!stateData.profile_id) throw new Error("No profile_id in state");
-		for (const key of requiredKeys) {
-			if (!stateData[key]) throw new Error(`Missing ${String(key)} in state`);
-		}
-		return ok(stateData);
-	} catch {
-		console.error(`[${platform}-oauth] Invalid state parameter`);
-		return err(redirectWithError(c, platform, "invalid_state"));
-	}
+	return ok(result.value);
 };
 
 export const validateOAuthRequest = <TState extends Record<string, unknown>>(
@@ -210,9 +280,9 @@ export const encryptTokens = (tokens: TokenResponse, encryptionKey: string): Pro
 export const upsertOAuthAccount = (db: Database, encryptionKey: string, profileId: string, platform: Platform, user: OAuthUser, tokens: TokenResponse): Promise<Result<string, OAuthError>> =>
 	pipe(encryptTokens(tokens, encryptionKey))
 		.flat_map(async ({ encryptedAccessToken, encryptedRefreshToken }) => {
-			const now = new Date().toISOString();
-			// GitHub tokens don't expire (expires_in is undefined), so tokenExpiresAt can be null
-			const tokenExpiresAt = tokens.expires_in ? new Date(Date.now() + tokens.expires_in * 1000).toISOString() : null;
+			const nowDate = new Date();
+			const now = nowDate.toISOString();
+			const tokenExpiresAt = calculateTokenExpiry(tokens.expires_in, nowDate);
 
 			const existing = await db
 				.select()

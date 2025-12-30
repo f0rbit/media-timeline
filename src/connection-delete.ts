@@ -33,6 +33,35 @@ export type DeleteConnectionResult = {
 
 export type DeleteConnectionError = ConnectionError;
 
+export type DeletionAttempt = {
+	success: boolean;
+	version?: string;
+	error?: string;
+};
+
+export type StoreType = "github_meta" | "github_commits" | "github_prs" | "reddit_meta" | "reddit_posts" | "reddit_comments" | "twitter_meta" | "twitter_tweets" | "bluesky" | "youtube" | "devpad" | "raw";
+
+const VALID_STORE_TYPES: StoreType[] = ["github_meta", "github_commits", "github_prs", "reddit_meta", "reddit_posts", "reddit_comments", "twitter_meta", "twitter_tweets", "bluesky", "youtube", "devpad", "raw"];
+
+export const isValidStoreType = (type: string): type is StoreType => VALID_STORE_TYPES.includes(type as StoreType);
+
+export const validateAccountOwnership = <T extends { user_id: string }>(account: T | null, requestingUserId: string): Result<T, DeleteConnectionError> => {
+	if (!account) return err({ kind: "not_found" });
+	if (account.user_id !== requestingUserId) {
+		return err({ kind: "forbidden", message: "You do not own this account" });
+	}
+	return ok(account);
+};
+
+export const summarizeDeletions = (attempts: DeletionAttempt[]): { deleted: number; failed: number } =>
+	attempts.reduce(
+		(acc, a) => ({
+			deleted: acc.deleted + (a.success ? 1 : 0),
+			failed: acc.failed + (a.success ? 0 : 1),
+		}),
+		{ deleted: 0, failed: 0 }
+	);
+
 type DeleteContext = {
 	db: Database;
 	backend: Backend;
@@ -213,16 +242,14 @@ const deleteDbRecords = async (db: Database, accountId: string): Promise<Result<
 type AccountWithOwner = { id: string; platform: Platform; user_id: string };
 
 const validateOwnership = (account: AccountWithOwner | null, requestingUserId: string, accountId: string): Result<AccountWithOwner, DeleteConnectionError> => {
-	if (!account) {
-		log("auth", "Account not found", { accountId, requestingUserId });
-		return err({ kind: "not_found" });
-	}
-	if (account.user_id !== requestingUserId) {
-		log("auth", "User does not own account", { accountId, requestingUserId, owner: account.user_id });
-		return err({ kind: "forbidden", message: "You do not own this account" });
+	const result = validateAccountOwnership(account, requestingUserId);
+	if (!result.ok) {
+		const logData = result.error.kind === "not_found" ? { accountId, requestingUserId } : { accountId, requestingUserId, owner: account?.user_id };
+		log("auth", result.error.kind === "not_found" ? "Account not found" : "User does not own account", logData);
+		return result;
 	}
 	log("auth", "Authorization check passed", { accountId, requestingUserId });
-	return ok(account);
+	return result;
 };
 
 const fetchAccountWithOwner = async (db: Database, accountId: string): Promise<AccountWithOwner | null> => {

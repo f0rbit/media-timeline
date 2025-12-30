@@ -9,6 +9,55 @@ import { type Result, decrypt, err, match, ok, pipe } from "./utils";
 
 const log = createLogger("refresh");
 
+// Pure function types
+export type CategorizedAccounts<T> = {
+	github: T[];
+	reddit: T[];
+	twitter: T[];
+	other: T[];
+};
+
+export type RefreshStrategy = "github" | "reddit" | "twitter" | "generic";
+
+export type RefreshAttempt = {
+	accountId: string;
+	success: boolean;
+	error?: string;
+};
+
+// Pure functions for testability
+export const categorizeAccountsByPlatform = <T extends { platform: string }>(accounts: T[]): CategorizedAccounts<T> => ({
+	github: accounts.filter(a => a.platform === "github"),
+	reddit: accounts.filter(a => a.platform === "reddit"),
+	twitter: accounts.filter(a => a.platform === "twitter"),
+	other: accounts.filter(a => !["github", "reddit", "twitter"].includes(a.platform)),
+});
+
+export const determineRefreshStrategy = (platform: string): RefreshStrategy => {
+	switch (platform) {
+		case "github":
+			return "github";
+		case "reddit":
+			return "reddit";
+		case "twitter":
+			return "twitter";
+		default:
+			return "generic";
+	}
+};
+
+export const aggregateRefreshResults = (attempts: RefreshAttempt[]): { succeeded: number; failed: number; errors: string[] } =>
+	attempts.reduce(
+		(acc, a) => ({
+			succeeded: acc.succeeded + (a.success ? 1 : 0),
+			failed: acc.failed + (a.success ? 0 : 1),
+			errors: a.error ? [...acc.errors, a.error] : acc.errors,
+		}),
+		{ succeeded: 0, failed: 0, errors: [] as string[] }
+	);
+
+export const shouldRegenerateTimeline = (succeeded: number): boolean => succeeded > 0;
+
 type AccountWithUser = {
 	id: string;
 	platform: string;
@@ -173,12 +222,14 @@ export const refreshSingleAccount = async (ctx: AppContext, accountId: string, u
 	return match(
 		accountResult,
 		account => {
-			switch (account.platform) {
+			const strategy = determineRefreshStrategy(account.platform);
+			switch (strategy) {
 				case "github":
 					return processGitHubRefresh(ctx, account, userId);
 				case "reddit":
 					return processRedditRefresh(ctx, account, userId);
-				default:
+				case "twitter":
+				case "generic":
 					return processGenericRefresh(ctx, account, userId);
 			}
 		},
@@ -211,9 +262,8 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 
 	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
-	const githubAccounts = userAccounts.filter(a => a.platform === "github");
-	const redditAccounts = userAccounts.filter(a => a.platform === "reddit");
-	const otherAccounts = userAccounts.filter(a => a.platform !== "github" && a.platform !== "reddit");
+	const categorized = categorizeAccountsByPlatform(userAccounts);
+	const { github: githubAccounts, reddit: redditAccounts, other: otherAccounts } = categorized;
 
 	const backgroundTasks: BackgroundTask[] = [];
 
@@ -230,7 +280,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 				}
 			}
 
-			if (bgSucceeded > 0) {
+			if (shouldRegenerateTimeline(bgSucceeded)) {
 				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
 				await combineUserTimeline(ctx.backend, userId, snapshots);
 			}
@@ -262,7 +312,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 				}
 			}
 
-			if (bgSucceeded > 0) {
+			if (shouldRegenerateTimeline(bgSucceeded)) {
 				const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
 				await combineUserTimeline(ctx.backend, userId, snapshots);
 			}
@@ -285,7 +335,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 		}
 	}
 
-	if (succeeded > 0) {
+	if (shouldRegenerateTimeline(succeeded)) {
 		const snapshots = await gatherLatestSnapshots(ctx.backend, otherAccounts);
 		await combineUserTimeline(ctx.backend, userId, snapshots);
 	}
