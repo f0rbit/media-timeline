@@ -3,9 +3,12 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthContext, getAuth } from "./auth";
+import { requireAccountOwnership } from "./auth-ownership";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
+import { badRequest, notFound, serverError } from "./http-errors";
 import type { AppContext } from "./infrastructure";
+import { type AccountId, type ProfileId, type UserId, accountId, profileId, userId } from "./schema/branded";
 import { accounts, profileFilters, profiles } from "./schema/database";
 import { AddFilterSchema, CreateProfileSchema, UpdateProfileSchema } from "./schema/profiles";
 import { generateProfileTimeline } from "./timeline-profile";
@@ -23,35 +26,20 @@ const getContext = (c: Context<{ Bindings: Bindings; Variables: Variables }>): A
 };
 
 type OwnershipError = { status: 404 | 403; error: string; message: string };
-type ProfileOwnershipResult = Result<{ profile_id: string }, OwnershipError>;
-type AccountOwnershipResult = Result<{ role: string }, OwnershipError>;
+type ProfileOwnershipResult = Result<{ profile_id: ProfileId }, OwnershipError>;
 
-const requireProfileOwnership = async (db: Database, userId: string, profileId: string): Promise<ProfileOwnershipResult> => {
-	const profile = await db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profileId)).get();
+const requireProfileOwnership = async (db: Database, uid: UserId, profId: ProfileId): Promise<ProfileOwnershipResult> => {
+	const profile = await db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profId)).get();
 
 	if (!profile) {
 		return err({ status: 404, error: "Not found", message: "Profile not found" });
 	}
 
-	if (profile.user_id !== userId) {
+	if (profile.user_id !== uid) {
 		return err({ status: 403, error: "Forbidden", message: "You do not own this profile" });
 	}
 
-	return ok({ profile_id: profile.id });
-};
-
-const requireAccountOwnership = async (db: Database, userId: string, accountId: string): Promise<AccountOwnershipResult> => {
-	const account = await db.select({ id: accounts.id, user_id: profiles.user_id }).from(accounts).innerJoin(profiles, eq(accounts.profile_id, profiles.id)).where(eq(accounts.id, accountId)).get();
-
-	if (!account) {
-		return err({ status: 404, error: "Not found", message: "Account not found or no access" });
-	}
-
-	if (account.user_id !== userId) {
-		return err({ status: 403, error: "Forbidden", message: "You do not own this account" });
-	}
-
-	return ok({ role: "owner" });
+	return ok({ profile_id: profileId(profile.id) });
 };
 
 const checkSlugUniqueness = async (db: Database, userId: string, slug: string, excludeProfileId?: string): Promise<boolean> => {
@@ -139,7 +127,7 @@ profileRoutes.post("/", async c => {
 	const parseResult = CreateProfileSchema.safeParse(body);
 
 	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+		return badRequest(c, "Invalid request body", parseResult.error.flatten());
 	}
 
 	const { slug, name, description, theme } = parseResult.data;
@@ -171,19 +159,19 @@ profileRoutes.post("/", async c => {
 profileRoutes.get("/:id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const profileId = c.req.param("id");
+	const profId = profileId(c.req.param("id"));
 
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
+	const ownershipResult = await requireProfileOwnership(ctx.db, userId(auth.user_id), profId);
 
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
-	const profile = await loadProfileWithRelations(ctx.db, profileId, auth.user_id);
+	const profile = await loadProfileWithRelations(ctx.db, profId, auth.user_id);
 
 	if (!profile) {
-		return c.json({ error: "Not found", message: "Profile not found" }, 404);
+		return notFound(c, "Profile not found");
 	}
 
 	return c.json({ profile });
@@ -192,9 +180,9 @@ profileRoutes.get("/:id", async c => {
 profileRoutes.patch("/:id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const profileId = c.req.param("id");
+	const profId = profileId(c.req.param("id"));
 
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
+	const ownershipResult = await requireProfileOwnership(ctx.db, userId(auth.user_id), profId);
 
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
@@ -205,17 +193,17 @@ profileRoutes.patch("/:id", async c => {
 	const parseResult = UpdateProfileSchema.safeParse(body);
 
 	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+		return badRequest(c, "Invalid request body", parseResult.error.flatten());
 	}
 
 	const updates = parseResult.data;
 
 	if (Object.keys(updates).length === 0) {
-		return c.json({ error: "Bad request", message: "No fields to update" }, 400);
+		return badRequest(c, "No fields to update");
 	}
 
 	if (updates.slug) {
-		const isUnique = await checkSlugUniqueness(ctx.db, auth.user_id, updates.slug, profileId);
+		const isUnique = await checkSlugUniqueness(ctx.db, auth.user_id, updates.slug, profId);
 		if (!isUnique) {
 			return c.json({ error: "Conflict", message: "A profile with this slug already exists" }, 409);
 		}
@@ -229,9 +217,9 @@ profileRoutes.patch("/:id", async c => {
 			...updates,
 			updated_at: now,
 		})
-		.where(eq(profiles.id, profileId));
+		.where(eq(profiles.id, profId));
 
-	const updated = await loadProfileWithRelations(ctx.db, profileId, auth.user_id);
+	const updated = await loadProfileWithRelations(ctx.db, profId, auth.user_id);
 
 	return c.json({ profile: updated });
 });
@@ -239,26 +227,26 @@ profileRoutes.patch("/:id", async c => {
 profileRoutes.delete("/:id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const profileId = c.req.param("id");
+	const profId = profileId(c.req.param("id"));
 
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
+	const ownershipResult = await requireProfileOwnership(ctx.db, userId(auth.user_id), profId);
 
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
-	await ctx.db.delete(profiles).where(eq(profiles.id, profileId));
+	await ctx.db.delete(profiles).where(eq(profiles.id, profId));
 
-	return c.json({ deleted: true, id: profileId });
+	return c.json({ deleted: true, id: profId });
 });
 
 profileRoutes.get("/:id/filters", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const profileId = c.req.param("id");
+	const profId = profileId(c.req.param("id"));
 
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
+	const ownershipResult = await requireProfileOwnership(ctx.db, userId(auth.user_id), profId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
@@ -276,7 +264,7 @@ profileRoutes.get("/:id/filters", async c => {
 		})
 		.from(profileFilters)
 		.innerJoin(accounts, eq(profileFilters.account_id, accounts.id))
-		.where(eq(profileFilters.profile_id, profileId));
+		.where(eq(profileFilters.profile_id, profId));
 
 	return c.json({ filters });
 });
@@ -284,21 +272,23 @@ profileRoutes.get("/:id/filters", async c => {
 profileRoutes.post("/:id/filters", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const profileId = c.req.param("id");
+	const profId = profileId(c.req.param("id"));
+	const uid = userId(auth.user_id);
 
 	const parseResult = AddFilterSchema.safeParse(await c.req.json());
 	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+		return badRequest(c, "Invalid request body", parseResult.error.flatten());
 	}
 	const body = parseResult.data;
 
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
+	const ownershipResult = await requireProfileOwnership(ctx.db, uid, profId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
-	const accountOwnership = await requireAccountOwnership(ctx.db, auth.user_id, body.account_id);
+	const accId = accountId(body.account_id);
+	const accountOwnership = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!accountOwnership.ok) {
 		const { status, error, message } = accountOwnership.error;
 		return c.json({ error, message }, status);
@@ -311,7 +301,7 @@ profileRoutes.post("/:id/filters", async c => {
 
 	await ctx.db.insert(profileFilters).values({
 		id: filterId,
-		profile_id: profileId,
+		profile_id: profId,
 		account_id: body.account_id,
 		filter_type: body.filter_type,
 		filter_key: body.filter_key,
@@ -337,10 +327,10 @@ profileRoutes.post("/:id/filters", async c => {
 profileRoutes.delete("/:id/filters/:filter_id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const profileId = c.req.param("id");
+	const profId = profileId(c.req.param("id"));
 	const filterId = c.req.param("filter_id");
 
-	const ownershipResult = await requireProfileOwnership(ctx.db, auth.user_id, profileId);
+	const ownershipResult = await requireProfileOwnership(ctx.db, userId(auth.user_id), profId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
@@ -349,11 +339,11 @@ profileRoutes.delete("/:id/filters/:filter_id", async c => {
 	const filter = await ctx.db
 		.select({ id: profileFilters.id })
 		.from(profileFilters)
-		.where(and(eq(profileFilters.id, filterId), eq(profileFilters.profile_id, profileId)))
+		.where(and(eq(profileFilters.id, filterId), eq(profileFilters.profile_id, profId)))
 		.get();
 
 	if (!filter) {
-		return c.json({ error: "Not found", message: "Filter not found" }, 404);
+		return notFound(c, "Filter not found");
 	}
 
 	await ctx.db.delete(profileFilters).where(eq(profileFilters.id, filterId));
@@ -377,7 +367,7 @@ profileRoutes.get("/:slug/timeline", async c => {
 	});
 
 	if (!queryResult.success) {
-		return c.json({ error: "Bad request", details: queryResult.error.flatten() }, 400);
+		return badRequest(c, "Invalid query parameters", queryResult.error.flatten());
 	}
 
 	const { limit, before } = queryResult.data;
@@ -389,7 +379,7 @@ profileRoutes.get("/:slug/timeline", async c => {
 		.get();
 
 	if (!profile) {
-		return c.json({ error: "Not found", message: "Profile not found" }, 404);
+		return notFound(c, "Profile not found");
 	}
 
 	const result = await generateProfileTimeline({
@@ -403,12 +393,12 @@ profileRoutes.get("/:slug/timeline", async c => {
 	if (!result.ok) {
 		const error = result.error;
 		if (error.kind === "profile_not_found") {
-			return c.json({ error: "Not found", message: "Profile not found" }, 404);
+			return notFound(c, "Profile not found");
 		}
 		if (error.kind === "timeline_generation_failed") {
-			return c.json({ error: "Internal error", message: error.message }, 500);
+			return serverError(c, error.message);
 		}
-		return c.json({ error: "Internal error", message: "Timeline generation failed" }, 500);
+		return serverError(c, "Timeline generation failed");
 	}
 
 	return c.json(result.value);
