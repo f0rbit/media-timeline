@@ -512,17 +512,20 @@ export const createTestApp = (ctx: TestContext) => {
 
 	app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
-	app.use("/api/*", async (c, next) => {
+	const mediaApp = new Hono<{ Variables: TestVariables }>();
+
+	mediaApp.use("/api/*", async (c, next) => {
 		c.set("appContext", ctx.appContext);
 		await next();
 	});
 
-	// Use real auth middleware - it reads from appContext.db
-	app.use("/api/*", authMiddleware);
+	mediaApp.use("/api/*", authMiddleware);
 
-	app.route("/api/v1/timeline", timelineRoutes);
-	app.route("/api/v1/connections", connectionRoutes);
-	app.route("/api/v1/profiles", profileRoutes);
+	mediaApp.route("/api/v1/timeline", timelineRoutes);
+	mediaApp.route("/api/v1/connections", connectionRoutes);
+	mediaApp.route("/api/v1/profiles", profileRoutes);
+
+	app.route("/media", mediaApp);
 
 	app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 

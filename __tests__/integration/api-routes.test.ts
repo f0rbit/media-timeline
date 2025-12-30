@@ -39,7 +39,7 @@ describe("API routes", () => {
 			await seedUser(ctx, USERS.alice);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice");
+			const res = await app.request("/media/api/v1/timeline/user-alice");
 
 			expect(res.status).toBe(401);
 			const data = (await res.json()) as ErrorResponse;
@@ -52,7 +52,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice", {
+			const res = await app.request("/media/api/v1/timeline/user-alice", {
 				headers: { Authorization: "Bearer invalid-key-123" },
 			});
 
@@ -75,7 +75,7 @@ describe("API routes", () => {
 			await store.put(timelineData);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice", {
+			const res = await app.request("/media/api/v1/timeline/user-alice", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -100,7 +100,7 @@ describe("API routes", () => {
 			await store.put(timelineData);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice", {
+			const res = await app.request("/media/api/v1/timeline/user-alice", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -116,7 +116,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-bob", {
+			const res = await app.request("/media/api/v1/timeline/user-bob", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -131,7 +131,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice", {
+			const res = await app.request("/media/api/v1/timeline/user-alice", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -160,7 +160,7 @@ describe("API routes", () => {
 			await store.put(timelineData);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice?from=2024-01-02&to=2024-01-04", {
+			const res = await app.request("/media/api/v1/timeline/user-alice?from=2024-01-02&to=2024-01-04", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -196,7 +196,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice/raw/github", {
+			const res = await app.request("/media/api/v1/timeline/user-alice/raw/github", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -211,7 +211,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/timeline/user-alice/raw/github?account_id=nonexistent", {
+			const res = await app.request("/media/api/v1/timeline/user-alice/raw/github?account_id=nonexistent", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -264,7 +264,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections", {
+			const res = await app.request("/media/api/v1/connections", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -281,7 +281,7 @@ describe("API routes", () => {
 			const data = (await res.json()) as CreateConnectionResponse;
 			expect(data.account_id).toBeDefined();
 
-			const accounts = await ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(data.account_id).first<{ platform: string; access_token_encrypted: string; profile_id: string }>();
+			const accounts = await ctx.d1.prepare("SELECT * FROM media_accounts WHERE id = ?").bind(data.account_id).first<{ platform: string; access_token_encrypted: string; profile_id: string }>();
 
 			expect(accounts?.platform).toBe("github");
 			expect(accounts?.access_token_encrypted).toBeDefined();
@@ -293,7 +293,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections", {
+			const res = await app.request("/media/api/v1/connections", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -312,7 +312,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections", {
+			const res = await app.request("/media/api/v1/connections", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -334,7 +334,7 @@ describe("API routes", () => {
 			const plainToken = "ghp_plain_text_token_should_be_encrypted";
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections", {
+			const res = await app.request("/media/api/v1/connections", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -350,7 +350,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(201);
 			const data = (await res.json()) as CreateConnectionResponse;
 
-			const account = await ctx.d1.prepare("SELECT access_token_encrypted FROM accounts WHERE id = ?").bind(data.account_id).first<{ access_token_encrypted: string }>();
+			const account = await ctx.d1.prepare("SELECT access_token_encrypted FROM media_accounts WHERE id = ?").bind(data.account_id).first<{ access_token_encrypted: string }>();
 
 			expect(account?.access_token_encrypted).not.toBe(plainToken);
 			expect(account?.access_token_encrypted).not.toContain(plainToken);
@@ -376,7 +376,7 @@ describe("API routes", () => {
 			expect(data.account_id).toBe(ACCOUNTS.alice_github.id);
 			expect(data.platform).toBe("github");
 
-			const account = await ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first();
+			const account = await ctx.d1.prepare("SELECT * FROM media_accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first();
 			expect(account).toBeNull();
 		});
 
@@ -403,7 +403,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections/nonexistent-account", {
+			const res = await app.request("/media/api/v1/connections/nonexistent-account", {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -428,7 +428,7 @@ describe("API routes", () => {
 			const app = createTestApp(ctx);
 
 			const badRequests = [
-				app.request("/api/v1/timeline/user-alice/raw/github", {
+				app.request("/media/api/v1/timeline/user-alice/raw/github", {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				}),
 			];
@@ -445,11 +445,11 @@ describe("API routes", () => {
 			const app = createTestApp(ctx);
 
 			const unauthorizedRequests = [
-				app.request("/api/v1/timeline/user-alice"),
-				app.request("/api/v1/timeline/user-alice", {
+				app.request("/media/api/v1/timeline/user-alice"),
+				app.request("/media/api/v1/timeline/user-alice", {
 					headers: { Authorization: "Bearer invalid-key" },
 				}),
-				app.request("/api/v1/connections"),
+				app.request("/media/api/v1/connections"),
 			];
 
 			for (const req of unauthorizedRequests) {
@@ -468,7 +468,7 @@ describe("API routes", () => {
 			const app = createTestApp(ctx);
 
 			const forbiddenRequests = [
-				app.request("/api/v1/timeline/user-bob", {
+				app.request("/media/api/v1/timeline/user-bob", {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				}),
 			];
@@ -488,13 +488,13 @@ describe("API routes", () => {
 			const app = createTestApp(ctx);
 
 			const notFoundRequests = [
-				app.request("/api/v1/timeline/user-alice", {
+				app.request("/media/api/v1/timeline/user-alice", {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				}),
-				app.request("/api/v1/timeline/user-alice/raw/github?account_id=nonexistent", {
+				app.request("/media/api/v1/timeline/user-alice/raw/github?account_id=nonexistent", {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				}),
-				app.request("/api/v1/connections/nonexistent", {
+				app.request("/media/api/v1/connections/nonexistent", {
 					method: "DELETE",
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				}),

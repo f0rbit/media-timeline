@@ -71,7 +71,7 @@ describe("devpadAuthMiddleware", () => {
 			const devpadUserId = "devpad-existing-user";
 			await seedUser(ctx, { ...USERS.alice, id: "local-user-id" });
 
-			await ctx.d1.prepare("UPDATE users SET devpad_user_id = ? WHERE id = ?").bind(devpadUserId, "local-user-id").run();
+			await ctx.d1.prepare("UPDATE media_users SET devpad_user_id = ? WHERE id = ?").bind(devpadUserId, "local-user-id").run();
 
 			const mockDevpadUser = {
 				id: devpadUserId,
@@ -285,7 +285,7 @@ describe("syncDevpadUser", () => {
 			expect(result.value.email).toBe("new@example.com");
 		}
 
-		const dbUser = await ctx.d1.prepare("SELECT * FROM users WHERE devpad_user_id = ?").bind("new-devpad-id").first();
+		const dbUser = await ctx.d1.prepare("SELECT * FROM media_users WHERE devpad_user_id = ?").bind("new-devpad-id").first();
 
 		expect(dbUser).not.toBeNull();
 		expect((dbUser as { name: string }).name).toBe("New User");
@@ -293,7 +293,7 @@ describe("syncDevpadUser", () => {
 
 	it("returns existing user without update when data unchanged", async () => {
 		await seedUser(ctx, USERS.alice);
-		await ctx.d1.prepare("UPDATE users SET devpad_user_id = ? WHERE id = ?").bind("alice-devpad-id", USERS.alice.id).run();
+		await ctx.d1.prepare("UPDATE media_users SET devpad_user_id = ? WHERE id = ?").bind("alice-devpad-id", USERS.alice.id).run();
 
 		const devpadUser = {
 			id: "alice-devpad-id",
@@ -313,7 +313,7 @@ describe("syncDevpadUser", () => {
 
 	it("updates user when name or email changes", async () => {
 		await seedUser(ctx, USERS.alice);
-		await ctx.d1.prepare("UPDATE users SET devpad_user_id = ? WHERE id = ?").bind("alice-devpad-id", USERS.alice.id).run();
+		await ctx.d1.prepare("UPDATE media_users SET devpad_user_id = ? WHERE id = ?").bind("alice-devpad-id", USERS.alice.id).run();
 
 		const devpadUser = {
 			id: "alice-devpad-id",

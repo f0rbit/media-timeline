@@ -35,29 +35,27 @@ app.use(
 
 app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
-// Context middleware for all API routes
-app.use("/api/*", async (c, next) => {
+const mediaApp = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+mediaApp.use("/api/*", async (c, next) => {
 	const ctx = createContextFromBindings(c.env, defaultProviderFactory);
 	c.set("appContext", ctx);
 	await next();
 });
 
-// Auth middleware - skip for /api/auth/* (OAuth routes handle their own auth)
-app.use("/api/*", async (c, next) => {
-	if (c.req.path.startsWith("/api/auth")) {
+mediaApp.use("/api/*", async (c, next) => {
+	if (c.req.path.startsWith("/media/api/auth")) {
 		return next();
 	}
 	return authMiddleware(c, next);
 });
 
-// Routes
-app.route("/api/auth", authRoutes);
-app.route("/api/v1/timeline", timelineRoutes);
-app.route("/api/v1/connections", connectionRoutes);
-app.route("/api/v1/profiles", profileRoutes);
+mediaApp.route("/api/auth", authRoutes);
+mediaApp.route("/api/v1/timeline", timelineRoutes);
+mediaApp.route("/api/v1/connections", connectionRoutes);
+mediaApp.route("/api/v1/profiles", profileRoutes);
 
-// Get current user info
-app.get("/api/v1/me", async c => {
+mediaApp.get("/api/v1/me", async c => {
 	const auth = getAuth(c);
 	const ctx = c.get("appContext");
 
@@ -74,10 +72,11 @@ app.get("/api/v1/me", async c => {
 	});
 });
 
-// Logout - clear session by redirecting to devpad logout
-app.post("/api/auth/logout", c => {
+mediaApp.post("/api/auth/logout", c => {
 	return c.json({ redirect: "https://devpad.tools/logout" });
 });
+
+app.route("/media", mediaApp);
 
 app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 

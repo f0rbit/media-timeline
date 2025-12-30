@@ -198,7 +198,7 @@ describe("Profile Timeline API", () => {
 		ctx.cleanup();
 	});
 
-	describe("GET /api/v1/profiles/:slug/timeline", () => {
+	describe("GET /media/api/v1/profiles/:slug/timeline", () => {
 		describe("Basic timeline generation", () => {
 			it("returns full timeline for profile with all accounts", async () => {
 				await seedUser(ctx, USERS.alice);
@@ -212,7 +212,7 @@ describe("Profile Timeline API", () => {
 				await seedRedditPosts(ctx, ACCOUNTS.alice_reddit.id, "alice_redditor", [makeRedditPost("programming", "My first post", "2024-01-15T10:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -233,7 +233,7 @@ describe("Profile Timeline API", () => {
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project", [makeGitHubCommit("initial commit", "2024-01-15T12:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -261,7 +261,7 @@ describe("Profile Timeline API", () => {
 				await seedRedditPosts(ctx, ACCOUNTS.alice_reddit.id, "alice_redditor", [makeRedditPost("programming", "post", "2024-01-15T10:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -290,7 +290,7 @@ describe("Profile Timeline API", () => {
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "personal-project", [makeGitHubCommit("personal commit", "2024-01-15T12:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_work.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_work.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -324,7 +324,7 @@ describe("Profile Timeline API", () => {
 				]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_work.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_work.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -359,7 +359,7 @@ describe("Profile Timeline API", () => {
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "another-public", [makeGitHubCommit("another public", "2024-01-15T10:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -393,7 +393,7 @@ describe("Profile Timeline API", () => {
 				]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -426,7 +426,7 @@ describe("Profile Timeline API", () => {
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "personal-project", [makeGitHubCommit("personal commit", "2024-01-15T12:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_work.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_work.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -464,7 +464,7 @@ describe("Profile Timeline API", () => {
 				await seedGitHubCommits(ctx, ACCOUNTS.alice_github.id, "alice", "project-c", [makeGitHubCommit("commit to C", "2024-01-15T10:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -487,7 +487,7 @@ describe("Profile Timeline API", () => {
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -508,7 +508,7 @@ describe("Profile Timeline API", () => {
 				await seedRedditPosts(ctx, ACCOUNTS.alice_reddit.id, "alice_redditor", [makeRedditPost("programming", "post", "2024-01-15T10:00:00Z")]);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -523,7 +523,7 @@ describe("Profile Timeline API", () => {
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				const app = createTestApp(ctx);
-				const res = await app.request("/api/v1/profiles/nonexistent-profile/timeline", {
+				const res = await app.request("/media/media/api/v1/profiles/nonexistent-profile/timeline", {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -542,7 +542,7 @@ describe("Profile Timeline API", () => {
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.bob_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.bob_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 
@@ -556,7 +556,7 @@ describe("Profile Timeline API", () => {
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`);
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`);
 
 				expect(res.status).toBe(401);
 				const data = (await res.json()) as ErrorResponse;
@@ -568,7 +568,7 @@ describe("Profile Timeline API", () => {
 				await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: "Bearer invalid-api-key" },
 				});
 
@@ -586,7 +586,7 @@ describe("Profile Timeline API", () => {
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				const app = createTestApp(ctx);
-				const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
+				const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline`, {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 

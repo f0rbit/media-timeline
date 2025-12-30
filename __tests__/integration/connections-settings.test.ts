@@ -78,7 +78,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections/nonexistent", {
+			const res = await app.request("/media/api/v1/connections/nonexistent", {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -136,7 +136,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections/nonexistent/settings", {
+			const res = await app.request("/media/api/v1/connections/nonexistent/settings", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -250,7 +250,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections/nonexistent/settings", {
+			const res = await app.request("/media/api/v1/connections/nonexistent/settings", {
 				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -410,7 +410,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/connections/nonexistent/repos", {
+			const res = await app.request("/media/api/v1/connections/nonexistent/repos", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 

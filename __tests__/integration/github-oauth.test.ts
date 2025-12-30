@@ -28,12 +28,16 @@ const createGitHubOAuthTestApp = (ctx: TestContext, envOverrides: Partial<TestBi
 
 	const app = new Hono<{ Bindings: TestBindings; Variables: Variables }>();
 
-	app.use("/api/*", async (c, next) => {
+	const mediaApp = new Hono<{ Bindings: TestBindings; Variables: Variables }>();
+
+	mediaApp.use("/api/*", async (c, next) => {
 		c.set("appContext", ctx.appContext);
 		await next();
 	});
 
-	app.route("/api/auth", authRoutes);
+	mediaApp.route("/api/auth", authRoutes);
+
+	app.route("/media", mediaApp);
 
 	return {
 		request: async (path: string, init?: RequestInit) => {
@@ -70,14 +74,14 @@ describe("GitHub OAuth Integration", () => {
 		ctx.cleanup();
 	});
 
-	describe("GET /api/auth/github", () => {
+	describe("GET /media/api/auth/github", () => {
 		it("should redirect to GitHub with correct params", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			expect(res.status).toBe(302);
 
@@ -86,7 +90,7 @@ describe("GitHub OAuth Integration", () => {
 
 			const url = parseLocationUrl(res);
 			expect(url.searchParams.get("client_id")).toBe("test-client-id");
-			expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:8787/api/auth/github/callback");
+			expect(url.searchParams.get("redirect_uri")).toBe("http://localhost:8787/media/api/auth/github/callback");
 			expect(url.searchParams.get("scope")).toBe("read:user repo");
 			expect(url.searchParams.get("state")).toBeDefined();
 
@@ -100,7 +104,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedUser(ctx, USERS.alice);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request("/api/auth/github");
+			const res = await app.request("/media/api/auth/github");
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -114,7 +118,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=invalid-api-key&profile_id=${PROFILES.alice_main.id}`);
+			const res = await app.request(`/media/api/auth/github?key=invalid-api-key&profile_id=${PROFILES.alice_main.id}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -127,7 +131,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}`);
+			const res = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -141,7 +145,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx, { MEDIA_GITHUB_CLIENT_ID: "" });
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			expect(res.status).toBe(500);
 			const data = (await res.json()) as { error: string };
@@ -149,7 +153,7 @@ describe("GitHub OAuth Integration", () => {
 		});
 	});
 
-	describe("GET /api/auth/github/callback", () => {
+	describe("GET /media/api/auth/github/callback", () => {
 		it("should handle missing code", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
@@ -157,7 +161,7 @@ describe("GitHub OAuth Integration", () => {
 			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github/callback?state=${state}`);
+			const res = await app.request(`/media/api/auth/github/callback?state=${state}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -166,7 +170,7 @@ describe("GitHub OAuth Integration", () => {
 
 		it("should handle missing state", async () => {
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request("/api/auth/github/callback?code=test-code");
+			const res = await app.request("/media/api/auth/github/callback?code=test-code");
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -175,7 +179,7 @@ describe("GitHub OAuth Integration", () => {
 
 		it("should handle invalid state", async () => {
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request("/api/auth/github/callback?code=test-code&state=invalid-base64");
+			const res = await app.request("/media/api/auth/github/callback?code=test-code&state=invalid-base64");
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -186,7 +190,7 @@ describe("GitHub OAuth Integration", () => {
 			const stateWithoutUserId = btoa(JSON.stringify({ profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github/callback?code=test-code&state=${stateWithoutUserId}`);
+			const res = await app.request(`/media/api/auth/github/callback?code=test-code&state=${stateWithoutUserId}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -197,7 +201,7 @@ describe("GitHub OAuth Integration", () => {
 			const stateWithoutProfileId = btoa(JSON.stringify({ user_id: USERS.alice.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github/callback?code=test-code&state=${stateWithoutProfileId}`);
+			const res = await app.request(`/media/api/auth/github/callback?code=test-code&state=${stateWithoutProfileId}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -208,7 +212,7 @@ describe("GitHub OAuth Integration", () => {
 			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github/callback?error=access_denied&state=${state}`);
+			const res = await app.request(`/media/api/auth/github/callback?error=access_denied&state=${state}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -219,7 +223,7 @@ describe("GitHub OAuth Integration", () => {
 			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github/callback?error=access_denied&error_description=User%20denied%20access&state=${state}`);
+			const res = await app.request(`/media/api/auth/github/callback?error=access_denied&error_description=User%20denied%20access&state=${state}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -232,7 +236,7 @@ describe("GitHub OAuth Integration", () => {
 			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
 			const app = createGitHubOAuthTestApp(ctx, { MEDIA_GITHUB_CLIENT_ID: "", MEDIA_GITHUB_CLIENT_SECRET: "" });
-			const res = await app.request(`/api/auth/github/callback?code=test-code&state=${state}`);
+			const res = await app.request(`/media/api/auth/github/callback?code=test-code&state=${state}`);
 
 			expect(res.status).toBe(302);
 			const location = getLocation(res);
@@ -247,7 +251,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const decodedState = getStateFromResponse(res);
 
@@ -264,8 +268,8 @@ describe("GitHub OAuth Integration", () => {
 
 			const app = createGitHubOAuthTestApp(ctx);
 
-			const res1 = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
-			const res2 = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res1 = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res2 = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const state1 = getStateFromResponse(res1);
 			const state2 = getStateFromResponse(res2);
@@ -281,7 +285,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx);
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
 			const scope = url.searchParams.get("scope");
@@ -297,12 +301,12 @@ describe("GitHub OAuth Integration", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx, { MEDIA_API_URL: "https://api.example.com" });
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
 			const redirectUri = url.searchParams.get("redirect_uri");
 
-			expect(redirectUri).toBe("https://api.example.com/api/auth/github/callback");
+			expect(redirectUri).toBe("https://api.example.com/media/api/auth/github/callback");
 		});
 
 		it("should use default MEDIA_API_URL when not configured", async () => {
@@ -311,19 +315,19 @@ describe("GitHub OAuth Integration", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createGitHubOAuthTestApp(ctx, { MEDIA_API_URL: "" });
-			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const res = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
 			const redirectUri = url.searchParams.get("redirect_uri");
 
-			expect(redirectUri).toBe("http://localhost:8787/api/auth/github/callback");
+			expect(redirectUri).toBe("http://localhost:8787/media/api/auth/github/callback");
 		});
 	});
 
 	describe("frontend redirect configuration", () => {
 		it("should redirect errors to MEDIA_FRONTEND_URL", async () => {
 			const app = createGitHubOAuthTestApp(ctx, { MEDIA_FRONTEND_URL: "https://app.example.com" });
-			const res = await app.request("/api/auth/github");
+			const res = await app.request("/media/api/auth/github");
 
 			const location = getLocation(res);
 			expect(location).toStartWith("https://app.example.com/connections");
@@ -331,7 +335,7 @@ describe("GitHub OAuth Integration", () => {
 
 		it("should use default MEDIA_FRONTEND_URL when not configured", async () => {
 			const app = createGitHubOAuthTestApp(ctx, { MEDIA_FRONTEND_URL: "" });
-			const res = await app.request("/api/auth/github");
+			const res = await app.request("/media/api/auth/github");
 
 			const location = getLocation(res);
 			expect(location).toStartWith("http://localhost:4321/connections");
@@ -349,8 +353,8 @@ describe("GitHub OAuth Integration", () => {
 
 			const app = createGitHubOAuthTestApp(ctx);
 
-			const aliceRes = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
-			const bobRes = await app.request(`/api/auth/github?key=${API_KEYS.bob_primary}&profile_id=${PROFILES.bob_main.id}`);
+			const aliceRes = await app.request(`/media/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
+			const bobRes = await app.request(`/media/api/auth/github?key=${API_KEYS.bob_primary}&profile_id=${PROFILES.bob_main.id}`);
 
 			const aliceState = getStateFromResponse(aliceRes);
 			const bobState = getStateFromResponse(bobRes);

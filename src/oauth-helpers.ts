@@ -218,7 +218,7 @@ export const validateOAuthRequest = <TState extends Record<string, unknown>>(
 	if (!stateResult.ok) return err(stateResult.error);
 
 	const { clientId, clientSecret } = config.getSecrets(c.env);
-	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/api/auth/${config.platform}/callback`;
+	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/media/api/auth/${config.platform}/callback`;
 
 	if (!clientId || !clientSecret) {
 		return err(redirectWithError(c, config.platform, "not_configured"));

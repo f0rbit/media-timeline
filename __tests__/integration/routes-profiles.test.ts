@@ -77,7 +77,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -92,7 +92,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -109,7 +109,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -121,7 +121,7 @@ describe("Profile Routes", () => {
 
 		it("returns 401 without authentication", async () => {
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles");
+			const res = await app.request("/media/api/v1/profiles");
 
 			expect(res.status).toBe(401);
 			const data = (await res.json()) as ErrorResponse;
@@ -135,7 +135,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -163,7 +163,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -189,7 +189,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -214,7 +214,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.bob_primary}`,
@@ -238,7 +238,7 @@ describe("Profile Routes", () => {
 			const invalidSlugs = ["AB", "Invalid_Slug", "-invalid", "invalid-", "has spaces"];
 
 			for (const slug of invalidSlugs) {
-				const res = await app.request("/api/v1/profiles", {
+				const res = await app.request("/media/api/v1/profiles", {
 					method: "POST",
 					headers: {
 						Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -260,7 +260,7 @@ describe("Profile Routes", () => {
 
 			const app = createTestApp(ctx);
 
-			const res = await app.request("/api/v1/profiles", {
+			const res = await app.request("/media/api/v1/profiles", {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -306,7 +306,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles/nonexistent-id", {
+			const res = await app.request("/media/api/v1/profiles/nonexistent-id", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -498,7 +498,7 @@ describe("Profile Routes", () => {
 			expect(data.deleted).toBe(true);
 			expect(data.id).toBe(PROFILES.alice_main.id);
 
-			const profile = await ctx.d1.prepare("SELECT * FROM profiles WHERE id = ?").bind(PROFILES.alice_main.id).first();
+			const profile = await ctx.d1.prepare("SELECT * FROM media_profiles WHERE id = ?").bind(PROFILES.alice_main.id).first();
 			expect(profile).toBeNull();
 		});
 
@@ -516,7 +516,7 @@ describe("Profile Routes", () => {
 
 			expect(res.status).toBe(200);
 
-			const profile = await ctx.d1.prepare("SELECT * FROM profiles WHERE id = ?").bind(PROFILES.alice_main.id).first();
+			const profile = await ctx.d1.prepare("SELECT * FROM media_profiles WHERE id = ?").bind(PROFILES.alice_main.id).first();
 			expect(profile).toBeNull();
 		});
 
@@ -540,7 +540,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles/nonexistent-id", {
+			const res = await app.request("/media/api/v1/profiles/nonexistent-id", {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -811,7 +811,7 @@ describe("Profile Routes", () => {
 
 			expect(res.status).toBe(204);
 
-			const filter = await ctx.d1.prepare("SELECT * FROM profile_filters WHERE id = ?").bind(filterId).first();
+			const filter = await ctx.d1.prepare("SELECT * FROM media_profile_filters WHERE id = ?").bind(filterId).first();
 			expect(filter).toBeNull();
 		});
 
@@ -880,7 +880,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request("/api/v1/profiles/nonexistent/timeline", {
+			const res = await app.request("/media/api/v1/profiles/nonexistent/timeline", {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 

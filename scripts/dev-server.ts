@@ -109,8 +109,9 @@ async function startDevServer() {
 
 	app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
-	// Set up mock env bindings for routes that need them (like OAuth)
-	app.use("/api/*", async (c, next) => {
+	const mediaApp = new Hono<{ Variables: Variables }>();
+
+	mediaApp.use("/api/*", async (c, next) => {
 		// biome-ignore lint: env bindings for dev server
 		(c as any).env = {
 			MEDIA_REDDIT_CLIENT_ID: process.env.MEDIA_REDDIT_CLIENT_ID || "",
@@ -127,9 +128,8 @@ async function startDevServer() {
 		await next();
 	});
 
-	// Auth middleware - skip for /api/auth/* (OAuth routes handle their own auth)
-	app.use("/api/*", async (c, next) => {
-		if (c.req.path.startsWith("/api/auth")) {
+	mediaApp.use("/api/*", async (c, next) => {
+		if (c.req.path.startsWith("/media/api/auth")) {
 			console.log(`[dev-server] Skipping auth for OAuth route: ${c.req.path}`);
 			return next();
 		}
@@ -137,11 +137,12 @@ async function startDevServer() {
 		return authMiddleware(c as any, next);
 	});
 
-	// Routes
-	app.route("/api/auth", authRoutes);
-	app.route("/api/v1/timeline", timelineRoutes);
-	app.route("/api/v1/connections", connectionRoutes);
-	app.route("/api/v1/profiles", profileRoutes);
+	mediaApp.route("/api/auth", authRoutes);
+	mediaApp.route("/api/v1/timeline", timelineRoutes);
+	mediaApp.route("/api/v1/connections", connectionRoutes);
+	mediaApp.route("/api/v1/profiles", profileRoutes);
+
+	app.route("/media", mediaApp);
 
 	app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 

@@ -275,7 +275,7 @@ authRoutes.get("/reddit", async c => {
 		return c.json({ error: "Reddit OAuth not configured" }, 500);
 	}
 
-	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/api/auth/reddit/callback`;
+	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/media/api/auth/reddit/callback`;
 	const state = encodeOAuthState(user_id, profile_id);
 
 	const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
@@ -344,7 +344,7 @@ authRoutes.get("/twitter", async c => {
 		return c.json({ error: "Twitter OAuth not configured" }, 500);
 	}
 
-	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/api/auth/twitter/callback`;
+	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/media/api/auth/twitter/callback`;
 
 	const codeVerifier = generateCodeVerifier();
 	const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -407,7 +407,7 @@ authRoutes.get("/github", async c => {
 		return c.json({ error: "GitHub OAuth not configured" }, 500);
 	}
 
-	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/api/auth/github/callback`;
+	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/media/api/auth/github/callback`;
 	const state = encodeOAuthState(user_id, profile_id);
 
 	const authUrl = new URL("https://github.com/login/oauth/authorize");
