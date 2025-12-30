@@ -1,9 +1,6 @@
 // Re-export providers, normalizers, and memory providers
 
-// Re-export GitHub normalizers
-// normalizeGitHubLegacy is for the old GitHubRaw format (tests, legacy snapshots)
-// cron.ts uses normalizeGitHub from timeline-github for new multi-store format
-export { normalizeGitHubLegacy as normalizeGitHub } from "../timeline-github";
+export * from "./registry";
 export { BlueskyMemoryProvider, BlueskyProvider, type BlueskyProviderConfig, normalizeBluesky } from "./bluesky";
 export { DevpadMemoryProvider, DevpadProvider, normalizeDevpad } from "./devpad";
 export { type GitHubFetchResult, GitHubProvider, type GitHubProviderConfig } from "./github";

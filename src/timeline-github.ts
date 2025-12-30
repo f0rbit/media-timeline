@@ -1,6 +1,6 @@
 import type { Backend } from "@f0rbit/corpus";
 import { createLogger } from "./logger";
-import type { GitHubRaw, GitHubRepoCommit, GitHubRepoPR, TimelineItem } from "./schema";
+import type { GitHubRepoCommit, GitHubRepoPR, TimelineItem } from "./schema";
 import { createGitHubCommitsStore, createGitHubPRsStore, listGitHubCommitStores, listGitHubPRStores } from "./storage";
 import { truncate } from "./utils";
 
@@ -113,64 +113,6 @@ export function normalizeGitHub(data: GitHubTimelineData): TimelineItem[] {
 
 	log.debug("Normalized PRs", { count: data.prs.length });
 	log.info("Normalization complete", { total_items: items.length });
-	return items;
-}
-
-// Legacy normalizer for the old GitHubRaw format (used in tests and old snapshots)
-export function normalizeGitHubLegacy(raw: GitHubRaw): TimelineItem[] {
-	const items: TimelineItem[] = [];
-
-	for (const commit of raw.commits) {
-		items.push({
-			id: `github:commit:${commit.repo}:${commit.sha.slice(0, 7)}`,
-			platform: "github",
-			type: "commit",
-			timestamp: commit.date,
-			title: truncate(commit.message),
-			url: commit.url,
-			payload: {
-				type: "commit",
-				sha: commit.sha,
-				message: commit.message,
-				repo: commit.repo,
-				branch: commit.branch,
-			},
-		});
-	}
-
-	const prMap = new Map<string, (typeof raw.pull_requests)[number]>();
-	for (const pr of raw.pull_requests) {
-		const key = `${pr.repo}:${pr.number}`;
-		const existing = prMap.get(key);
-		if (!existing || new Date(pr.created_at) > new Date(existing.created_at)) {
-			prMap.set(key, pr);
-		}
-	}
-
-	for (const pr of prMap.values()) {
-		items.push({
-			id: `github:pr:${pr.repo}:${pr.number}`,
-			platform: "github",
-			type: "pull_request",
-			timestamp: pr.merged_at ?? pr.created_at,
-			title: pr.title,
-			url: pr.url,
-			payload: {
-				type: "pull_request",
-				repo: pr.repo,
-				number: pr.number,
-				title: pr.title,
-				state: pr.state,
-				action: pr.action,
-				head_ref: pr.head_ref,
-				base_ref: pr.base_ref,
-				commit_shas: [],
-				merge_commit_sha: null,
-				commits: [],
-			},
-		});
-	}
-
 	return items;
 }
 
