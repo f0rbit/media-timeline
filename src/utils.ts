@@ -18,6 +18,34 @@ export {
 } from "@f0rbit/corpus";
 
 import { type FetchError, type Result, err, ok, pipe, try_catch, try_catch_async } from "@f0rbit/corpus";
+import type { Context } from "hono";
+import type { z } from "zod";
+
+export const safeJsonParse = <T>(value: string, schema: z.ZodType<T>): T | undefined => {
+	try {
+		const parsed = JSON.parse(value);
+		const result = schema.safeParse(parsed);
+		return result.success ? result.data : undefined;
+	} catch {
+		return undefined;
+	}
+};
+
+export const tryJsonParse = (value: string): unknown | undefined => {
+	try {
+		return JSON.parse(value);
+	} catch {
+		return undefined;
+	}
+};
+
+export const parseSettingsMap = (settings: Array<{ setting_key: string; setting_value: string }>): Record<string, unknown> =>
+	Object.fromEntries(
+		settings.flatMap(s => {
+			const parsed = tryJsonParse(s.setting_value);
+			return parsed !== undefined ? [[s.setting_key, parsed]] : [];
+		})
+	);
 
 // Encryption
 const SALT = new TextEncoder().encode("media-timeline-salt");
@@ -133,3 +161,14 @@ export const truncate = (text: string, max_length = 72): string => {
 // Other utilities
 export const uuid = (): string => crypto.randomUUID();
 export const random_sha = (): string => Array.from({ length: 40 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+
+// Background task utilities
+export const safeWaitUntil = (c: Context, task: () => Promise<void>, taskName: string): void => {
+	try {
+		c.executionCtx.waitUntil(task());
+	} catch {
+		task().catch(err => {
+			console.error(`[${taskName}] Background task failed:`, err);
+		});
+	}
+};
