@@ -1,7 +1,7 @@
 import { createLogger } from "../logger";
 import type { RedditComment, RedditCommentsStore, RedditMetaStore, RedditPost, RedditPostsStore } from "../schema";
 import type { Result } from "../utils";
-import { err, ok } from "../utils";
+import { type FetchError, err, ok, pipe } from "../utils";
 import { type ProviderError, mapHttpError } from "./types";
 
 const log = createLogger("reddit");
@@ -24,6 +24,8 @@ export type RedditFetchResult = {
 	comments: RedditCommentsStore;
 };
 
+const mapRedditError = (e: FetchError): ProviderError => (e.type === "http" ? mapHttpError(e.status, e.status_text) : { kind: "network_error", cause: e.cause instanceof Error ? e.cause : new Error(String(e.cause)) });
+
 export class RedditProvider {
 	readonly platform = "reddit";
 	private config: RedditProviderConfig;
@@ -33,82 +35,73 @@ export class RedditProvider {
 	}
 
 	async fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>> {
-		try {
-			log.debug("Starting fetch", { maxPosts: this.config.maxPosts, maxComments: this.config.maxComments });
+		log.debug("Starting fetch", { maxPosts: this.config.maxPosts, maxComments: this.config.maxComments });
 
-			const userResult = await this.fetchUser(token);
-			if (!userResult.ok) return userResult;
-			const { username, meta } = userResult.value;
-			log.info("Authenticated as", username);
+		return pipe(this.fetchUser(token))
+			.tap(({ username }) => log.info("Authenticated as", username))
+			.flat_map(async ({ username, meta }) => {
+				const [postsResult, commentsResult] = await Promise.all([this.fetchPosts(token, username), this.fetchComments(token, username)]);
 
-			const [postsResult, commentsResult] = await Promise.all([this.fetchPosts(token, username), this.fetchComments(token, username)]);
+				if (!postsResult.ok) return postsResult;
+				if (!commentsResult.ok) return commentsResult;
 
-			if (!postsResult.ok) return postsResult;
-			if (!commentsResult.ok) return commentsResult;
+				const subreddits = new Set<string>();
+				for (const post of postsResult.value) {
+					subreddits.add(post.subreddit);
+				}
+				for (const comment of commentsResult.value) {
+					subreddits.add(comment.subreddit);
+				}
 
-			const subreddits = new Set<string>();
-			for (const post of postsResult.value) {
-				subreddits.add(post.subreddit);
-			}
-			for (const comment of commentsResult.value) {
-				subreddits.add(comment.subreddit);
-			}
+				const result: RedditFetchResult = {
+					meta: {
+						...meta,
+						subreddits_active: Array.from(subreddits),
+					},
+					posts: {
+						username,
+						posts: postsResult.value,
+						total_posts: postsResult.value.length,
+						fetched_at: new Date().toISOString(),
+					},
+					comments: {
+						username,
+						comments: commentsResult.value,
+						total_comments: commentsResult.value.length,
+						fetched_at: new Date().toISOString(),
+					},
+				};
 
-			const result: RedditFetchResult = {
-				meta: {
-					...meta,
-					subreddits_active: Array.from(subreddits),
-				},
-				posts: {
-					username,
-					posts: postsResult.value,
-					total_posts: postsResult.value.length,
-					fetched_at: new Date().toISOString(),
-				},
-				comments: {
-					username,
-					comments: commentsResult.value,
-					total_comments: commentsResult.value.length,
-					fetched_at: new Date().toISOString(),
-				},
-			};
+				log.info("Fetch complete", { posts: result.posts.total_posts, comments: result.comments.total_comments });
 
-			log.info("Fetch complete", { posts: result.posts.total_posts, comments: result.comments.total_comments });
-
-			return ok(result);
-		} catch (error) {
-			log.error("Fetch failed", error);
-			return err(this.mapError(error));
-		}
+				return ok(result);
+			})
+			.tap_err(e => log.error("Fetch failed", e))
+			.result();
 	}
 
-	private async fetchUser(token: string): Promise<Result<{ username: string; meta: RedditMetaStore }, ProviderError>> {
-		const response = await fetch("https://oauth.reddit.com/api/v1/me", {
-			headers: this.headers(token),
-		});
-
-		if (!response.ok) {
-			return err(this.handleResponse(response));
-		}
-
-		const data = (await response.json()) as Record<string, unknown>;
-		const username = data.name as string;
-
-		return ok({
-			username,
-			meta: {
-				username,
-				user_id: data.id as string,
-				icon_img: data.icon_img as string | undefined,
-				total_karma: (data.total_karma as number) ?? 0,
-				link_karma: (data.link_karma as number) ?? 0,
-				comment_karma: (data.comment_karma as number) ?? 0,
-				created_utc: data.created_utc as number,
-				is_gold: (data.is_gold as boolean) ?? false,
-				subreddits_active: [],
-				fetched_at: new Date().toISOString(),
-			},
-		});
+	private fetchUser(token: string): Promise<Result<{ username: string; meta: RedditMetaStore }, ProviderError>> {
+		return pipe
+			.fetch<Record<string, unknown>, ProviderError>("https://oauth.reddit.com/api/v1/me", { headers: this.headers(token) }, mapRedditError)
+			.map(data => {
+				const username = data.name as string;
+				return {
+					username,
+					meta: {
+						username,
+						user_id: data.id as string,
+						icon_img: data.icon_img as string | undefined,
+						total_karma: (data.total_karma as number) ?? 0,
+						link_karma: (data.link_karma as number) ?? 0,
+						comment_karma: (data.comment_karma as number) ?? 0,
+						created_utc: data.created_utc as number,
+						is_gold: (data.is_gold as boolean) ?? false,
+						subreddits_active: [],
+						fetched_at: new Date().toISOString(),
+					},
+				};
+			})
+			.result();
 	}
 
 	private async fetchPosts(token: string, username: string): Promise<Result<RedditPost[], ProviderError>> {
@@ -129,26 +122,18 @@ export class RedditProvider {
 			url.searchParams.set("raw_json", "1");
 			if (after) url.searchParams.set("after", after);
 
-			const response = await fetch(url.toString(), {
-				headers: this.headers(token),
-			});
+			const result = await pipe.fetch<{ data: { children: Array<{ data: Record<string, unknown> }>; after: string | null } }, ProviderError>(url.toString(), { headers: this.headers(token) }, mapRedditError).result();
 
-			if (!response.ok) {
-				return err(this.handleResponse(response));
-			}
+			if (!result.ok) return result;
 
-			const data = (await response.json()) as {
-				data: { children: Array<{ data: Record<string, unknown> }>; after: string | null };
-			};
-			const children = data.data.children;
-
+			const children = result.value.data.children;
 			if (children.length === 0) break;
 
 			for (const child of children) {
 				items.push(parser(child.data));
 			}
 
-			after = data.data.after;
+			after = result.value.data.after;
 			if (!after) break;
 		}
 
@@ -209,16 +194,5 @@ export class RedditProvider {
 			Authorization: `Bearer ${token}`,
 			"User-Agent": this.config.userAgent,
 		};
-	}
-
-	private handleResponse(response: Response): ProviderError {
-		return mapHttpError(response.status, response.statusText, response.headers);
-	}
-
-	private mapError(error: unknown): ProviderError {
-		if (error instanceof Error) {
-			return { kind: "network_error", cause: error };
-		}
-		return { kind: "network_error", cause: new Error(String(error)) };
 	}
 }

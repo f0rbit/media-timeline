@@ -5,7 +5,7 @@ import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { type User, users } from "./schema";
-import { type Result, ok, try_catch_async, uuid } from "./utils";
+import { type FetchError, type Result, ok, pipe, try_catch_async, uuid } from "./utils";
 
 type DevpadUser = {
 	id: string;
@@ -17,8 +17,6 @@ type DevpadUser = {
 
 type VerifyResponse = { authenticated: true; user: DevpadUser } | { authenticated: false };
 
-type AuthError = { kind: "auth_failed"; message: string };
-
 type SyncError = { kind: "db_error"; message: string } | { kind: "user_not_found"; devpad_id: string };
 
 const DEFAULT_DEVPAD_URL = "https://devpad.tools";
@@ -27,33 +25,15 @@ type VerifyOptions = {
 	baseUrl?: string;
 };
 
-const verifyRequest = async (headers: HeadersInit, options: VerifyOptions = {}): Promise<Result<VerifyResponse, AuthError>> =>
-	try_catch_async(
-		async () => {
-			const baseUrl = options.baseUrl ?? DEFAULT_DEVPAD_URL;
-			const response = await fetch(`${baseUrl}/api/auth/verify`, {
-				method: "GET",
-				headers,
-			});
+const verifyRequest = (headers: HeadersInit, options: VerifyOptions = {}): Promise<VerifyResponse> => {
+	const baseUrl = options.baseUrl ?? DEFAULT_DEVPAD_URL;
 
-			if (!response.ok) {
-				return { authenticated: false } as VerifyResponse;
-			}
-
-			return (await response.json()) as VerifyResponse;
-		},
-		(e): AuthError => ({ kind: "auth_failed", message: String(e) })
-	);
-
-export const verifySessionCookie = async (cookie: string, options: VerifyOptions = {}): Promise<VerifyResponse> => {
-	const result = await verifyRequest({ Cookie: cookie }, options);
-	return result.ok ? result.value : { authenticated: false };
+	return pipe.fetch<VerifyResponse, FetchError>(`${baseUrl}/api/auth/verify`, { method: "GET", headers }, e => e).unwrap_or({ authenticated: false });
 };
 
-export const verifyApiKey = async (apiKey: string, options: VerifyOptions = {}): Promise<VerifyResponse> => {
-	const result = await verifyRequest({ Authorization: `Bearer ${apiKey}` }, options);
-	return result.ok ? result.value : { authenticated: false };
-};
+export const verifySessionCookie = (cookie: string, options: VerifyOptions = {}): Promise<VerifyResponse> => verifyRequest({ Cookie: cookie }, options);
+
+export const verifyApiKey = (apiKey: string, options: VerifyOptions = {}): Promise<VerifyResponse> => verifyRequest({ Authorization: `Bearer ${apiKey}` }, options);
 
 const findByDevpadId = async (db: Database, devpadId: string): Promise<User | undefined> => db.select().from(users).where(eq(users.devpad_user_id, devpadId)).get();
 

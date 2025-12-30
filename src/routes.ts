@@ -13,7 +13,7 @@ import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, valida
 import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
 import { DateGroupSchema, PlatformSchema, accountId, accountSettings, accounts, profiles, userId } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
-import { type FetchError, type Result, encrypt, err, fetch_result, match, ok, parseSettingsMap, pipe, safeWaitUntil, uuid } from "./utils";
+import { type FetchError, type Result, encrypt, err, match, ok, parseSettingsMap, pipe, safeWaitUntil, uuid } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -244,23 +244,25 @@ const twitterOAuthConfig: OAuthCallbackConfig<{ code_verifier: string }> = {
 	stateKeys: ["code_verifier"],
 };
 
-export const refreshRedditToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
-	fetch_result<OAuthTokenResponse, FetchError>(
-		"https://www.reddit.com/api/v1/access_token",
-		{
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
-				"User-Agent": "media-timeline/2.0.0",
+export const refreshRedditToken = (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
+	pipe
+		.fetch<OAuthTokenResponse, FetchError>(
+			"https://www.reddit.com/api/v1/access_token",
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
+					Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+					"User-Agent": "media-timeline/2.0.0",
+				},
+				body: new URLSearchParams({
+					grant_type: "refresh_token",
+					refresh_token: refreshToken,
+				}),
 			},
-			body: new URLSearchParams({
-				grant_type: "refresh_token",
-				refresh_token: refreshToken,
-			}),
-		},
-		e => e
-	);
+			e => e
+		)
+		.result();
 
 // GET /auth/reddit - Initiate Reddit OAuth
 authRoutes.get("/reddit", async c => {
@@ -313,23 +315,25 @@ const generateCodeChallenge = async (verifier: string): Promise<string> => {
 	return base64UrlEncode(new Uint8Array(hash));
 };
 
-export const refreshTwitterToken = async (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
-	fetch_result<OAuthTokenResponse, FetchError>(
-		"https://api.twitter.com/2/oauth2/token",
-		{
-			method: "POST",
-			headers: {
-				"Content-Type": "application/x-www-form-urlencoded",
-				Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+export const refreshTwitterToken = (refreshToken: string, clientId: string, clientSecret: string): Promise<Result<OAuthTokenResponse, FetchError>> =>
+	pipe
+		.fetch<OAuthTokenResponse, FetchError>(
+			"https://api.twitter.com/2/oauth2/token",
+			{
+				method: "POST",
+				headers: {
+					"Content-Type": "application/x-www-form-urlencoded",
+					Authorization: `Basic ${btoa(`${clientId}:${clientSecret}`)}`,
+				},
+				body: new URLSearchParams({
+					grant_type: "refresh_token",
+					refresh_token: refreshToken,
+					client_id: clientId,
+				}),
 			},
-			body: new URLSearchParams({
-				grant_type: "refresh_token",
-				refresh_token: refreshToken,
-				client_id: clientId,
-			}),
-		},
-		e => e
-	);
+			e => e
+		)
+		.result();
 
 // GET /auth/twitter - Initiate Twitter OAuth with PKCE
 authRoutes.get("/twitter", async c => {

@@ -1,40 +1,14 @@
 import { z } from "zod";
 import { type DevpadRaw, type DevpadTask, DevpadTaskSchema, type TaskPayload, type TimelineItem } from "../schema";
-import { try_catch_async } from "../utils";
+import { type FetchError, err, ok, pipe } from "../utils";
 import { BaseMemoryProvider } from "./memory-base";
-import { type FetchResult, type Provider, type ProviderError, toProviderError } from "./types";
+import { type FetchResult, type Provider, type ProviderError, mapHttpError } from "./types";
 
 // === PROVIDER (real API) ===
 
 const DevpadApiResponseSchema = z.array(DevpadTaskSchema);
 
-const handleDevpadResponse = async (response: Response): Promise<DevpadRaw> => {
-	if (response.status === 401) {
-		throw { kind: "auth_expired", message: "Devpad API key expired or invalid" } satisfies ProviderError;
-	}
-
-	if (response.status === 429) {
-		const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "60", 10);
-		throw { kind: "rate_limited", retry_after: retryAfter } satisfies ProviderError;
-	}
-
-	if (!response.ok) {
-		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
-	}
-
-	const json = await response.json();
-	const parsed = DevpadApiResponseSchema.safeParse(json);
-
-	if (!parsed.success) {
-		throw {
-			kind: "api_error",
-			status: 200,
-			message: `Invalid response format: ${parsed.error.message}`,
-		} satisfies ProviderError;
-	}
-
-	return { tasks: parsed.data, fetched_at: new Date().toISOString() };
-};
+const mapDevpadError = (e: FetchError): ProviderError => (e.type === "http" ? mapHttpError(e.status, e.status_text) : { kind: "network_error", cause: e.cause instanceof Error ? e.cause : new Error(String(e.cause)) });
 
 export class DevpadProvider implements Provider<DevpadRaw> {
 	readonly platform = "devpad";
@@ -42,18 +16,22 @@ export class DevpadProvider implements Provider<DevpadRaw> {
 	fetch(token: string): Promise<FetchResult<DevpadRaw>> {
 		const url = "https://devpad.tools/api/v0/tasks";
 
-		return try_catch_async(
-			async () =>
-				handleDevpadResponse(
-					await fetch(url, {
-						headers: {
-							Authorization: `Bearer ${token}`,
-							Accept: "application/json",
-						},
-					})
-				),
-			toProviderError
-		);
+		return pipe
+			.fetch<unknown, ProviderError>(
+				url,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: "application/json",
+					},
+				},
+				mapDevpadError
+			)
+			.flat_map(json => {
+				const parsed = DevpadApiResponseSchema.safeParse(json);
+				return parsed.success ? ok({ tasks: parsed.data, fetched_at: new Date().toISOString() } as DevpadRaw) : err({ kind: "api_error", status: 200, message: `Invalid response format: ${parsed.error.message}` } as ProviderError);
+			})
+			.result();
 	}
 }
 

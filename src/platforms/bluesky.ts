@@ -1,7 +1,7 @@
 import { type BlueskyFeedItem, type BlueskyRaw, BlueskyRawSchema, type PostPayload, type TimelineItem } from "../schema";
-import { try_catch_async } from "../utils";
+import { type FetchError, err, ok, pipe } from "../utils";
 import { BaseMemoryProvider } from "./memory-base";
-import { type FetchResult, type Provider, type ProviderError, toProviderError } from "./types";
+import { type FetchResult, type Provider, type ProviderError, mapHttpError } from "./types";
 
 // === PROVIDER (real API) ===
 
@@ -9,29 +9,9 @@ export type BlueskyProviderConfig = {
 	actor: string;
 };
 
-const handleBlueskyResponse = async (response: Response): Promise<BlueskyRaw> => {
-	if (response.status === 401) {
-		throw { kind: "auth_expired", message: "Bluesky token expired or invalid" } satisfies ProviderError;
-	}
+const mapBlueskyError = (e: FetchError): ProviderError => (e.type === "http" ? mapHttpError(e.status, e.status_text) : { kind: "network_error", cause: e.cause instanceof Error ? e.cause : new Error(String(e.cause)) });
 
-	if (response.status === 429) {
-		const retryAfter = Number.parseInt(response.headers.get("Retry-After") ?? "60", 10);
-		throw { kind: "rate_limited", retry_after: retryAfter } satisfies ProviderError;
-	}
-
-	if (!response.ok) {
-		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
-	}
-
-	const json = (await response.json()) as Record<string, unknown>;
-	const result = BlueskyRawSchema.safeParse({ ...json, fetched_at: new Date().toISOString() });
-
-	if (!result.success) {
-		throw { kind: "parse_error", message: result.error.message } satisfies ProviderError;
-	}
-
-	return result.data;
-};
+const parseBlueskyResponse = async (response: Response): Promise<Record<string, unknown>> => (await response.json()) as Record<string, unknown>;
 
 export class BlueskyProvider implements Provider<BlueskyRaw> {
 	readonly platform = "bluesky";
@@ -45,18 +25,23 @@ export class BlueskyProvider implements Provider<BlueskyRaw> {
 		const params = new URLSearchParams({ actor: this.config.actor, limit: "50" });
 		const url = `https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed?${params}`;
 
-		return try_catch_async(
-			async () =>
-				handleBlueskyResponse(
-					await fetch(url, {
-						headers: {
-							Authorization: `Bearer ${token}`,
-							Accept: "application/json",
-						},
-					})
-				),
-			toProviderError
-		);
+		return pipe
+			.fetch<Record<string, unknown>, ProviderError>(
+				url,
+				{
+					headers: {
+						Authorization: `Bearer ${token}`,
+						Accept: "application/json",
+					},
+				},
+				mapBlueskyError,
+				parseBlueskyResponse
+			)
+			.flat_map(json => {
+				const result = BlueskyRawSchema.safeParse({ ...json, fetched_at: new Date().toISOString() });
+				return result.success ? ok(result.data) : err({ kind: "parse_error", message: result.error.message } as ProviderError);
+			})
+			.result();
 	}
 }
 

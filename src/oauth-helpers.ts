@@ -4,7 +4,7 @@ import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
 import { type Platform, accounts, apiKeys, profiles } from "./schema";
-import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async, uuid } from "./utils";
+import { type FetchError, type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async, uuid } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -227,7 +227,12 @@ export const validateOAuthRequest = <TState extends Record<string, unknown>>(
 	return ok({ code, stateData: stateResult.value, redirectUri, clientId, clientSecret });
 };
 
-export const exchangeCodeForTokens = async <TState extends Record<string, unknown>>(
+const mapTokenExchangeError = (e: FetchError): OAuthError => ({
+	kind: "token_exchange_failed",
+	message: e.type === "http" ? `Token exchange failed: HTTP ${e.status}` : String(e.cause),
+});
+
+export const exchangeCodeForTokens = <TState extends Record<string, unknown>>(
 	code: string,
 	redirectUri: string,
 	clientId: string,
@@ -235,9 +240,10 @@ export const exchangeCodeForTokens = async <TState extends Record<string, unknow
 	config: OAuthCallbackConfig<TState>,
 	stateData: OAuthState<TState>
 ): Promise<Result<TokenResponse, OAuthError>> =>
-	try_catch_async(
-		async () => {
-			const response = await fetch(config.tokenUrl, {
+	pipe
+		.fetch<TokenResponse, OAuthError>(
+			config.tokenUrl,
+			{
 				method: "POST",
 				headers: {
 					"Content-Type": "application/x-www-form-urlencoded",
@@ -245,12 +251,10 @@ export const exchangeCodeForTokens = async <TState extends Record<string, unknow
 					...config.tokenHeaders,
 				},
 				body: config.tokenBody(code, redirectUri, stateData),
-			});
-			if (!response.ok) throw new Error(`Token exchange failed: ${response.status}`);
-			return response.json() as Promise<TokenResponse>;
-		},
-		(e): OAuthError => ({ kind: "token_exchange_failed", message: String(e) })
-	);
+			},
+			mapTokenExchangeError
+		)
+		.result();
 
 export const fetchOAuthUserProfile = async <TState extends Record<string, unknown>>(accessToken: string, config: OAuthCallbackConfig<TState>): Promise<Result<OAuthUser, OAuthError>> =>
 	try_catch_async(

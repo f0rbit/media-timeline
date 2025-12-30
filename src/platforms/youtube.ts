@@ -1,9 +1,9 @@
 import { z } from "zod";
 import { type TimelineItem, type VideoPayload, type YouTubeRaw, YouTubeRawSchema, type YouTubeVideo } from "../schema";
-import { try_catch_async } from "../utils";
+import { type FetchError, err, ok, pipe } from "../utils";
 import { BaseMemoryProvider } from "./memory-base";
 import type { FetchResult, Provider, ProviderError } from "./types";
-import { toProviderError } from "./types";
+import { mapHttpError } from "./types";
 
 // === PROVIDER (real API) ===
 
@@ -82,46 +82,14 @@ const transformPlaylistToRaw = (playlist: YouTubePlaylistResponse): YouTubeRaw =
 	fetched_at: new Date().toISOString(),
 });
 
-const handleYouTubeResponse = async (response: Response): Promise<YouTubeRaw> => {
-	if (response.status === 401 || response.status === 403) {
-		const body = await response.text();
-		if (body.includes("quotaExceeded") || body.includes("rateLimitExceeded")) {
-			throw { kind: "rate_limited", retry_after: 3600 } satisfies ProviderError;
+const mapYouTubeError = (e: FetchError): ProviderError => {
+	if (e.type === "http") {
+		if (e.status === 429 || e.status === 403) {
+			return { kind: "rate_limited", retry_after: 3600 };
 		}
-		throw { kind: "auth_expired", message: "YouTube API key invalid or expired" } satisfies ProviderError;
+		return mapHttpError(e.status, e.status_text);
 	}
-
-	if (response.status === 429) {
-		throw { kind: "rate_limited", retry_after: 3600 } satisfies ProviderError;
-	}
-
-	if (!response.ok) {
-		throw { kind: "api_error", status: response.status, message: await response.text() } satisfies ProviderError;
-	}
-
-	const json = await response.json();
-	const parsed = YouTubePlaylistResponseSchema.safeParse(json);
-
-	if (!parsed.success) {
-		throw {
-			kind: "api_error",
-			status: 200,
-			message: `Invalid YouTube API response: ${parsed.error.message}`,
-		} satisfies ProviderError;
-	}
-
-	const transformed = transformPlaylistToRaw(parsed.data);
-	const validated = YouTubeRawSchema.safeParse(transformed);
-
-	if (!validated.success) {
-		throw {
-			kind: "api_error",
-			status: 200,
-			message: `Failed to transform YouTube response: ${validated.error.message}`,
-		} satisfies ProviderError;
-	}
-
-	return validated.data;
+	return { kind: "network_error", cause: e.cause instanceof Error ? e.cause : new Error(String(e.cause)) };
 };
 
 export class YouTubeProvider implements Provider<YouTubeRaw> {
@@ -141,17 +109,19 @@ export class YouTubeProvider implements Provider<YouTubeRaw> {
 		});
 		const url = `https://www.googleapis.com/youtube/v3/playlistItems?${params}`;
 
-		return try_catch_async(
-			async () =>
-				handleYouTubeResponse(
-					await fetch(url, {
-						headers: {
-							Accept: "application/json",
-						},
-					})
-				),
-			toProviderError
-		);
+		return pipe
+			.fetch<unknown, ProviderError>(url, { headers: { Accept: "application/json" } }, mapYouTubeError)
+			.flat_map(json => {
+				const parsed = YouTubePlaylistResponseSchema.safeParse(json);
+				if (!parsed.success) {
+					return err({ kind: "api_error", status: 200, message: `Invalid YouTube API response: ${parsed.error.message}` } as ProviderError);
+				}
+
+				const transformed = transformPlaylistToRaw(parsed.data);
+				const validated = YouTubeRawSchema.safeParse(transformed);
+				return validated.success ? ok(validated.data) : err({ kind: "api_error", status: 200, message: `Failed to transform YouTube response: ${validated.error.message}` } as ProviderError);
+			})
+			.result();
 	}
 }
 
