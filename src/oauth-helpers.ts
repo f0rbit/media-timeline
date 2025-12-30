@@ -3,8 +3,10 @@ import type { Context } from "hono";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
-import { accounts, apiKeys, profiles } from "./schema";
-import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async } from "./utils";
+import { type Platform, accounts, apiKeys, profiles } from "./schema";
+import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async, uuid } from "./utils";
+
+export type { Platform };
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -12,8 +14,6 @@ type Variables = {
 };
 
 type HonoContext = Context<{ Bindings: Bindings; Variables: Variables }>;
-
-export type Platform = "reddit" | "twitter" | "github";
 
 export type OAuthStateBase = { user_id: string; profile_id: string; nonce: string };
 export type OAuthState<T extends Record<string, unknown> = Record<string, never>> = OAuthStateBase & T;
@@ -119,10 +119,7 @@ export type OAuthCallbackConfig<TState extends Record<string, unknown> = Record<
 	stateKeys?: (keyof TState)[];
 };
 
-export const getFrontendUrl = (c: HonoContext): string => {
-	// biome-ignore lint: env access
-	return (c.env as any).FRONTEND_URL || "http://localhost:4321";
-};
+export const getFrontendUrl = (c: HonoContext): string => c.env.FRONTEND_URL || "http://localhost:4321";
 
 export const validateOAuthQueryKey = async (c: HonoContext, ctx: AppContext, platform: string): Promise<Result<string, Response>> => {
 	const apiKey = c.req.query("key");
@@ -183,7 +180,7 @@ export const encodeOAuthState = <T extends Record<string, unknown>>(userId: stri
 	const stateData: OAuthState<T> = {
 		user_id: userId,
 		profile_id: profileId,
-		nonce: crypto.randomUUID(),
+		nonce: uuid(),
 		...(extra as T),
 	};
 	return btoa(JSON.stringify(stateData));
@@ -323,7 +320,7 @@ const createNewAccount = async (
 	tokenExpiresAt: string | null,
 	now: string
 ): Promise<Result<string, OAuthError>> => {
-	const accountId = crypto.randomUUID();
+	const accountId = uuid();
 
 	await db.insert(accounts).values({
 		id: accountId,
