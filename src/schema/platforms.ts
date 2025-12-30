@@ -1,5 +1,14 @@
 import { z } from "zod";
 
+export const PLATFORMS = ["github", "bluesky", "youtube", "devpad", "reddit", "twitter"] as const;
+export type Platform = (typeof PLATFORMS)[number];
+export const PlatformSchema = z.enum(PLATFORMS);
+
+export const MULTI_STORE_PLATFORMS = ["github", "reddit", "twitter"] as const;
+export type MultiStorePlatform = (typeof MULTI_STORE_PLATFORMS)[number];
+
+export const isMultiStorePlatform = (p: Platform): p is MultiStorePlatform => (MULTI_STORE_PLATFORMS as readonly string[]).includes(p);
+
 const FetchedAtSchema = z.object({
 	fetched_at: z.string().datetime(),
 });
@@ -20,7 +29,6 @@ export const GitHubBaseEventSchema = z.object({
 
 export const GitHubEventSchema = GitHubBaseEventSchema;
 
-// Extended commit schema for data fetched from Commits API
 export const GitHubExtendedCommitSchema = z.object({
 	sha: z.string(),
 	message: z.string(),
@@ -30,7 +38,6 @@ export const GitHubExtendedCommitSchema = z.object({
 	branch: z.string(),
 });
 
-// Pull request schema for data extracted from PullRequestEvents
 export const GitHubPullRequestSchema = z.object({
 	id: z.number(),
 	number: z.number(),
@@ -43,9 +50,7 @@ export const GitHubPullRequestSchema = z.object({
 	merged_at: z.string().optional(),
 	head_ref: z.string(),
 	base_ref: z.string(),
-	// Commit SHAs associated with this PR (fetched from pulls.listCommits)
 	commit_shas: z.array(z.string()).default([]),
-	// The merge commit SHA (for deduplication of merge commits)
 	merge_commit_sha: z.string().optional(),
 });
 
