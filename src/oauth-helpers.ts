@@ -6,8 +6,6 @@ import type { AppContext } from "./infrastructure";
 import { type Platform, accounts, apiKeys, profiles } from "./schema";
 import { type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async, uuid } from "./utils";
 
-export type { Platform };
-
 type Variables = {
 	auth: { user_id: string; key_id: string };
 	appContext: AppContext;
