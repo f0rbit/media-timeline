@@ -636,7 +636,7 @@ const now = () => new Date().toISOString();
 export const seedUser = async (ctx: TestContext, user: UserSeed): Promise<void> => {
 	const timestamp = now();
 	await ctx.d1
-		.prepare("INSERT INTO users (id, email, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
+		.prepare("INSERT INTO media_users (id, email, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
 		.bind(user.id, user.email ?? null, user.name ?? null, timestamp, timestamp)
 		.run();
 };
@@ -648,7 +648,7 @@ export const seedAccount = async (ctx: TestContext, profileId: string, account: 
 
 	await ctx.d1
 		.prepare(`
-      INSERT INTO accounts (
+      INSERT INTO media_accounts (
         id, profile_id, platform, platform_user_id, platform_username,
         access_token_encrypted, refresh_token_encrypted,
         is_active, created_at, updated_at
@@ -662,7 +662,7 @@ export const seedRateLimit = async (ctx: TestContext, accountId: string, state: 
 	const timestamp = now();
 	await ctx.d1
 		.prepare(`
-      INSERT INTO rate_limits (
+      INSERT INTO media_rate_limits (
         id, account_id, remaining, limit_total, reset_at,
         consecutive_failures, last_failure_at, circuit_open_until, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -687,7 +687,7 @@ export const seedApiKey = async (ctx: TestContext, userId: string, keyValue: str
 	const timestamp = now();
 
 	await ctx.d1
-		.prepare("INSERT INTO api_keys (id, user_id, key_hash, name, created_at) VALUES (?, ?, ?, ?, ?)")
+		.prepare("INSERT INTO media_api_keys (id, user_id, key_hash, name, created_at) VALUES (?, ?, ?, ?, ?)")
 		.bind(keyId, userId, keyHash, name ?? null, timestamp)
 		.run();
 
@@ -698,7 +698,7 @@ export const seedProfile = async (ctx: TestContext, userId: string, profile: Pro
 	const timestamp = now();
 	await ctx.d1
 		.prepare(`
-      INSERT INTO profiles (id, user_id, slug, name, description, theme, created_at, updated_at)
+      INSERT INTO media_profiles (id, user_id, slug, name, description, theme, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 		.bind(profile.id, userId, profile.slug, profile.name, profile.description ?? null, profile.theme ?? null, timestamp, timestamp)
@@ -717,7 +717,7 @@ export const seedProfileFilter = async (ctx: TestContext, profileId: string, fil
 	const filterId = uuid();
 	await ctx.d1
 		.prepare(`
-      INSERT INTO profile_filters (id, profile_id, account_id, filter_type, filter_key, filter_value, created_at, updated_at)
+      INSERT INTO media_profile_filters (id, profile_id, account_id, filter_type, filter_key, filter_value, created_at, updated_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `)
 		.bind(filterId, profileId, filter.account_id, filter.filter_type, filter.filter_key, filter.filter_value, timestamp, timestamp)
@@ -725,9 +725,9 @@ export const seedProfileFilter = async (ctx: TestContext, profileId: string, fil
 	return filterId;
 };
 
-export const getUser = async (ctx: TestContext, userId: string) => ctx.d1.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+export const getUser = async (ctx: TestContext, userId: string) => ctx.d1.prepare("SELECT * FROM media_users WHERE id = ?").bind(userId).first();
 
-export const getAccount = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM accounts WHERE id = ?").bind(accountId).first();
+export const getAccount = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM media_accounts WHERE id = ?").bind(accountId).first();
 
 // Helper to setup GitHub memory provider with data from legacy fixtures
 export const setupGitHubProvider = (ctx: TestContext, data: LegacyGitHubRaw): void => {
@@ -751,20 +751,20 @@ export const setupGitHubProvider = (ctx: TestContext, data: LegacyGitHubRaw): vo
 	}
 };
 
-export const getRateLimit = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM rate_limits WHERE account_id = ?").bind(accountId).first();
+export const getRateLimit = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM media_rate_limits WHERE account_id = ?").bind(accountId).first();
 
 export const getUserAccounts = async (ctx: TestContext, userId: string) =>
 	ctx.d1
 		.prepare(`
       SELECT a.*, p.user_id
-      FROM accounts a
-      INNER JOIN profiles p ON a.profile_id = p.id
+      FROM media_accounts a
+      INNER JOIN media_profiles p ON a.profile_id = p.id
       WHERE p.user_id = ?
     `)
 		.bind(userId)
 		.all();
 
-export const getProfileAccounts = async (ctx: TestContext, profileId: string) => ctx.d1.prepare("SELECT * FROM accounts WHERE profile_id = ?").bind(profileId).all();
+export const getProfileAccounts = async (ctx: TestContext, profileId: string) => ctx.d1.prepare("SELECT * FROM media_accounts WHERE profile_id = ?").bind(profileId).all();
 
 export const seedUserWithProfile = async (ctx: TestContext, user: UserSeed, profile: ProfileSeed): Promise<void> => {
 	await seedUser(ctx, user);

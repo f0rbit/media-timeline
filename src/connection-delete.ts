@@ -19,6 +19,7 @@ import {
 	listGitHubCommitStores,
 	listGitHubPRStores,
 	parseStoreId,
+	rawStoreId,
 	redditCommentsStoreId,
 	redditMetaStoreId,
 	redditPostsStoreId,
@@ -183,7 +184,7 @@ const deleteRedditStores = async (backend: Backend, accountId: string): Promise<
 };
 
 const deleteRawStore = async (backend: Backend, platform: string, accountId: string): Promise<string[]> => {
-	const storeId = `raw/${platform}/${accountId}`;
+	const storeId = rawStoreId(platform, accountId);
 	log.info("Deleting raw store", { step: "raw", storeId });
 	const deleted = await deleteStoreSnapshots(backend, storeId);
 	return deleted ? [storeId] : [];

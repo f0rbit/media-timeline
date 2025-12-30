@@ -12,18 +12,18 @@ type Variables = {
 };
 
 type TestBindings = {
-	GITHUB_CLIENT_ID: string;
-	GITHUB_CLIENT_SECRET: string;
-	APP_URL: string;
-	FRONTEND_URL: string;
+	MEDIA_GITHUB_CLIENT_ID: string;
+	MEDIA_GITHUB_CLIENT_SECRET: string;
+	MEDIA_API_URL: string;
+	MEDIA_FRONTEND_URL: string;
 };
 
 const createGitHubOAuthTestApp = (ctx: TestContext, envOverrides: Partial<TestBindings> = {}) => {
 	const defaultEnv: TestBindings = {
-		GITHUB_CLIENT_ID: envOverrides.GITHUB_CLIENT_ID ?? "test-client-id",
-		GITHUB_CLIENT_SECRET: envOverrides.GITHUB_CLIENT_SECRET ?? "test-client-secret",
-		APP_URL: envOverrides.APP_URL ?? "http://localhost:8787",
-		FRONTEND_URL: envOverrides.FRONTEND_URL ?? "http://localhost:4321",
+		MEDIA_GITHUB_CLIENT_ID: envOverrides.MEDIA_GITHUB_CLIENT_ID ?? "test-client-id",
+		MEDIA_GITHUB_CLIENT_SECRET: envOverrides.MEDIA_GITHUB_CLIENT_SECRET ?? "test-client-secret",
+		MEDIA_API_URL: envOverrides.MEDIA_API_URL ?? "http://localhost:8787",
+		MEDIA_FRONTEND_URL: envOverrides.MEDIA_FRONTEND_URL ?? "http://localhost:4321",
 	};
 
 	const app = new Hono<{ Bindings: TestBindings; Variables: Variables }>();
@@ -140,7 +140,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
-			const app = createGitHubOAuthTestApp(ctx, { GITHUB_CLIENT_ID: "" });
+			const app = createGitHubOAuthTestApp(ctx, { MEDIA_GITHUB_CLIENT_ID: "" });
 			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			expect(res.status).toBe(500);
@@ -231,7 +231,7 @@ describe("GitHub OAuth Integration", () => {
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			const state = btoa(JSON.stringify({ user_id: USERS.alice.id, profile_id: PROFILES.alice_main.id, nonce: "test-nonce" }));
 
-			const app = createGitHubOAuthTestApp(ctx, { GITHUB_CLIENT_ID: "", GITHUB_CLIENT_SECRET: "" });
+			const app = createGitHubOAuthTestApp(ctx, { MEDIA_GITHUB_CLIENT_ID: "", MEDIA_GITHUB_CLIENT_SECRET: "" });
 			const res = await app.request(`/api/auth/github/callback?code=test-code&state=${state}`);
 
 			expect(res.status).toBe(302);
@@ -291,12 +291,12 @@ describe("GitHub OAuth Integration", () => {
 	});
 
 	describe("redirect URI configuration", () => {
-		it("should use APP_URL for redirect_uri", async () => {
+		it("should use MEDIA_API_URL for redirect_uri", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
-			const app = createGitHubOAuthTestApp(ctx, { APP_URL: "https://api.example.com" });
+			const app = createGitHubOAuthTestApp(ctx, { MEDIA_API_URL: "https://api.example.com" });
 			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
@@ -305,12 +305,12 @@ describe("GitHub OAuth Integration", () => {
 			expect(redirectUri).toBe("https://api.example.com/api/auth/github/callback");
 		});
 
-		it("should use default APP_URL when not configured", async () => {
+		it("should use default MEDIA_API_URL when not configured", async () => {
 			await seedUser(ctx, USERS.alice);
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
-			const app = createGitHubOAuthTestApp(ctx, { APP_URL: "" });
+			const app = createGitHubOAuthTestApp(ctx, { MEDIA_API_URL: "" });
 			const res = await app.request(`/api/auth/github?key=${API_KEYS.alice_primary}&profile_id=${PROFILES.alice_main.id}`);
 
 			const url = parseLocationUrl(res);
@@ -321,16 +321,16 @@ describe("GitHub OAuth Integration", () => {
 	});
 
 	describe("frontend redirect configuration", () => {
-		it("should redirect errors to FRONTEND_URL", async () => {
-			const app = createGitHubOAuthTestApp(ctx, { FRONTEND_URL: "https://app.example.com" });
+		it("should redirect errors to MEDIA_FRONTEND_URL", async () => {
+			const app = createGitHubOAuthTestApp(ctx, { MEDIA_FRONTEND_URL: "https://app.example.com" });
 			const res = await app.request("/api/auth/github");
 
 			const location = getLocation(res);
 			expect(location).toStartWith("https://app.example.com/connections");
 		});
 
-		it("should use default FRONTEND_URL when not configured", async () => {
-			const app = createGitHubOAuthTestApp(ctx, { FRONTEND_URL: "" });
+		it("should use default MEDIA_FRONTEND_URL when not configured", async () => {
+			const app = createGitHubOAuthTestApp(ctx, { MEDIA_FRONTEND_URL: "" });
 			const res = await app.request("/api/auth/github");
 
 			const location = getLocation(res);

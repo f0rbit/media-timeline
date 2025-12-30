@@ -11,14 +11,14 @@ export type Bindings = {
 	BUCKET: R2Bucket;
 	EncryptionKey: string;
 	ENVIRONMENT: string;
-	REDDIT_CLIENT_ID?: string;
-	REDDIT_CLIENT_SECRET?: string;
-	TWITTER_CLIENT_ID?: string;
-	TWITTER_CLIENT_SECRET?: string;
-	GITHUB_CLIENT_ID?: string;
-	GITHUB_CLIENT_SECRET?: string;
-	APP_URL?: string;
-	FRONTEND_URL?: string;
+	MEDIA_REDDIT_CLIENT_ID?: string;
+	MEDIA_REDDIT_CLIENT_SECRET?: string;
+	MEDIA_TWITTER_CLIENT_ID?: string;
+	MEDIA_TWITTER_CLIENT_SECRET?: string;
+	MEDIA_GITHUB_CLIENT_ID?: string;
+	MEDIA_GITHUB_CLIENT_SECRET?: string;
+	MEDIA_API_URL?: string;
+	MEDIA_FRONTEND_URL?: string;
 };
 
 type CorpusBackend = {

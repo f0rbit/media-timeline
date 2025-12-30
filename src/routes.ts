@@ -218,7 +218,7 @@ const redditOAuthConfig: OAuthCallbackConfig = {
 		const data = (await response.json()) as { id: string; name: string };
 		return { id: data.id, username: data.name };
 	},
-	getSecrets: env => ({ clientId: env.REDDIT_CLIENT_ID, clientSecret: env.REDDIT_CLIENT_SECRET }),
+	getSecrets: env => ({ clientId: env.MEDIA_REDDIT_CLIENT_ID, clientSecret: env.MEDIA_REDDIT_CLIENT_SECRET }),
 };
 
 const twitterOAuthConfig: OAuthCallbackConfig<{ code_verifier: string }> = {
@@ -240,7 +240,7 @@ const twitterOAuthConfig: OAuthCallbackConfig<{ code_verifier: string }> = {
 		const data = (await response.json()) as { data: { id: string; username: string } };
 		return { id: data.data.id, username: data.data.username };
 	},
-	getSecrets: env => ({ clientId: env.TWITTER_CLIENT_ID, clientSecret: env.TWITTER_CLIENT_SECRET }),
+	getSecrets: env => ({ clientId: env.MEDIA_TWITTER_CLIENT_ID, clientSecret: env.MEDIA_TWITTER_CLIENT_SECRET }),
 	stateKeys: ["code_verifier"],
 };
 
@@ -270,12 +270,12 @@ authRoutes.get("/reddit", async c => {
 	if (!validation.ok) return validation.error;
 	const { user_id, profile_id } = validation.value;
 
-	const clientId = c.env.REDDIT_CLIENT_ID;
+	const clientId = c.env.MEDIA_REDDIT_CLIENT_ID;
 	if (!clientId) {
 		return c.json({ error: "Reddit OAuth not configured" }, 500);
 	}
 
-	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/reddit/callback`;
+	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/api/auth/reddit/callback`;
 	const state = encodeOAuthState(user_id, profile_id);
 
 	const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
@@ -339,12 +339,12 @@ authRoutes.get("/twitter", async c => {
 	if (!validation.ok) return validation.error;
 	const { user_id, profile_id } = validation.value;
 
-	const clientId = c.env.TWITTER_CLIENT_ID;
+	const clientId = c.env.MEDIA_TWITTER_CLIENT_ID;
 	if (!clientId) {
 		return c.json({ error: "Twitter OAuth not configured" }, 500);
 	}
 
-	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/twitter/callback`;
+	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/api/auth/twitter/callback`;
 
 	const codeVerifier = generateCodeVerifier();
 	const codeChallenge = await generateCodeChallenge(codeVerifier);
@@ -391,7 +391,7 @@ const githubOAuthConfig: OAuthCallbackConfig = {
 		const data = (await response.json()) as { id: number; login: string };
 		return { id: String(data.id), username: data.login };
 	},
-	getSecrets: env => ({ clientId: env.GITHUB_CLIENT_ID, clientSecret: env.GITHUB_CLIENT_SECRET }),
+	getSecrets: env => ({ clientId: env.MEDIA_GITHUB_CLIENT_ID, clientSecret: env.MEDIA_GITHUB_CLIENT_SECRET }),
 };
 
 // GET /auth/github - Initiate GitHub OAuth
@@ -402,12 +402,12 @@ authRoutes.get("/github", async c => {
 	if (!validation.ok) return validation.error;
 	const { user_id, profile_id } = validation.value;
 
-	const clientId = c.env.GITHUB_CLIENT_ID;
+	const clientId = c.env.MEDIA_GITHUB_CLIENT_ID;
 	if (!clientId) {
 		return c.json({ error: "GitHub OAuth not configured" }, 500);
 	}
 
-	const redirectUri = `${c.env.APP_URL || "http://localhost:8787"}/api/auth/github/callback`;
+	const redirectUri = `${c.env.MEDIA_API_URL || "http://localhost:8787"}/api/auth/github/callback`;
 	const state = encodeOAuthState(user_id, profile_id);
 
 	const authUrl = new URL("https://github.com/login/oauth/authorize");
@@ -424,8 +424,8 @@ authRoutes.get("/github/callback", async c => {
 	const ctx = getContext(c);
 	if (!ctx) throw new Error("AppContext not set");
 
-	const clientId = c.env.GITHUB_CLIENT_ID;
-	const clientSecret = c.env.GITHUB_CLIENT_SECRET;
+	const clientId = c.env.MEDIA_GITHUB_CLIENT_ID;
+	const clientSecret = c.env.MEDIA_GITHUB_CLIENT_SECRET;
 
 	const configWithSecrets: OAuthCallbackConfig = {
 		...githubOAuthConfig,

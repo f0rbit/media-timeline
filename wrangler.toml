@@ -17,3 +17,5 @@ bucket_name = "media-timeline"
 
 [vars]
 ENVIRONMENT = "development"
+MEDIA_API_URL = "http://localhost:8787"
+MEDIA_FRONTEND_URL = "http://localhost:4321"
