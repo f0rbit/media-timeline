@@ -190,4 +190,4 @@ export type NewRateLimit = InferInsertModel<typeof rateLimits>;
 export type AccountSetting = InferSelectModel<typeof accountSettings>;
 export type NewAccountSetting = InferInsertModel<typeof accountSettings>;
 
-export type CorpusPath = `raw/github/${string}` | `raw/bluesky/${string}` | `raw/youtube/${string}` | `raw/devpad/${string}` | `timeline/${string}`;
+export type CorpusPath = `media/raw/github/${string}` | `media/raw/bluesky/${string}` | `media/raw/youtube/${string}` | `media/raw/devpad/${string}` | `media/timeline/${string}`;
