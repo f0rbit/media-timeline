@@ -1,3 +1,5 @@
+// NOTE: @f0rbit/corpus doesn't export pipe/fetch_result from a browser-safe subpath yet
+// Using corpus/types for Result type, manual fetch implementation for browser compatibility
 import { type Result, err, ok } from "@f0rbit/corpus/types";
 
 const API_HOST = import.meta.env.PUBLIC_API_URL || "http://localhost:8787";
