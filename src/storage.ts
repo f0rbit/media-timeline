@@ -25,6 +25,8 @@ import {
 } from "./schema";
 import { type Result, err, ok } from "./utils";
 
+const STORAGE_PREFIX = "media";
+
 export type CorpusError = { kind: "store_not_found"; store_id: string };
 
 const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, schema: z.ZodType<TData>): Result<{ store: Store<TData>; id: TId }, CorpusError> => {
@@ -37,20 +39,20 @@ const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, 
 	return ok({ store, id });
 };
 
-export type RawStoreId = `raw/${string}/${string}`;
-export type TimelineStoreId = `timeline/${string}`;
-export type GitHubMetaStoreId = `github/${string}/meta`;
-export type GitHubCommitsStoreId = `github/${string}/commits/${string}/${string}`;
-export type GitHubPRsStoreId = `github/${string}/prs/${string}/${string}`;
+export type RawStoreId = `${typeof STORAGE_PREFIX}/raw/${string}/${string}`;
+export type TimelineStoreId = `${typeof STORAGE_PREFIX}/timeline/${string}`;
+export type GitHubMetaStoreId = `${typeof STORAGE_PREFIX}/github/${string}/meta`;
+export type GitHubCommitsStoreId = `${typeof STORAGE_PREFIX}/github/${string}/commits/${string}/${string}`;
+export type GitHubPRsStoreId = `${typeof STORAGE_PREFIX}/github/${string}/prs/${string}/${string}`;
 
 // Reddit store IDs
-export type RedditMetaStoreId = `reddit/${string}/meta`;
-export type RedditPostsStoreId = `reddit/${string}/posts`;
-export type RedditCommentsStoreId = `reddit/${string}/comments`;
+export type RedditMetaStoreId = `${typeof STORAGE_PREFIX}/reddit/${string}/meta`;
+export type RedditPostsStoreId = `${typeof STORAGE_PREFIX}/reddit/${string}/posts`;
+export type RedditCommentsStoreId = `${typeof STORAGE_PREFIX}/reddit/${string}/comments`;
 
 // Twitter store IDs
-export type TwitterMetaStoreId = `twitter/${string}/meta`;
-export type TwitterTweetsStoreId = `twitter/${string}/tweets`;
+export type TwitterMetaStoreId = `${typeof STORAGE_PREFIX}/twitter/${string}/meta`;
+export type TwitterTweetsStoreId = `${typeof STORAGE_PREFIX}/twitter/${string}/tweets`;
 
 export type StoreId = RawStoreId | TimelineStoreId | GitHubMetaStoreId | GitHubCommitsStoreId | GitHubPRsStoreId | RedditMetaStoreId | RedditPostsStoreId | RedditCommentsStoreId | TwitterMetaStoreId | TwitterTweetsStoreId;
 
@@ -68,78 +70,83 @@ export type ParsedStoreId =
 export const parseStoreId = (storeId: string): Result<ParsedStoreId, { kind: "invalid_store_id"; storeId: string }> => {
 	const parts = storeId.split("/");
 
-	// github/{accountId}/meta
-	if (parts[0] === "github" && parts[2] === "meta" && parts[1]) {
-		return ok({ type: "github_meta", accountId: parts[1] });
+	// Check for media prefix
+	if (parts[0] !== STORAGE_PREFIX) {
+		return err({ kind: "invalid_store_id", storeId });
 	}
 
-	// github/{accountId}/commits/{owner}/{repo}/{branch}
-	if (parts[0] === "github" && parts[2] === "commits" && parts[1] && parts[3] && parts[4] && parts[5]) {
-		return ok({ type: "github_commits", accountId: parts[1], owner: parts[3], repo: parts[4], branch: parts[5] });
+	// media/github/{accountId}/meta
+	if (parts[1] === "github" && parts[3] === "meta" && parts[2]) {
+		return ok({ type: "github_meta", accountId: parts[2] });
 	}
 
-	// github/{accountId}/prs/{owner}/{repo}
-	if (parts[0] === "github" && parts[2] === "prs" && parts[1] && parts[3] && parts[4]) {
-		return ok({ type: "github_prs", accountId: parts[1], owner: parts[3], repo: parts[4] });
+	// media/github/{accountId}/commits/{owner}/{repo}/{branch}
+	if (parts[1] === "github" && parts[3] === "commits" && parts[2] && parts[4] && parts[5] && parts[6]) {
+		return ok({ type: "github_commits", accountId: parts[2], owner: parts[4], repo: parts[5], branch: parts[6] });
 	}
 
-	// reddit/{accountId}/meta
-	if (parts[0] === "reddit" && parts[2] === "meta" && parts[1]) {
-		return ok({ type: "reddit_meta", accountId: parts[1] });
+	// media/github/{accountId}/prs/{owner}/{repo}
+	if (parts[1] === "github" && parts[3] === "prs" && parts[2] && parts[4] && parts[5]) {
+		return ok({ type: "github_prs", accountId: parts[2], owner: parts[4], repo: parts[5] });
 	}
 
-	// reddit/{accountId}/posts
-	if (parts[0] === "reddit" && parts[2] === "posts" && parts[1]) {
-		return ok({ type: "reddit_posts", accountId: parts[1] });
+	// media/reddit/{accountId}/meta
+	if (parts[1] === "reddit" && parts[3] === "meta" && parts[2]) {
+		return ok({ type: "reddit_meta", accountId: parts[2] });
 	}
 
-	// reddit/{accountId}/comments
-	if (parts[0] === "reddit" && parts[2] === "comments" && parts[1]) {
-		return ok({ type: "reddit_comments", accountId: parts[1] });
+	// media/reddit/{accountId}/posts
+	if (parts[1] === "reddit" && parts[3] === "posts" && parts[2]) {
+		return ok({ type: "reddit_posts", accountId: parts[2] });
 	}
 
-	// twitter/{accountId}/meta
-	if (parts[0] === "twitter" && parts[2] === "meta" && parts[1]) {
-		return ok({ type: "twitter_meta", accountId: parts[1] });
+	// media/reddit/{accountId}/comments
+	if (parts[1] === "reddit" && parts[3] === "comments" && parts[2]) {
+		return ok({ type: "reddit_comments", accountId: parts[2] });
 	}
 
-	// twitter/{accountId}/tweets
-	if (parts[0] === "twitter" && parts[2] === "tweets" && parts[1]) {
-		return ok({ type: "twitter_tweets", accountId: parts[1] });
+	// media/twitter/{accountId}/meta
+	if (parts[1] === "twitter" && parts[3] === "meta" && parts[2]) {
+		return ok({ type: "twitter_meta", accountId: parts[2] });
 	}
 
-	// raw/{platform}/{accountId}
-	if (parts[0] === "raw" && parts[1] && parts[2]) {
-		return ok({ type: "raw", platform: parts[1], accountId: parts[2] });
+	// media/twitter/{accountId}/tweets
+	if (parts[1] === "twitter" && parts[3] === "tweets" && parts[2]) {
+		return ok({ type: "twitter_tweets", accountId: parts[2] });
+	}
+
+	// media/raw/{platform}/{accountId}
+	if (parts[1] === "raw" && parts[2] && parts[3]) {
+		return ok({ type: "raw", platform: parts[2], accountId: parts[3] });
 	}
 
 	return err({ kind: "invalid_store_id", storeId });
 };
 
-export const rawStoreId = (platform: string, accountId: string): RawStoreId => `raw/${platform}/${accountId}`;
-export const timelineStoreId = (userId: string): TimelineStoreId => `timeline/${userId}`;
+export const rawStoreId = (platform: string, accountId: string): RawStoreId => `${STORAGE_PREFIX}/raw/${platform}/${accountId}`;
+export const timelineStoreId = (userId: string): TimelineStoreId => `${STORAGE_PREFIX}/timeline/${userId}`;
 
 // === GitHub Store ID Helpers ===
 
-export const githubMetaStoreId = (accountId: string): GitHubMetaStoreId => `github/${accountId}/meta`;
+export const githubMetaStoreId = (accountId: string): GitHubMetaStoreId => `${STORAGE_PREFIX}/github/${accountId}/meta`;
 
-export const githubCommitsStoreId = (accountId: string, owner: string, repo: string): GitHubCommitsStoreId => `github/${accountId}/commits/${owner}/${repo}`;
+export const githubCommitsStoreId = (accountId: string, owner: string, repo: string): GitHubCommitsStoreId => `${STORAGE_PREFIX}/github/${accountId}/commits/${owner}/${repo}`;
 
-export const githubPRsStoreId = (accountId: string, owner: string, repo: string): GitHubPRsStoreId => `github/${accountId}/prs/${owner}/${repo}`;
+export const githubPRsStoreId = (accountId: string, owner: string, repo: string): GitHubPRsStoreId => `${STORAGE_PREFIX}/github/${accountId}/prs/${owner}/${repo}`;
 
 // === Reddit Store ID Helpers ===
 
-export const redditMetaStoreId = (accountId: string): RedditMetaStoreId => `reddit/${accountId}/meta`;
+export const redditMetaStoreId = (accountId: string): RedditMetaStoreId => `${STORAGE_PREFIX}/reddit/${accountId}/meta`;
 
-export const redditPostsStoreId = (accountId: string): RedditPostsStoreId => `reddit/${accountId}/posts`;
+export const redditPostsStoreId = (accountId: string): RedditPostsStoreId => `${STORAGE_PREFIX}/reddit/${accountId}/posts`;
 
-export const redditCommentsStoreId = (accountId: string): RedditCommentsStoreId => `reddit/${accountId}/comments`;
+export const redditCommentsStoreId = (accountId: string): RedditCommentsStoreId => `${STORAGE_PREFIX}/reddit/${accountId}/comments`;
 
 // === Twitter Store ID Helpers ===
 
-export const twitterMetaStoreId = (accountId: string): TwitterMetaStoreId => `twitter/${accountId}/meta`;
+export const twitterMetaStoreId = (accountId: string): TwitterMetaStoreId => `${STORAGE_PREFIX}/twitter/${accountId}/meta`;
 
-export const twitterTweetsStoreId = (accountId: string): TwitterTweetsStoreId => `twitter/${accountId}/tweets`;
+export const twitterTweetsStoreId = (accountId: string): TwitterTweetsStoreId => `${STORAGE_PREFIX}/twitter/${accountId}/tweets`;
 
 export const RawDataSchema = z.union([GitHubRawSchema, BlueskyRawSchema, YouTubeRawSchema, DevpadRawSchema]);
 export const TimelineDataSchema = TimelineSchema;

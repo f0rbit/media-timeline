@@ -1,5 +1,5 @@
 import type { ConnectionWithSettings } from "@/utils/api-client";
-import { getApiKey } from "@/utils/api-client";
+import { apiUrls, getApiKey } from "@/utils/api-client";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
 import { Match, Show, Switch } from "solid-js";
 import ConnectionActions from "./ConnectionActions";
@@ -21,7 +21,6 @@ type Props = {
 };
 
 function RedditOAuthButton(props: { profileId: string }) {
-	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
 	const handleConnect = () => {
 		const apiKey = getApiKey();
@@ -29,7 +28,7 @@ function RedditOAuthButton(props: { profileId: string }) {
 			console.error("No API key available for Reddit OAuth");
 			return;
 		}
-		window.location.href = `${apiUrl}/api/auth/reddit?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
+		window.location.href = `${apiUrls.auth("/reddit")}?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
@@ -43,7 +42,6 @@ function RedditOAuthButton(props: { profileId: string }) {
 }
 
 function TwitterOAuthButton(props: { profileId: string }) {
-	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
 	const handleConnect = () => {
 		const apiKey = getApiKey();
@@ -51,7 +49,7 @@ function TwitterOAuthButton(props: { profileId: string }) {
 			console.error("No API key available for Twitter OAuth");
 			return;
 		}
-		window.location.href = `${apiUrl}/api/auth/twitter?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
+		window.location.href = `${apiUrls.auth("/twitter")}?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
@@ -65,7 +63,6 @@ function TwitterOAuthButton(props: { profileId: string }) {
 }
 
 function GitHubOAuthButton(props: { profileId: string }) {
-	const apiUrl = import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787";
 
 	const handleConnect = () => {
 		const apiKey = getApiKey();
@@ -73,7 +70,7 @@ function GitHubOAuthButton(props: { profileId: string }) {
 			console.error("No API key available for GitHub OAuth");
 			return;
 		}
-		window.location.href = `${apiUrl}/api/auth/github?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
+		window.location.href = `${apiUrls.auth("/github")}?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (

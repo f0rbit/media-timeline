@@ -1,20 +1,23 @@
-import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo, PRCommit, Platform, PlatformSettings, PostPayload, PullRequestPayload, TimelineItem, TimelineType } from "@schema/types";
+import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo, PRCommit, PlatformSettings, PostPayload, PullRequestPayload, TimelineItem, TimelineType } from "@schema/types";
 
-export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo, Platform, PlatformSettings, PostPayload, PRCommit, PullRequestPayload, TimelineItem, TimelineType };
+export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo, PlatformSettings, PostPayload, PRCommit, PullRequestPayload, TimelineItem, TimelineType };
+
+export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
 import { MOCK_API_KEY, MOCK_USER_ID, isDevMode } from "./mock-auth";
+import { api as apiUrls, type ApiError, type ApiResult, fetchApi } from "./api";
+
+export type { ApiError, ApiResult };
+export { apiUrls };
 
 type ApiClientConfig = {
-	baseUrl: string;
 	apiKey: string | null;
 };
 
 let config: ApiClientConfig = {
-	baseUrl: import.meta.env.PUBLIC_API_URL ?? "http://localhost:8787",
 	apiKey: null,
 };
 
-// Get effective API key - use mock key for localhost if no key explicitly set
 const getEffectiveApiKey = (): string | null => {
 	if (config.apiKey) return config.apiKey;
 	if (isDevMode()) return MOCK_API_KEY;
@@ -41,7 +44,6 @@ export function getMockUserId(): string {
 	return MOCK_USER_ID;
 }
 
-// Initialize mock auth for dev mode
 export function initMockAuth(): void {
 	if (isDevMode()) {
 		setApiKey(MOCK_API_KEY);
@@ -54,16 +56,7 @@ type RequestOptions = {
 	headers?: Record<string, string>;
 };
 
-export type ApiError = {
-	message: string;
-	status: number;
-};
-
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError };
-
-async function request<T>(path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
-	const { method = "GET", body, headers = {} } = options;
-
+const buildHeaders = (headers: Record<string, string> = {}): Record<string, string> => {
 	const requestHeaders: Record<string, string> = {
 		"Content-Type": "application/json",
 		...headers,
@@ -74,45 +67,24 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<A
 		requestHeaders.Authorization = `Bearer ${apiKey}`;
 	}
 
-	const url = `${config.baseUrl}/api/v1${path}`;
+	return requestHeaders;
+};
 
-	try {
-		const response = await fetch(url, {
-			method,
-			headers: requestHeaders,
-			body: body ? JSON.stringify(body) : undefined,
-		});
-
-		if (!response.ok) {
-			const errorBody = await response.json().catch(() => ({ message: "Unknown error" }));
-			return {
-				ok: false,
-				error: {
-					message: errorBody.message ?? errorBody.error ?? `HTTP ${response.status}`,
-					status: response.status,
-				},
-			};
-		}
-
-		const data = await response.json();
-		return { ok: true, data };
-	} catch (e) {
-		return {
-			ok: false,
-			error: {
-				message: e instanceof Error ? e.message : "Network error",
-				status: 0,
-			},
-		};
-	}
+async function request<T>(url: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
+	const { method = "GET", body, headers = {} } = options;
+	return fetchApi<T>(url, {
+		method,
+		headers: buildHeaders(headers),
+		body: body ? JSON.stringify(body) : undefined,
+	});
 }
 
 export const api = {
-	get: <T>(path: string) => request<T>(path, { method: "GET" }),
-	post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body }),
-	put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body }),
-	patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
-	delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
+	get: <T>(path: string) => request<T>(apiUrls.media(`/v1${path}`), { method: "GET" }),
+	post: <T>(path: string, body?: unknown) => request<T>(apiUrls.media(`/v1${path}`), { method: "POST", body }),
+	put: <T>(path: string, body?: unknown) => request<T>(apiUrls.media(`/v1${path}`), { method: "PUT", body }),
+	patch: <T>(path: string, body?: unknown) => request<T>(apiUrls.media(`/v1${path}`), { method: "PATCH", body }),
+	delete: <T>(path: string) => request<T>(apiUrls.media(`/v1${path}`), { method: "DELETE" }),
 };
 
 export type Connection = {
@@ -152,22 +124,22 @@ export type TimelineResponse = {
 };
 
 export const connections = {
-	list: (profileId: string) => api.get<ConnectionsResponse>(`/connections?profile_id=${profileId}`),
-	listWithSettings: (profileId: string) => api.get<ConnectionsWithSettingsResponse>(`/connections?profile_id=${profileId}&include_settings=true`),
-	create: (data: { platform: string; access_token: string; platform_username?: string; profile_id: string }) => api.post<{ account_id: string }>("/connections", data),
-	update: (accountId: string, data: { is_active?: boolean }) => api.patch<{ success: boolean; connection: Connection }>(`/connections/${accountId}`, data),
-	delete: (accountId: string) => api.delete<{ success: boolean }>(`/connections/${accountId}`),
-	refresh: (accountId: string) => api.post<{ status: string }>(`/connections/${accountId}/refresh`),
-	refreshAll: () => api.post<{ status: string; succeeded: number; failed: number }>("/connections/refresh-all"),
-	getSettings: (accountId: string) => api.get<{ settings: PlatformSettings }>(`/connections/${accountId}/settings`),
-	updateSettings: (accountId: string, settings: PlatformSettings) => api.put<{ updated: boolean }>(`/connections/${accountId}/settings`, { settings }),
-	getRepos: (accountId: string) => api.get<{ repos: GitHubRepo[] }>(`/connections/${accountId}/repos`),
-	getSubreddits: (accountId: string) => api.get<{ subreddits: string[]; username: string }>(`/connections/${accountId}/subreddits`),
+	list: (profileId: string) => request<ConnectionsResponse>(apiUrls.connections(`?profile_id=${profileId}`)),
+	listWithSettings: (profileId: string) => request<ConnectionsWithSettingsResponse>(apiUrls.connections(`?profile_id=${profileId}&include_settings=true`)),
+	create: (data: { platform: string; access_token: string; platform_username?: string; profile_id: string }) => request<{ account_id: string }>(apiUrls.connections(), { method: "POST", body: data }),
+	update: (accountId: string, data: { is_active?: boolean }) => request<{ success: boolean; connection: Connection }>(apiUrls.connections(`/${accountId}`), { method: "PATCH", body: data }),
+	delete: (accountId: string) => request<{ success: boolean }>(apiUrls.connections(`/${accountId}`), { method: "DELETE" }),
+	refresh: (accountId: string) => request<{ status: string }>(apiUrls.connections(`/${accountId}/refresh`), { method: "POST" }),
+	refreshAll: () => request<{ status: string; succeeded: number; failed: number }>(apiUrls.connections("/refresh-all"), { method: "POST" }),
+	getSettings: (accountId: string) => request<{ settings: PlatformSettings }>(apiUrls.connections(`/${accountId}/settings`)),
+	updateSettings: (accountId: string, settings: PlatformSettings) => request<{ updated: boolean }>(apiUrls.connections(`/${accountId}/settings`), { method: "PUT", body: { settings } }),
+	getRepos: (accountId: string) => request<{ repos: GitHubRepo[] }>(apiUrls.connections(`/${accountId}/repos`)),
+	getSubreddits: (accountId: string) => request<{ subreddits: string[]; username: string }>(apiUrls.connections(`/${accountId}/subreddits`)),
 };
 
 export const timeline = {
-	get: (userId: string) => api.get<TimelineResponse>(`/timeline/${userId}`),
-	getRaw: (userId: string, platform: string, accountId: string) => api.get<unknown>(`/timeline/${userId}/raw/${platform}?account_id=${accountId}`),
+	get: (userId: string) => request<TimelineResponse>(apiUrls.timeline(`/${userId}`)),
+	getRaw: (userId: string, platform: string, accountId: string) => request<unknown>(apiUrls.timeline(`/${userId}/raw/${platform}?account_id=${accountId}`)),
 };
 
 export type ProfileSummary = {
@@ -216,13 +188,13 @@ export type ProfileDetailResponse = {
 };
 
 export const profiles = {
-	list: () => api.get<ProfilesListResponse>("/profiles"),
-	get: (id: string) => api.get<ProfileDetailResponse>(`/profiles/${id}`),
+	list: () => request<ProfilesListResponse>(apiUrls.profiles()),
+	get: (id: string) => request<ProfileDetailResponse>(apiUrls.profiles(`/${id}`)),
 	getTimeline: (slug: string, params?: { limit?: number; before?: string }) => {
 		const query = new URLSearchParams();
 		if (params?.limit) query.set("limit", String(params.limit));
 		if (params?.before) query.set("before", params.before);
 		const queryString = query.toString();
-		return api.get<ProfileTimelineResponse>(`/profiles/${slug}/timeline${queryString ? `?${queryString}` : ""}`);
+		return request<ProfileTimelineResponse>(apiUrls.profiles(`/${slug}/timeline${queryString ? `?${queryString}` : ""}`));
 	},
 };

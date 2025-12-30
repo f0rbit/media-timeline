@@ -1,4 +1,4 @@
-import { api, initMockAuth } from "@/utils/api-client";
+import { api, apiUrls, initMockAuth } from "@/utils/api-client";
 import { For, Show, createResource, createSignal } from "solid-js";
 
 type ProfileFilter = {
@@ -28,7 +28,6 @@ type CreateProfileResponse = {
 	profile: Profile;
 };
 
-const API_BASE_URL = "https://media.devpad.tools";
 
 const fetchProfiles = async (): Promise<Profile[]> => {
 	initMockAuth();
@@ -72,7 +71,7 @@ export default function ProfileList() {
 	const [showCreateForm, setShowCreateForm] = createSignal(false);
 	const [copiedSlug, setCopiedSlug] = createSignal<string | null>(null);
 
-	const getApiEndpoint = (slug: string): string => `${API_BASE_URL}/api/v1/profiles/${slug}/timeline`;
+	const getApiEndpoint = (slug: string): string => `${apiUrls.profiles(`/${slug}/timeline`)}`;
 
 	const handleCopy = async (slug: string) => {
 		const endpoint = getApiEndpoint(slug);
@@ -174,7 +173,7 @@ type ProfileCardProps = {
 };
 
 function ProfileCard(props: ProfileCardProps) {
-	const endpoint = `https://media.devpad.tools/api/v1/profiles/${props.profile.slug}/timeline`;
+	const endpoint = apiUrls.profiles(`/${props.profile.slug}/timeline`);
 
 	return (
 		<div class={`card ${props.isCurrent ? "card-active" : ""}`}>

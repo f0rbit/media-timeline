@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { normalizeBluesky } from "../../src/platforms";
 import type { CommitGroup, TimelineItem } from "../../src/schema";
+import { rawStoreId } from "../../src/storage";
 import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "../../src/timeline";
 import { normalizeGitHub } from "../../src/timeline-github";
 import { first, unwrap } from "../../src/utils";
@@ -319,7 +320,7 @@ describe("timeline consistency", () => {
 			const timelineResult = await timelineStore.put(timelineData, {
 				parents: [
 					{
-						store_id: `raw/github/${ACCOUNTS.alice_github.id}`,
+						store_id: rawStoreId("github", ACCOUNTS.alice_github.id),
 						version: rawResult.value.version,
 						role: "source",
 					},
@@ -331,7 +332,7 @@ describe("timeline consistency", () => {
 			if (timelineResult.ok) {
 				const parents = timelineResult.value.parents ?? [];
 				expect(parents).toHaveLength(1);
-				expect(parents[0]?.store_id).toBe(`raw/github/${ACCOUNTS.alice_github.id}`);
+				expect(parents[0]?.store_id).toBe(rawStoreId("github", ACCOUNTS.alice_github.id));
 				expect(parents[0]?.version).toBe(rawResult.value.version);
 			}
 		});
