@@ -22,7 +22,7 @@ export default function RedditSettings(props: Props) {
 	const [subreddits] = createResource(async () => {
 		const result = await connections.getSubreddits(props.accountId);
 		if (!result.ok) return [];
-		return result.data.subreddits;
+		return result.value.subreddits;
 	});
 
 	const hiddenSubreddits = () => new Set(props.settings?.hidden_subreddits ?? []);

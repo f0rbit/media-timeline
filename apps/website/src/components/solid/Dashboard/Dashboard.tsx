@@ -20,8 +20,8 @@ export default function Dashboard(props: DashboardProps) {
 		async slug => {
 			if (!slug) return null;
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
-			if (result.ok === false) throw new Error(result.error.message);
-			return result.data;
+			if (!result.ok) throw new Error(result.error.message);
+			return result.value;
 		}
 	);
 

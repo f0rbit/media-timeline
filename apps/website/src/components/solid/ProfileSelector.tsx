@@ -20,7 +20,7 @@ const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => 
 		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
 		return initial ?? { authenticated: true, profiles: [] };
 	}
-	return { authenticated: true, profiles: result.data.profiles };
+	return { authenticated: true, profiles: result.value.profiles };
 };
 
 const getSlugFromUrl = () => {

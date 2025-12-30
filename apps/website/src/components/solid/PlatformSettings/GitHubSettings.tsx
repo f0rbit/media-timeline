@@ -18,7 +18,7 @@ export default function GitHubSettings(props: Props) {
 	const [repos] = createResource(async () => {
 		const result = await connections.getRepos(props.accountId);
 		if (!result.ok) return [];
-		return result.data.repos;
+		return result.value.repos;
 	});
 
 	const hiddenRepos = () => new Set(props.settings?.hidden_repos ?? []);

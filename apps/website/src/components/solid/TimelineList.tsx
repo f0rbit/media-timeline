@@ -41,7 +41,7 @@ export default function TimelineList() {
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
 			if (!result.ok) throw new Error(result.error.message);
 			return {
-				groups: result.data.data.groups,
+				groups: result.value.data.groups,
 				githubUsernames: [],
 			};
 		}

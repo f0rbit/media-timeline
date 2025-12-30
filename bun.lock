@@ -29,6 +29,7 @@
       "dependencies": {
         "@astrojs/cloudflare": "^12.6.12",
         "@astrojs/solid-js": "^5.0.4",
+        "@f0rbit/corpus": "0.2.2",
         "astro": "^5.0.0",
         "lucide-solid": "^0.454.0",
         "solid-js": "^1.9.3",

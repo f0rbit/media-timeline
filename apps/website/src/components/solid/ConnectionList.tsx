@@ -31,7 +31,7 @@ export default function ConnectionList() {
 		initMockAuth();
 		const result = await profiles.list();
 		if (!result.ok) return [];
-		return result.data.profiles;
+		return result.value.profiles;
 	});
 
 	const currentProfile = () => {
@@ -62,7 +62,7 @@ export default function ConnectionList() {
 			initMockAuth();
 			const result = await connections.listWithSettings(id);
 			if (!result.ok) throw new Error(result.error.message);
-			return result.data.accounts;
+			return result.value.accounts;
 		}
 	);
 

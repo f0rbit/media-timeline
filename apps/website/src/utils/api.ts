@@ -1,3 +1,5 @@
+import { type Result, err, ok } from "@f0rbit/corpus/types";
+
 const API_HOST = import.meta.env.PUBLIC_API_URL || "http://localhost:8787";
 
 const normalizePath = (path: string) => (path.startsWith("/") ? path : `/${path}`);
@@ -21,7 +23,7 @@ export type ApiError = {
 	status: number;
 };
 
-export type ApiResult<T> = { ok: true; data: T } | { ok: false; error: ApiError };
+export type ApiResult<T> = Result<T, ApiError>;
 
 export const fetchApi = async <T>(url: string, options?: RequestInit): Promise<ApiResult<T>> => {
 	try {
@@ -36,24 +38,18 @@ export const fetchApi = async <T>(url: string, options?: RequestInit): Promise<A
 
 		if (!response.ok) {
 			const errorBody = await response.json().catch(() => ({ message: "Unknown error" }));
-			return {
-				ok: false,
-				error: {
-					message: errorBody.message ?? errorBody.error ?? `HTTP ${response.status}`,
-					status: response.status,
-				},
-			};
+			return err({
+				message: errorBody.message ?? errorBody.error ?? `HTTP ${response.status}`,
+				status: response.status,
+			});
 		}
 
 		const data = await response.json();
-		return { ok: true, data };
+		return ok(data);
 	} catch (e) {
-		return {
-			ok: false,
-			error: {
-				message: e instanceof Error ? e.message : "Network error",
-				status: 0,
-			},
-		};
+		return err({
+			message: e instanceof Error ? e.message : "Network error",
+			status: 0,
+		});
 	}
 };
