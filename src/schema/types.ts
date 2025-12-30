@@ -1,4 +1,5 @@
-export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
+import type { Platform } from "./platforms";
+export type { Platform };
 
 export type TimelineType = "commit" | "post" | "video" | "task" | "pull_request" | "comment";
 

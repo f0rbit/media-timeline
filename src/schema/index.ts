@@ -1,6 +1,7 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { z } from "zod";
 
+export * from "./branded";
 export { accountSettings, accounts, apiKeys, profileFilters, profiles, rateLimits, users } from "./database";
 export {
 	type GitHubRepoCommit,
@@ -34,10 +35,14 @@ export {
 	GitHubPullRequestSchema,
 	GitHubRawSchema,
 	GitHubRepoSchema,
+	isMultiStorePlatform,
+	MULTI_STORE_PLATFORMS,
+	PLATFORMS,
 	YouTubeRawSchema,
 	YouTubeThumbnailSchema,
 	YouTubeVideoSchema,
 } from "./platforms";
+export type { MultiStorePlatform } from "./platforms";
 
 export {
 	type RedditComment,
@@ -68,13 +73,13 @@ export {
 	type YouTubeSettings,
 	YouTubeSettingsSchema,
 } from "./settings";
+export type { Platform } from "./platforms";
 export type {
 	CommentPayload,
 	CommitGroup,
 	CommitPayload,
 	DateGroup,
 	Payload,
-	Platform,
 	PostPayload,
 	PRCommit,
 	PullRequestPayload,

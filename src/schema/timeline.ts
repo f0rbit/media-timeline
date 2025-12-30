@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { PlatformSchema } from "./platforms";
 
-export const PlatformSchema = z.enum(["github", "bluesky", "youtube", "devpad", "reddit", "twitter"]);
+export { PlatformSchema };
 export const TimelineTypeSchema = z.enum(["commit", "post", "video", "task", "pull_request", "comment"]);
 
 export const CommitPayloadSchema = z.object({
@@ -122,7 +123,7 @@ export const TimelineSchema = z.object({
 	groups: z.array(DateGroupSchema),
 });
 
-export type Platform = z.infer<typeof PlatformSchema>;
+export type { Platform } from "./platforms";
 export type TimelineType = z.infer<typeof TimelineTypeSchema>;
 export type CommitPayload = z.infer<typeof CommitPayloadSchema>;
 export type PostPayload = z.infer<typeof PostPayloadSchema>;
