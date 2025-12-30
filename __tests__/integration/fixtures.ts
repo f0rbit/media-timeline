@@ -18,6 +18,7 @@ import type {
 	YouTubeRaw,
 	YouTubeVideo,
 } from "../../src/schema";
+import type { GitHubTimelineData } from "../../src/timeline-github";
 import { type DeepPartial, days_ago, hours_ago, merge_deep, minutes_ago, random_sha, uuid } from "../../src/utils";
 
 export type GitHubExtendedCommitInput = {
@@ -58,6 +59,23 @@ export const makeGitHubRaw = (commits: GitHubExtendedCommit[] = [], events: GitH
 	commits,
 	pull_requests: [],
 	fetched_at: fetchedAt ?? new Date().toISOString(),
+});
+
+export const makeGitHubTimelineData = (commits: GitHubExtendedCommit[] = []): GitHubTimelineData => ({
+	commits: commits.map(c => ({
+		sha: c.sha,
+		message: c.message,
+		author_name: "Test User",
+		author_email: "test@example.com",
+		author_date: c.date,
+		committer_name: "Test User",
+		committer_email: "test@example.com",
+		committer_date: c.date,
+		url: c.url,
+		branch: c.branch,
+		_repo: c.repo,
+	})),
+	prs: [],
 });
 
 export const makeBlueskyAuthor = (overrides: DeepPartial<BlueskyAuthor> = {}): BlueskyAuthor =>
@@ -171,6 +189,38 @@ export const GITHUB_FIXTURES = {
 	},
 
 	empty: () => makeGitHubRaw([]),
+};
+
+export const GITHUB_TIMELINE_FIXTURES = {
+	singleCommit: (repo = "alice/project", timestamp = hours_ago(1)) => {
+		return makeGitHubTimelineData([makeGitHubExtendedCommit({ repo, date: timestamp, message: "Initial commit" })]);
+	},
+
+	multipleCommitsSameDay: (repo = "alice/project", baseTimestamp = hours_ago(2)) => {
+		return makeGitHubTimelineData([
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature A" }),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "feat: add feature B" }),
+			makeGitHubExtendedCommit({ repo, date: baseTimestamp, message: "fix: bug fix" }),
+		]);
+	},
+
+	multipleReposSameDay: (timestamp = hours_ago(1)) => {
+		return makeGitHubTimelineData([makeGitHubExtendedCommit({ repo: "alice/repo-a", date: timestamp, message: "update repo-a" }), makeGitHubExtendedCommit({ repo: "alice/repo-b", date: timestamp, message: "update repo-b" })]);
+	},
+
+	acrossMultipleDays: () => {
+		return makeGitHubTimelineData([
+			makeGitHubExtendedCommit({ repo: "alice/project", date: days_ago(0), message: "today commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: days_ago(1), message: "yesterday commit" }),
+			makeGitHubExtendedCommit({ repo: "alice/project", date: days_ago(2), message: "two days ago commit" }),
+		]);
+	},
+
+	withNonPushEvents: () => {
+		return makeGitHubTimelineData([makeGitHubExtendedCommit({ date: hours_ago(1), message: "a commit" })]);
+	},
+
+	empty: () => makeGitHubTimelineData([]),
 };
 
 // New format fixtures for GitHubFetchResult (used by GitHubMemoryProvider)

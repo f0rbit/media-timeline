@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { normalizeBluesky, normalizeGitHub } from "../../src/platforms";
+import { normalizeBluesky } from "../../src/platforms";
 import type { CommitGroup, TimelineItem } from "../../src/schema";
 import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "../../src/timeline";
+import { normalizeGitHub } from "../../src/timeline-github";
 import { first, unwrap } from "../../src/utils";
-import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, PROFILES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
+import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, GITHUB_TIMELINE_FIXTURES, PROFILES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubTimelineData } from "./fixtures";
 import { type TestContext, createTestContext, seedAccount, seedProfile, seedUser } from "./setup";
 
 const isCommitGroup = (entry: TimelineEntry): entry is CommitGroup => entry.type === "commit_group";
@@ -35,13 +36,13 @@ describe("timeline consistency", () => {
 	describe("commit grouping", () => {
 		it("groups commits from same repo on same day", async () => {
 			const timestamp = daysAgo(0);
-			const raw = makeGitHubRaw([
+			const data = makeGitHubTimelineData([
 				makeGitHubExtendedCommit({ sha: "aaa", date: timestamp, repo: "user/repo", message: "commit A" }),
 				makeGitHubExtendedCommit({ sha: "bbb", date: timestamp, repo: "user/repo", message: "commit B" }),
 				makeGitHubExtendedCommit({ sha: "ccc", date: timestamp, repo: "user/repo", message: "commit C" }),
 			]);
 
-			const items = normalizeGitHub(raw);
+			const items = normalizeGitHub(data);
 			expect(items).toHaveLength(3);
 
 			const grouped = groupCommits(items);
@@ -57,12 +58,12 @@ describe("timeline consistency", () => {
 
 		it("keeps commits from different repos separate", async () => {
 			const timestamp = daysAgo(0);
-			const raw = makeGitHubRaw([
+			const data = makeGitHubTimelineData([
 				makeGitHubExtendedCommit({ sha: "aaa", date: timestamp, repo: "user/repo-a", message: "commit in repo-a" }),
 				makeGitHubExtendedCommit({ sha: "bbb", date: timestamp, repo: "user/repo-b", message: "commit in repo-b" }),
 			]);
 
-			const items = normalizeGitHub(raw);
+			const items = normalizeGitHub(data);
 			expect(items).toHaveLength(2);
 
 			const grouped = groupCommits(items);
@@ -76,12 +77,12 @@ describe("timeline consistency", () => {
 		});
 
 		it("keeps commits from same repo on different days separate", async () => {
-			const raw = makeGitHubRaw([
+			const data = makeGitHubTimelineData([
 				makeGitHubExtendedCommit({ sha: "today", date: daysAgo(0), repo: "user/repo", message: "today commit" }),
 				makeGitHubExtendedCommit({ sha: "yesterday", date: daysAgo(1), repo: "user/repo", message: "yesterday commit" }),
 			]);
 
-			const items = normalizeGitHub(raw);
+			const items = normalizeGitHub(data);
 			expect(items).toHaveLength(2);
 
 			const grouped = groupCommits(items);
@@ -93,10 +94,10 @@ describe("timeline consistency", () => {
 		});
 
 		it("preserves non-commit items after grouping", async () => {
-			const githubRaw = GITHUB_FIXTURES.singleCommit();
+			const githubData = GITHUB_TIMELINE_FIXTURES.singleCommit();
 			const blueskyRaw = BLUESKY_FIXTURES.singlePost();
 
-			const commitItems = normalizeGitHub(githubRaw);
+			const commitItems = normalizeGitHub(githubData);
 			const postItems = normalizeBluesky(blueskyRaw);
 			const allItems = [...commitItems, ...postItems];
 
@@ -163,13 +164,13 @@ describe("timeline consistency", () => {
 		});
 
 		it("groups items by date correctly", () => {
-			const raw = makeGitHubRaw([
+			const data = makeGitHubTimelineData([
 				makeGitHubExtendedCommit({ date: daysAgo(0), repo: "user/repo", message: "today" }),
 				makeGitHubExtendedCommit({ date: daysAgo(1), repo: "user/repo", message: "yesterday" }),
 				makeGitHubExtendedCommit({ date: daysAgo(0), repo: "user/other", message: "also today" }),
 			]);
 
-			const items = normalizeGitHub(raw);
+			const items = normalizeGitHub(data);
 			const grouped = groupCommits(items);
 			const dateGroups = groupByDate(grouped);
 
@@ -229,7 +230,7 @@ describe("timeline consistency", () => {
 			const timestamp2 = hoursAgo(2);
 			const timestamp3 = hoursAgo(3);
 
-			const githubRaw = makeGitHubRaw([makeGitHubExtendedCommit({ date: timestamp2, repo: "user/repo", message: "github" })]);
+			const githubData = makeGitHubTimelineData([makeGitHubExtendedCommit({ date: timestamp2, repo: "user/repo", message: "github" })]);
 
 			const blueskyRaw = makeBlueskyRaw([
 				makeBlueskyFeedItem({
@@ -240,7 +241,7 @@ describe("timeline consistency", () => {
 				}),
 			]);
 
-			const items = [...normalizeGitHub(githubRaw), ...normalizeBluesky(blueskyRaw)];
+			const items = [...normalizeGitHub(githubData), ...normalizeBluesky(blueskyRaw)];
 
 			const sorted = combineTimelines(items);
 
@@ -349,7 +350,7 @@ describe("timeline consistency", () => {
 			const timeline1 = {
 				user_id: USERS.alice.id,
 				generated_at: new Date().toISOString(),
-				groups: groupByDate(groupCommits(normalizeGitHub(raw1))),
+				groups: groupByDate(groupCommits(normalizeGitHub(GITHUB_TIMELINE_FIXTURES.singleCommit()))),
 			};
 			const t1Result = await timelineStore.put(timeline1);
 			expect(t1Result.ok).toBe(true);
@@ -360,7 +361,7 @@ describe("timeline consistency", () => {
 			const timeline2 = {
 				user_id: USERS.alice.id,
 				generated_at: new Date().toISOString(),
-				groups: groupByDate(groupCommits(normalizeGitHub(raw2))),
+				groups: groupByDate(groupCommits(normalizeGitHub(GITHUB_TIMELINE_FIXTURES.multipleCommitsSameDay()))),
 			};
 			const t2Result = await timelineStore.put(timeline2);
 			expect(t2Result.ok).toBe(true);
@@ -375,18 +376,18 @@ describe("timeline consistency", () => {
 	describe("edge cases", () => {
 		it("handles commits with very long messages", () => {
 			const longMessage = "a".repeat(1000);
-			const raw = makeGitHubRaw([makeGitHubExtendedCommit({ message: longMessage })]);
+			const data = makeGitHubTimelineData([makeGitHubExtendedCommit({ message: longMessage })]);
 
-			const items = normalizeGitHub(raw);
+			const items = normalizeGitHub(data);
 			expect(items).toHaveLength(1);
 			expect(items[0]?.title.length).toBeLessThanOrEqual(72);
 		});
 
 		it("handles commits with multi-line messages", () => {
 			const multiLineMessage = "First line\n\nThis is a body\nWith multiple lines";
-			const raw = makeGitHubRaw([makeGitHubExtendedCommit({ message: multiLineMessage })]);
+			const data = makeGitHubTimelineData([makeGitHubExtendedCommit({ message: multiLineMessage })]);
 
-			const items = normalizeGitHub(raw);
+			const items = normalizeGitHub(data);
 			expect(items[0]?.title).toBe("First line");
 		});
 
@@ -405,8 +406,8 @@ describe("timeline consistency", () => {
 		});
 
 		it("handles empty commits array", () => {
-			const raw = GITHUB_FIXTURES.empty();
-			const items = normalizeGitHub(raw);
+			const data = GITHUB_TIMELINE_FIXTURES.empty();
+			const items = normalizeGitHub(data);
 			expect(items).toHaveLength(0);
 		});
 
@@ -417,8 +418,8 @@ describe("timeline consistency", () => {
 		});
 
 		it("processes commits and ignores non-relevant events", () => {
-			const raw = GITHUB_FIXTURES.withNonPushEvents();
-			const items = normalizeGitHub(raw);
+			const data = GITHUB_TIMELINE_FIXTURES.withNonPushEvents();
+			const items = normalizeGitHub(data);
 			expect(items).toHaveLength(1);
 			expect(items[0]?.type).toBe("commit");
 		});
