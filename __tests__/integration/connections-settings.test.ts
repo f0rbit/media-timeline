@@ -36,7 +36,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -58,7 +58,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -99,7 +99,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -122,7 +122,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -155,7 +155,7 @@ describe("Connection Settings API", () => {
 
 			const app = createTestApp(ctx);
 
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -172,7 +172,7 @@ describe("Connection Settings API", () => {
 			const data = (await res.json()) as UpdateResponse;
 			expect(data.updated).toBe(true);
 
-			const getRes = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			const getRes = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -189,7 +189,7 @@ describe("Connection Settings API", () => {
 
 			const app = createTestApp(ctx);
 
-			await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -200,7 +200,7 @@ describe("Connection Settings API", () => {
 				}),
 			});
 
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -213,7 +213,7 @@ describe("Connection Settings API", () => {
 
 			expect(res.status).toBe(200);
 
-			const getRes = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			const getRes = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -229,7 +229,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.bob_primary}`,
@@ -272,7 +272,7 @@ describe("Connection Settings API", () => {
 
 			const app = createTestApp(ctx);
 
-			await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
+			await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/settings`, {
 				method: "PUT",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -283,7 +283,7 @@ describe("Connection Settings API", () => {
 				}),
 			});
 
-			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}&include_settings=true`, {
+			const res = await app.request(`/media/api/v1/connections?profile_id=${PROFILES.alice_main.id}&include_settings=true`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -299,7 +299,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -349,7 +349,7 @@ describe("Connection Settings API", () => {
 			await store.put(metaData);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/repos`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/repos`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -379,7 +379,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}/repos`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}/repos`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -395,7 +395,7 @@ describe("Connection Settings API", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_bluesky.id}/repos`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_bluesky.id}/repos`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 

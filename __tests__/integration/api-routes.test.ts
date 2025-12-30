@@ -183,7 +183,7 @@ describe("API routes", () => {
 			await store.put(rawData);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/timeline/user-alice/raw/github?account_id=${ACCOUNTS.alice_github.id}`, { headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` } });
+			const res = await app.request(`/media/api/v1/timeline/user-alice/raw/github?account_id=${ACCOUNTS.alice_github.id}`, { headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` } });
 
 			expect(res.status).toBe(200);
 			const data = (await res.json()) as RawResponse;
@@ -231,7 +231,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -247,7 +247,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/connections?profile_id=${PROFILES.alice_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -365,7 +365,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -388,7 +388,7 @@ describe("API routes", () => {
 			await seedApiKey(ctx, USERS.bob.id, API_KEYS.bob_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
+			const res = await app.request(`/media/api/v1/connections/${ACCOUNTS.alice_github.id}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.bob_primary}` },
 			});

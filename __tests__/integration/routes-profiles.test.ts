@@ -289,7 +289,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -322,7 +322,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.bob_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.bob_main.id}`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -339,7 +339,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -361,7 +361,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -384,7 +384,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -404,7 +404,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -424,7 +424,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -445,7 +445,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.bob_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.bob_main.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -466,7 +466,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "PATCH",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -488,7 +488,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -509,7 +509,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -527,7 +527,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.bob_main.id}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.bob_main.id}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -570,7 +570,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -587,7 +587,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -603,7 +603,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.bob_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.bob_main.id}/filters`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -619,7 +619,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -649,7 +649,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -675,7 +675,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -699,7 +699,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -722,7 +722,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -748,7 +748,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -772,7 +772,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters`, {
 				method: "POST",
 				headers: {
 					Authorization: `Bearer ${API_KEYS.alice_primary}`,
@@ -804,7 +804,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters/${filterId}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters/${filterId}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -821,7 +821,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.id}/filters/nonexistent-filter`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.id}/filters/nonexistent-filter`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -843,7 +843,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.bob_main.id}/filters/${filterId}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.bob_main.id}/filters/${filterId}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -865,7 +865,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_work.id}/filters/${filterId}`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_work.id}/filters/${filterId}`, {
 				method: "DELETE",
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
@@ -896,7 +896,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.bob_main.slug}/timeline`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.bob_main.slug}/timeline`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -909,7 +909,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline?limit=1000`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline?limit=1000`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
@@ -922,7 +922,7 @@ describe("Profile Routes", () => {
 			await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 			const app = createTestApp(ctx);
-			const res = await app.request(`/api/v1/profiles/${PROFILES.alice_main.slug}/timeline?before=invalid-date`, {
+			const res = await app.request(`/media/api/v1/profiles/${PROFILES.alice_main.slug}/timeline?before=invalid-date`, {
 				headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 			});
 
