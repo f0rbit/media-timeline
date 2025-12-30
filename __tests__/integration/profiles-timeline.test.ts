@@ -523,7 +523,7 @@ describe("Profile Timeline API", () => {
 				await seedApiKey(ctx, USERS.alice.id, API_KEYS.alice_primary);
 
 				const app = createTestApp(ctx);
-				const res = await app.request("/media/media/api/v1/profiles/nonexistent-profile/timeline", {
+				const res = await app.request("/media/api/v1/profiles/nonexistent-profile/timeline", {
 					headers: { Authorization: `Bearer ${API_KEYS.alice_primary}` },
 				});
 

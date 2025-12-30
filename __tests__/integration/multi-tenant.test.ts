@@ -134,7 +134,7 @@ describe("multi-tenant", () => {
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
-			const account = await ctx.d1.prepare("SELECT profile_id FROM accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first<{ profile_id: string }>();
+			const account = await ctx.d1.prepare("SELECT profile_id FROM media_accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first<{ profile_id: string }>();
 			expect(account?.profile_id).toBe(PROFILES.alice_main.id);
 		});
 

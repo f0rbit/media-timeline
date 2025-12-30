@@ -268,7 +268,7 @@ describe("resilience", () => {
 			expect(account).not.toBeNull();
 			expect((account as { is_active: number }).is_active).toBe(1);
 
-			await ctx.d1.prepare("UPDATE accounts SET is_active = 0 WHERE id = ?").bind(ACCOUNTS.alice_github.id).run();
+			await ctx.d1.prepare("UPDATE media_accounts SET is_active = 0 WHERE id = ?").bind(ACCOUNTS.alice_github.id).run();
 
 			const updatedAccount = await getAccount(ctx, ACCOUNTS.alice_github.id);
 			expect((updatedAccount as { is_active: number }).is_active).toBe(0);
