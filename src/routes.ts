@@ -4,40 +4,16 @@ import type { Context } from "hono";
 import { Hono } from "hono";
 import { z } from "zod";
 import { getAuth } from "./auth";
+import { requireAccountOwnership } from "./auth-ownership";
 import type { Bindings } from "./bindings";
 import { deleteConnection } from "./connection-delete";
-import type { Database } from "./db";
+import { badRequest, forbidden, notFound, serverError } from "./http-errors";
 import type { AppContext } from "./infrastructure";
 import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, validateOAuthQueryKeyAndProfile } from "./oauth-helpers";
 import { refreshAllAccounts, refreshSingleAccount } from "./refresh-service";
-import { DateGroupSchema, accountSettings, accounts, profiles } from "./schema";
+import { DateGroupSchema, PlatformSchema, accountId, accountSettings, accounts, profiles, userId } from "./schema";
 import { type CorpusError, RawDataSchema, createGitHubMetaStore, createRawStore, createRedditMetaStore, createTimelineStore } from "./storage";
-import { type FetchError, type Result, encrypt, err, fetch_result, match, ok, pipe, uuid } from "./utils";
-
-type AccountOwnershipResult = Result<{ account_id: string; profile_id: string }, { status: 404 | 403; error: string; message: string }>;
-
-const requireAccountOwnership = async (db: Database, userId: string, accountId: string): Promise<AccountOwnershipResult> => {
-	const result = await db
-		.select({
-			account_id: accounts.id,
-			profile_id: accounts.profile_id,
-			user_id: profiles.user_id,
-		})
-		.from(accounts)
-		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-		.where(eq(accounts.id, accountId))
-		.get();
-
-	if (!result) {
-		return err({ status: 404, error: "Not found", message: "Account not found" });
-	}
-
-	if (result.user_id !== userId) {
-		return err({ status: 403, error: "Forbidden", message: "You do not own this account" });
-	}
-
-	return ok({ account_id: result.account_id, profile_id: result.profile_id });
-};
+import { type FetchError, type Result, encrypt, err, fetch_result, match, ok, parseSettingsMap, pipe, safeWaitUntil, uuid } from "./utils";
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
@@ -80,7 +56,7 @@ type RawRouteError = CorpusError | LibCorpusError | { kind: "validation_error"; 
 
 const CreateConnectionBodySchema = z.object({
 	profile_id: z.string().min(1),
-	platform: z.enum(["github", "bluesky", "youtube", "devpad", "reddit", "twitter"]),
+	platform: PlatformSchema,
 	access_token: z.string().min(1),
 	refresh_token: z.string().optional(),
 	platform_user_id: z.string().optional(),
@@ -104,7 +80,7 @@ timelineRoutes.get("/:user_id", async c => {
 	const ctx = getContext(c);
 
 	if (auth.user_id !== userId) {
-		return c.json({ error: "Forbidden", message: "Cannot access other user timelines" }, 403);
+		return forbidden(c, "Cannot access other user timelines");
 	}
 
 	const from = c.req.query("from");
@@ -171,12 +147,12 @@ timelineRoutes.get("/:user_id/raw/:platform", async c => {
 	const ctx = getContext(c);
 
 	if (auth.user_id !== userId) {
-		return c.json({ error: "Forbidden", message: "Cannot access other user data" }, 403);
+		return forbidden(c, "Cannot access other user data");
 	}
 
 	const accountId = c.req.query("account_id");
 	if (!accountId) {
-		return c.json({ error: "Bad request", message: "account_id query parameter required" }, 400);
+		return badRequest(c, "account_id query parameter required");
 	}
 
 	const result = await pipe(createRawStore(ctx.backend, platform, accountId))
@@ -472,17 +448,17 @@ connectionRoutes.get("/", async c => {
 	const profileId = c.req.query("profile_id");
 
 	if (!profileId) {
-		return c.json({ error: "Bad request", message: "profile_id query parameter required" }, 400);
+		return badRequest(c, "profile_id query parameter required");
 	}
 
 	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profileId)).get();
 
 	if (!profile) {
-		return c.json({ error: "Not found", message: "Profile not found" }, 404);
+		return notFound(c, "Profile not found");
 	}
 
 	if (profile.user_id !== auth.user_id) {
-		return c.json({ error: "Forbidden", message: "You do not own this profile" }, 403);
+		return forbidden(c, "You do not own this profile");
 	}
 
 	const results = await ctx.db
@@ -506,13 +482,7 @@ connectionRoutes.get("/", async c => {
 		results.map(async account => {
 			const settings = await ctx.db.select().from(accountSettings).where(eq(accountSettings.account_id, account.account_id));
 
-			const settingsMap = settings.reduce(
-				(acc, s) => {
-					acc[s.setting_key] = JSON.parse(s.setting_value);
-					return acc;
-				},
-				{} as Record<string, unknown>
-			);
+			const settingsMap = parseSettingsMap(settings);
 
 			return { ...account, settings: settingsMap };
 		})
@@ -526,22 +496,22 @@ connectionRoutes.post("/", async c => {
 	const ctx = getContext(c);
 	const parseResult = CreateConnectionBodySchema.safeParse(await c.req.json());
 	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+		return badRequest(c, "Invalid request body", parseResult.error.flatten());
 	}
 	const body = parseResult.data;
 
 	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, body.profile_id)).get();
 
 	if (!profile) {
-		return c.json({ error: "Not found", message: "Profile not found" }, 404);
+		return notFound(c, "Profile not found");
 	}
 
 	if (profile.user_id !== auth.user_id) {
-		return c.json({ error: "Forbidden", message: "You do not own this profile" }, 403);
+		return forbidden(c, "You do not own this profile");
 	}
 
 	const now = new Date().toISOString();
-	const accountId = crypto.randomUUID();
+	const accountId = uuid();
 
 	const result = await pipe(encrypt(body.access_token, ctx.encryptionKey))
 		.flat_map(encrypted_access_token =>
@@ -571,23 +541,24 @@ connectionRoutes.post("/", async c => {
 	return match(
 		result,
 		() => c.json({ account_id: accountId, profile_id: body.profile_id }, 201) as Response,
-		() => c.json({ error: "Internal error", message: "Failed to encrypt token" }, 500) as Response
+		() => serverError(c, "Failed to encrypt token") as Response
 	);
 });
 
 connectionRoutes.delete("/:account_id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const accountId = c.req.param("account_id");
+	const accId = accountId(c.req.param("account_id"));
+	const uid = userId(auth.user_id);
 
-	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	const ownershipResult = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
 	return match(
-		await deleteConnection({ db: ctx.db, backend: ctx.backend }, accountId, auth.user_id),
+		await deleteConnection({ db: ctx.db, backend: ctx.backend }, accId, uid),
 		({ affected_users, deleted_stores, account_id, platform }) => {
 			const regenerateTimelines = async () => {
 				const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
@@ -611,15 +582,7 @@ connectionRoutes.delete("/:account_id", async c => {
 				}
 			};
 
-			// Regenerate timelines - in production use waitUntil, in dev run async
-			try {
-				c.executionCtx.waitUntil(regenerateTimelines());
-			} catch {
-				// Dev server doesn't have ExecutionContext - run async
-				regenerateTimelines().catch(err => {
-					console.error("[connection-delete] Timeline regeneration failed:", err);
-				});
-			}
+			safeWaitUntil(c, regenerateTimelines, "connection-delete");
 
 			return c.json({
 				deleted: true,
@@ -651,23 +614,16 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 	if (!result.ok) {
 		const error = result.error;
 		if (error.kind === "not_found") {
-			return c.json({ error: "Not found", message: error.message }, 404);
+			return notFound(c, error.message);
 		}
 		if (error.kind === "inactive") {
-			return c.json({ error: "Bad request", message: error.message }, 400);
+			return badRequest(c, error.message);
 		}
-		return c.json({ error: "Internal error", message: error.message }, 500);
+		return serverError(c, error.message);
 	}
 
 	if (backgroundTask) {
-		try {
-			c.executionCtx.waitUntil(backgroundTask());
-		} catch {
-			// Dev server doesn't have ExecutionContext - run async
-			backgroundTask().catch(err => {
-				console.error("[refresh] Background task failed:", err);
-			});
-		}
+		safeWaitUntil(c, backgroundTask, "refresh");
 	}
 
 	return c.json(result.value);
@@ -680,18 +636,11 @@ connectionRoutes.post("/refresh-all", async c => {
 	const { result, backgroundTasks } = await refreshAllAccounts(ctx, auth.user_id);
 
 	if (!result.ok) {
-		return c.json({ error: "Internal error", message: "Failed to refresh accounts" }, 500);
+		return serverError(c, "Failed to refresh accounts");
 	}
 
 	for (const task of backgroundTasks) {
-		try {
-			c.executionCtx.waitUntil(task());
-		} catch {
-			// Dev server doesn't have ExecutionContext - run async
-			task().catch(err => {
-				console.error("[refresh-all] Background task failed:", err);
-			});
-		}
+		safeWaitUntil(c, task, "refresh-all");
 	}
 
 	return c.json(result.value);
@@ -700,25 +649,25 @@ connectionRoutes.post("/refresh-all", async c => {
 connectionRoutes.patch("/:account_id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const accountId = c.req.param("account_id");
+	const accId = accountId(c.req.param("account_id"));
 	const parseResult = UpdateConnectionStatusSchema.safeParse(await c.req.json());
 
 	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+		return badRequest(c, "Invalid request body", parseResult.error.flatten());
 	}
 
 	const body = parseResult.data;
 
-	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	const ownershipResult = await requireAccountOwnership(ctx.db, userId(auth.user_id), accId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
 	const now = new Date().toISOString();
-	await ctx.db.update(accounts).set({ is_active: body.is_active, updated_at: now }).where(eq(accounts.id, accountId));
+	await ctx.db.update(accounts).set({ is_active: body.is_active, updated_at: now }).where(eq(accounts.id, accId));
 
-	const updated = await ctx.db.select().from(accounts).where(eq(accounts.id, accountId)).get();
+	const updated = await ctx.db.select().from(accounts).where(eq(accounts.id, accId)).get();
 
 	return c.json({ success: true, connection: updated });
 });
@@ -726,23 +675,17 @@ connectionRoutes.patch("/:account_id", async c => {
 connectionRoutes.get("/:account_id/settings", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const accountId = c.req.param("account_id");
+	const accId = accountId(c.req.param("account_id"));
 
-	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	const ownershipResult = await requireAccountOwnership(ctx.db, userId(auth.user_id), accId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
-	const settings = await ctx.db.select().from(accountSettings).where(eq(accountSettings.account_id, accountId));
+	const settings = await ctx.db.select().from(accountSettings).where(eq(accountSettings.account_id, accId));
 
-	const settingsMap = settings.reduce(
-		(acc, s) => {
-			acc[s.setting_key] = JSON.parse(s.setting_value);
-			return acc;
-		},
-		{} as Record<string, unknown>
-	);
+	const settingsMap = parseSettingsMap(settings);
 
 	return c.json({ settings: settingsMap });
 });
@@ -750,16 +693,16 @@ connectionRoutes.get("/:account_id/settings", async c => {
 connectionRoutes.put("/:account_id/settings", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const accountId = c.req.param("account_id");
+	const accId = accountId(c.req.param("account_id"));
 	const parseResult = UpdateSettingsBodySchema.safeParse(await c.req.json());
 
 	if (!parseResult.success) {
-		return c.json({ error: "Bad request", details: parseResult.error.flatten() }, 400);
+		return badRequest(c, "Invalid request body", parseResult.error.flatten());
 	}
 
 	const body = parseResult.data;
 
-	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	const ownershipResult = await requireAccountOwnership(ctx.db, userId(auth.user_id), accId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
@@ -771,7 +714,7 @@ connectionRoutes.put("/:account_id/settings", async c => {
 		const existing = await ctx.db
 			.select()
 			.from(accountSettings)
-			.where(and(eq(accountSettings.account_id, accountId), eq(accountSettings.setting_key, key)))
+			.where(and(eq(accountSettings.account_id, accId), eq(accountSettings.setting_key, key)))
 			.get();
 
 		if (existing) {
@@ -781,8 +724,8 @@ connectionRoutes.put("/:account_id/settings", async c => {
 				.where(eq(accountSettings.id, existing.id));
 		} else {
 			await ctx.db.insert(accountSettings).values({
-				id: crypto.randomUUID(),
-				account_id: accountId,
+				id: uuid(),
+				account_id: accId,
 				setting_key: key,
 				setting_value: JSON.stringify(value),
 				created_at: now,
@@ -806,25 +749,25 @@ type GitHubRepoInfo = {
 connectionRoutes.get("/:account_id/repos", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const accountId = c.req.param("account_id");
+	const accId = accountId(c.req.param("account_id"));
 
-	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	const ownershipResult = await requireAccountOwnership(ctx.db, userId(auth.user_id), accId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
-	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accountId)).get();
+	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accId)).get();
 
 	if (!account) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
+		return notFound(c, "Account not found");
 	}
 
 	if (account.platform !== "github") {
-		return c.json({ error: "Bad request", message: "Not a GitHub account" }, 400);
+		return badRequest(c, "Not a GitHub account");
 	}
 
-	const metaStoreResult = createGitHubMetaStore(ctx.backend, accountId);
+	const metaStoreResult = createGitHubMetaStore(ctx.backend, accId);
 	if (!metaStoreResult.ok) {
 		return c.json({ repos: [] });
 	}
@@ -849,25 +792,25 @@ connectionRoutes.get("/:account_id/repos", async c => {
 connectionRoutes.get("/:account_id/subreddits", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
-	const accountId = c.req.param("account_id");
+	const accId = accountId(c.req.param("account_id"));
 
-	const ownershipResult = await requireAccountOwnership(ctx.db, auth.user_id, accountId);
+	const ownershipResult = await requireAccountOwnership(ctx.db, userId(auth.user_id), accId);
 	if (!ownershipResult.ok) {
 		const { status, error, message } = ownershipResult.error;
 		return c.json({ error, message }, status);
 	}
 
-	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accountId)).get();
+	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accId)).get();
 
 	if (!account) {
-		return c.json({ error: "Not found", message: "Account not found" }, 404);
+		return notFound(c, "Account not found");
 	}
 
 	if (account.platform !== "reddit") {
-		return c.json({ error: "Bad request", message: "Not a Reddit account" }, 400);
+		return badRequest(c, "Not a Reddit account");
 	}
 
-	const metaStoreResult = createRedditMetaStore(ctx.backend, accountId);
+	const metaStoreResult = createRedditMetaStore(ctx.backend, accId);
 	if (!metaStoreResult.ok) {
 		return c.json({ subreddits: [] });
 	}
