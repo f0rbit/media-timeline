@@ -33,11 +33,6 @@ export async function loadRedditDataForAccount(backend: Backend, accountId: stri
 	return { posts, comments };
 }
 
-const truncateContent = (content: string, maxLength = 200): string => {
-	if (content.length <= maxLength) return content;
-	return `${content.slice(0, maxLength - 3)}...`;
-};
-
 export function normalizeReddit(data: RedditTimelineData, _username: string): TimelineItem[] {
 	const items: TimelineItem[] = [];
 
@@ -56,7 +51,7 @@ export function normalizeReddit(data: RedditTimelineData, _username: string): Ti
 			url: `https://reddit.com${post.permalink}`,
 			payload: {
 				type: "post",
-				content: truncateContent(content),
+				content: truncate(content, 200),
 				author_handle: post.author,
 				author_name: post.author,
 				reply_count: post.num_comments,
