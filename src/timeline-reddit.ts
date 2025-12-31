@@ -12,20 +12,21 @@ export type RedditTimelineData = {
 };
 
 export async function loadRedditDataForAccount(backend: Backend, accountId: string): Promise<RedditTimelineData> {
+	// Note: corpus json_codec applies Zod defaults during decode, so the runtime type is correct
 	const [posts, comments] = await Promise.all([
 		(async (): Promise<RedditPost[]> => {
 			const storeResult = createRedditPostsStore(backend, accountId);
 			if (!storeResult.ok) return [];
 			const snapshotResult = await storeResult.value.store.get_latest();
 			if (!snapshotResult.ok) return [];
-			return snapshotResult.value.data.posts;
+			return snapshotResult.value.data.posts as RedditPost[];
 		})(),
 		(async (): Promise<RedditComment[]> => {
 			const storeResult = createRedditCommentsStore(backend, accountId);
 			if (!storeResult.ok) return [];
 			const snapshotResult = await storeResult.value.store.get_latest();
 			if (!snapshotResult.ok) return [];
-			return snapshotResult.value.data.comments;
+			return snapshotResult.value.data.comments as RedditComment[];
 		})(),
 	]);
 

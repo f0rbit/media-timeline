@@ -13,20 +13,22 @@ export type TwitterTimelineData = {
 };
 
 export async function loadTwitterDataForAccount(backend: Backend, accountId: string): Promise<TwitterTimelineData> {
+	// Note: corpus json_codec applies Zod defaults during decode, so the runtime type is correct
 	const [tweetsData, meta] = await Promise.all([
 		(async (): Promise<{ tweets: TwitterTweet[]; media: TweetMedia[] }> => {
 			const storeResult = createTwitterTweetsStore(backend, accountId);
 			if (!storeResult.ok) return { tweets: [], media: [] };
 			const snapshotResult = await storeResult.value.store.get_latest();
 			if (!snapshotResult.ok) return { tweets: [], media: [] };
-			return { tweets: snapshotResult.value.data.tweets, media: snapshotResult.value.data.media };
+			const data = snapshotResult.value.data;
+			return { tweets: data.tweets as TwitterTweet[], media: (data.media ?? []) as TweetMedia[] };
 		})(),
 		(async (): Promise<TwitterMetaStore | null> => {
 			const storeResult = createTwitterMetaStore(backend, accountId);
 			if (!storeResult.ok) return null;
 			const snapshotResult = await storeResult.value.store.get_latest();
 			if (!snapshotResult.ok) return null;
-			return snapshotResult.value.data;
+			return snapshotResult.value.data as TwitterMetaStore;
 		})(),
 	]);
 

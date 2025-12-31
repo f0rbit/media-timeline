@@ -1,13 +1,13 @@
 {
-	"version": "7",
-	"dialect": "sqlite",
-	"entries": [
-		{
-			"idx": 0,
-			"version": "6",
-			"when": 1767010717237,
-			"tag": "0000_slippery_frank_castle",
-			"breakpoints": true
-		}
-	]
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1767148130096,
+      "tag": "0000_spotty_stark_industries",
+      "breakpoints": true
+    }
+  ]
 }

@@ -5,15 +5,26 @@ on:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Deployment stage'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
 
 # Prevent concurrent deployments to the same stage
 concurrency:
-  group: deploy-${{ github.event_name == 'release' && 'production' || 'staging' }}
+  group: deploy-${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'staging' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'staging' }}
     
     steps:
       - name: Checkout
@@ -27,6 +38,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Typecheck
+        run: bun run typecheck
+
       - name: Run tests
         run: bun test
 
@@ -35,10 +49,10 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "stage=production" >> $GITHUB_OUTPUT
-            echo "Deploying to production (release: ${{ github.event.release.tag_name }})"
+          elif [ -n "${{ github.event.inputs.stage }}" ]; then
+            echo "stage=${{ github.event.inputs.stage }}" >> $GITHUB_OUTPUT
           else
             echo "stage=staging" >> $GITHUB_OUTPUT
-            echo "Deploying to staging (commit: ${{ github.sha }})"
           fi
 
       - name: Deploy to ${{ steps.stage.outputs.stage }}
@@ -46,6 +60,14 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_DEFAULT_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          SST_SECRET_ENCRYPTIONKEY: ${{ secrets.ENCRYPTION_KEY }}
+          SST_SECRET_REDDITCLIENTID: ${{ secrets.REDDIT_CLIENT_ID }}
+          SST_SECRET_REDDITCLIENTSECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          SST_SECRET_TWITTERCLIENTID: ${{ secrets.TWITTER_CLIENT_ID }}
+          SST_SECRET_TWITTERCLIENTSECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
+          SST_SECRET_GITHUBCLIENTID: ${{ secrets.GITHUB_CLIENT_ID }}
+          SST_SECRET_GITHUBCLIENTSECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
 
       - name: Run D1 migrations
         if: success()
