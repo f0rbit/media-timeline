@@ -43,7 +43,6 @@ export default $config({
   },
   async run() {
     const isProduction = $app.stage === "production";
-    const isStaging = $app.stage === "staging";
 
     // Resources
     const db = new sst.cloudflare.D1("DB");
@@ -59,17 +58,9 @@ export default $config({
     const githubClientSecret = new sst.Secret("GitHubClientSecret");
 
     // Environment-specific URLs
-    const apiUrl = isProduction
-      ? "https://media.devpad.tools"
-      : isStaging
-        ? "https://media-staging.devpad.tools"
-        : "http://localhost:8787";
-
-    const frontendUrl = isProduction
-      ? "https://media.devpad.tools"
-      : isStaging
-        ? "https://media-staging.devpad.tools"
-        : "http://localhost:4321";
+    // Production uses custom domain, staging/preview use auto-generated Cloudflare URLs
+    const apiUrl = isProduction ? "https://media.devpad.tools" : "http://localhost:8787";
+    const frontendUrl = isProduction ? "https://media.devpad.tools" : "http://localhost:4321";
 
     const worker = new sst.cloudflare.Worker("Api", {
       handler: "src/index.ts",
@@ -83,23 +74,19 @@ export default $config({
       transform: {
         worker: (args) => {
           args.scheduledTriggers = [{ cron: "*/5 * * * *" }];
-
         },
       },
     });
 
     // Astro website deployment
+    // Only production gets a custom domain; staging/preview use auto-generated *.pages.dev URLs
     const website = new sst.cloudflare.Astro("Website", {
       path: "apps/website",
       environment: {
         PUBLIC_API_URL: apiUrl,
         PUBLIC_DEVPAD_URL: "https://devpad.tools",
       },
-      domain: isProduction
-        ? "media.devpad.tools"
-        : isStaging
-          ? "media-staging.devpad.tools"
-          : undefined,
+      domain: isProduction ? "media.devpad.tools" : undefined,
     });
 
     return {
@@ -318,7 +305,8 @@ bunx wrangler secret put EncryptionKey --env production
 | Type | Name | Content | Proxy |
 |------|------|---------|-------|
 | CNAME | `media` | `<pages-deployment>.pages.dev` | Proxied |
-| CNAME | `media-staging` | `<staging-pages>.pages.dev` | Proxied |
+
+**Note:** Staging and preview deployments use auto-generated Cloudflare URLs (`*.workers.dev` and `*.pages.dev`) and don't require custom DNS records.
 
 #### Custom Domain Setup
 
@@ -920,13 +908,13 @@ If issues are found after migration:
 
 ### 4.1 Staging vs Production Environments
 
-| Aspect | Staging | Production |
-|--------|---------|------------|
-| Domain | `media-staging.devpad.tools` | `media.devpad.tools` |
+| Aspect | Staging/Preview | Production |
+|--------|-----------------|------------|
+| Domain | Auto-generated (`*.workers.dev`, `*.pages.dev`) | `media.devpad.tools` |
 | API Path | `/media/api/*` | `/media/api/*` |
 | D1 Database | Separate instance | Production instance |
 | R2 Bucket | Separate bucket | Production bucket |
-| OAuth Apps | Test apps (different redirect URIs) | Production apps |
+| OAuth Apps | Test apps (use auto-generated worker URL for callbacks) | Production apps |
 | Cron | Enabled (5 min) | Enabled (5 min) |
 | Encryption Key | Different key | Production key |
 
@@ -1063,13 +1051,11 @@ bunx sst deploy --stage production --from <commit-sha>
 | Twitter | `https://media.devpad.tools/media/api/auth/twitter/callback` |
 | GitHub | `https://media.devpad.tools/media/api/auth/github/callback` |
 
-### Staging
+### Staging/Preview
 
-| Platform | Redirect URI |
-|----------|--------------|
-| Reddit | `https://media-staging.devpad.tools/media/api/auth/reddit/callback` |
-| Twitter | `https://media-staging.devpad.tools/media/api/auth/twitter/callback` |
-| GitHub | `https://media-staging.devpad.tools/media/api/auth/github/callback` |
+Staging and preview deployments use auto-generated Cloudflare URLs. The redirect URI will be based on the deployed worker URL (e.g., `https://<worker-name>.<account>.workers.dev/media/api/auth/<platform>/callback`).
+
+**Note:** You'll need to add the auto-generated worker URL to your OAuth app's allowed redirect URIs after deployment.
 
 ### Local Development
 

@@ -11,11 +11,9 @@ export default $config({
 	},
 	async run() {
 		const isProduction = $app.stage === "production";
-		const isStaging = $app.stage === "staging";
 
-		const apiUrl = isProduction ? "https://media.devpad.tools" : isStaging ? "https://media-staging.devpad.tools" : "http://localhost:8787";
-
-		const frontendUrl = isProduction ? "https://media.devpad.tools" : isStaging ? "https://media-staging.devpad.tools" : "http://localhost:4321";
+		const apiUrl = isProduction ? "https://media.devpad.tools" : "http://localhost:8787";
+		const frontendUrl = isProduction ? "https://media.devpad.tools" : "http://localhost:4321";
 
 		const db = new sst.cloudflare.D1("DB");
 		const bucket = new sst.cloudflare.Bucket("BUCKET");
@@ -50,7 +48,7 @@ export default $config({
 				PUBLIC_API_URL: apiUrl,
 				PUBLIC_DEVPAD_URL: "https://devpad.tools",
 			},
-			domain: isProduction ? "media.devpad.tools" : isStaging ? "media-staging.devpad.tools" : undefined,
+			domain: isProduction ? "media.devpad.tools" : undefined,
 		});
 
 		return {

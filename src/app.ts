@@ -32,7 +32,7 @@ export function createMediaApp(config: MediaAppConfig = {}) {
 				const defaultOrigins = ["http://localhost:4321", "http://localhost:3000", "https://media.devpad.tools", "https://devpad.tools"];
 				const allowed = corsOrigins ?? defaultOrigins;
 				if (!origin || allowed.includes(origin)) return origin;
-				if (origin.endsWith(".workers.dev")) return origin;
+				if (origin.endsWith(".workers.dev") || origin.endsWith(".pages.dev")) return origin;
 				return null;
 			},
 			allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
