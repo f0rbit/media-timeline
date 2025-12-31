@@ -53,7 +53,7 @@ export function configureFromEnv(env: {
 	const isProduction = env.ENVIRONMENT === "production";
 
 	configureMedia({
-		apiUrl: env.MEDIA_API_URL ?? (isProduction ? "https://media-api.devpad.tools" : defaultConfig.apiUrl),
+		apiUrl: env.MEDIA_API_URL ?? (isProduction ? "https://media.devpad.tools" : defaultConfig.apiUrl),
 		frontendUrl: env.MEDIA_FRONTEND_URL ?? (isProduction ? "https://media.devpad.tools" : defaultConfig.frontendUrl),
 	});
 }

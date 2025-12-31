@@ -60,8 +60,7 @@ const storeTweets = async (backend: Backend, accountId: string, tweets: TwitterT
 	if (!storeResult.ok) return defaultStats;
 
 	const store = storeResult.value.store;
-	// Note: corpus json_codec applies Zod defaults during decode, so the runtime type is correct
-	const existing = (to_nullable(await store.get_latest())?.data ?? null) as TwitterTweetsStore | null;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
 	const { merged, newCount } = mergeTweets(existing, tweets);
 	const putResult = await store.put(merged);
 

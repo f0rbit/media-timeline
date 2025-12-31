@@ -1,4 +1,4 @@
-import { type Backend, type Store, create_corpus, define_store, json_codec } from "@f0rbit/corpus";
+import { type Backend, type Parser, type Store, create_corpus, define_store, json_codec } from "@f0rbit/corpus";
 import { z } from "zod";
 import {
 	BlueskyRawSchema,
@@ -29,7 +29,7 @@ const STORAGE_PREFIX = "media";
 
 export type CorpusError = { kind: "store_not_found"; store_id: string };
 
-const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, schema: z.ZodType<TData>): Result<{ store: Store<TData>; id: TId }, CorpusError> => {
+const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, schema: Parser<TData>): Result<{ store: Store<TData>; id: TId }, CorpusError> => {
 	const corpus = create_corpus()
 		.with_backend(backend)
 		.with_store(define_store(id, json_codec(schema)))

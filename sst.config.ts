@@ -13,7 +13,7 @@ export default $config({
 		const isProduction = $app.stage === "production";
 		const isStaging = $app.stage === "staging";
 
-		const apiUrl = isProduction ? "https://media-api.devpad.tools" : isStaging ? "https://media-api-staging.devpad.tools" : "http://localhost:8787";
+		const apiUrl = isProduction ? "https://media.devpad.tools" : isStaging ? "https://media-staging.devpad.tools" : "http://localhost:8787";
 
 		const frontendUrl = isProduction ? "https://media.devpad.tools" : isStaging ? "https://media-staging.devpad.tools" : "http://localhost:4321";
 
@@ -40,14 +40,6 @@ export default $config({
 			transform: {
 				worker: args => {
 					args.scheduledTriggers = [{ cron: "*/5 * * * *" }];
-					if (isProduction) {
-						args.routes = [
-							{
-								pattern: "media-api.devpad.tools/*",
-								zoneId: process.env.CLOUDFLARE_ZONE_ID,
-							},
-						];
-					}
 				},
 			},
 		});

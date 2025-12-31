@@ -60,9 +60,9 @@ export default $config({
 
     // Environment-specific URLs
     const apiUrl = isProduction
-      ? "https://media-api.devpad.tools"
+      ? "https://media.devpad.tools"
       : isStaging
-        ? "https://media-api-staging.devpad.tools"
+        ? "https://media-staging.devpad.tools"
         : "http://localhost:8787";
 
     const frontendUrl = isProduction
@@ -83,13 +83,7 @@ export default $config({
       transform: {
         worker: (args) => {
           args.scheduledTriggers = [{ cron: "*/5 * * * *" }];
-          // Production-only: custom domain
-          if (isProduction) {
-            args.routes = [{
-              pattern: "media-api.devpad.tools/*",
-              zoneId: process.env.CLOUDFLARE_ZONE_ID,
-            }];
-          }
+
         },
       },
     });
@@ -159,7 +153,7 @@ bucket_name = "media-timeline-production"
 
 [vars]
 ENVIRONMENT = "production"
-MEDIA_API_URL = "https://media-api.devpad.tools"
+MEDIA_API_URL = "https://media.devpad.tools"
 MEDIA_FRONTEND_URL = "https://media.devpad.tools"
 
 # Secrets are set via `wrangler secret put` or SST
@@ -324,20 +318,11 @@ bunx wrangler secret put EncryptionKey --env production
 | Type | Name | Content | Proxy |
 |------|------|---------|-------|
 | CNAME | `media` | `<pages-deployment>.pages.dev` | Proxied |
-| CNAME | `media-api` | `<worker-subdomain>.workers.dev` | Proxied |
 | CNAME | `media-staging` | `<staging-pages>.pages.dev` | Proxied |
-| CNAME | `media-api-staging` | `<staging-worker>.workers.dev` | Proxied |
 
 #### Custom Domain Setup
 
-SST automatically configures custom domains when specified. For manual setup:
-
-```bash
-# Worker custom domain
-bunx wrangler deployments add-domain media-timeline-production media-api.devpad.tools
-
-# Pages custom domain (via Cloudflare dashboard or API)
-```
+SST automatically configures custom domains when specified. The API is served from the same domain as the frontend (`media.devpad.tools/media/api/*`), so no separate worker domain is needed.
 
 ### 1.6 First Deployment Checklist
 
@@ -345,9 +330,9 @@ bunx wrangler deployments add-domain media-timeline-production media-api.devpad.
 - [ ] Generate 256-bit encryption key: `openssl rand -base64 32`
 - [ ] Create OAuth apps for all platforms (Reddit, Twitter, GitHub)
 - [ ] Set OAuth redirect URIs:
-  - Reddit: `https://media-api.devpad.tools/media/api/auth/reddit/callback`
-  - Twitter: `https://media-api.devpad.tools/media/api/auth/twitter/callback`
-  - GitHub: `https://media-api.devpad.tools/media/api/auth/github/callback`
+  - Reddit: `https://media.devpad.tools/media/api/auth/reddit/callback`
+  - Twitter: `https://media.devpad.tools/media/api/auth/twitter/callback`
+  - GitHub: `https://media.devpad.tools/media/api/auth/github/callback`
 - [ ] Configure GitHub Secrets (see section 1.4)
 - [ ] Run initial deployment: `bunx sst deploy --stage production`
 - [ ] Run D1 migrations manually for first deploy
@@ -683,7 +668,7 @@ export function configureFromEnv(env: {
   const isProduction = env.ENVIRONMENT === "production";
   
   configureMedia({
-    apiUrl: env.MEDIA_API_URL ?? (isProduction ? "https://media-api.devpad.tools" : defaultConfig.apiUrl),
+    apiUrl: env.MEDIA_API_URL ?? (isProduction ? "https://media.devpad.tools" : defaultConfig.apiUrl),
     frontendUrl: env.MEDIA_FRONTEND_URL ?? (isProduction ? "https://media.devpad.tools" : defaultConfig.frontendUrl),
   });
 }
@@ -938,6 +923,7 @@ If issues are found after migration:
 | Aspect | Staging | Production |
 |--------|---------|------------|
 | Domain | `media-staging.devpad.tools` | `media.devpad.tools` |
+| API Path | `/media/api/*` | `/media/api/*` |
 | D1 Database | Separate instance | Production instance |
 | R2 Bucket | Separate bucket | Production bucket |
 | OAuth Apps | Test apps (different redirect URIs) | Production apps |
@@ -1073,17 +1059,17 @@ bunx sst deploy --stage production --from <commit-sha>
 
 | Platform | Redirect URI |
 |----------|--------------|
-| Reddit | `https://media-api.devpad.tools/media/api/auth/reddit/callback` |
-| Twitter | `https://media-api.devpad.tools/media/api/auth/twitter/callback` |
-| GitHub | `https://media-api.devpad.tools/media/api/auth/github/callback` |
+| Reddit | `https://media.devpad.tools/media/api/auth/reddit/callback` |
+| Twitter | `https://media.devpad.tools/media/api/auth/twitter/callback` |
+| GitHub | `https://media.devpad.tools/media/api/auth/github/callback` |
 
 ### Staging
 
 | Platform | Redirect URI |
 |----------|--------------|
-| Reddit | `https://media-api-staging.devpad.tools/media/api/auth/reddit/callback` |
-| Twitter | `https://media-api-staging.devpad.tools/media/api/auth/twitter/callback` |
-| GitHub | `https://media-api-staging.devpad.tools/media/api/auth/github/callback` |
+| Reddit | `https://media-staging.devpad.tools/media/api/auth/reddit/callback` |
+| Twitter | `https://media-staging.devpad.tools/media/api/auth/twitter/callback` |
+| GitHub | `https://media-staging.devpad.tools/media/api/auth/github/callback` |
 
 ### Local Development
 

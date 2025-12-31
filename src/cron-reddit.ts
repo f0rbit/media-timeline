@@ -73,8 +73,7 @@ const storePosts = async (backend: Backend, accountId: string, posts: RedditPost
 	if (!storeResult.ok) return defaultStats;
 
 	const store = storeResult.value.store;
-	// Note: corpus json_codec applies Zod defaults during decode, so the runtime type is correct
-	const existing = (to_nullable(await store.get_latest())?.data ?? null) as RedditPostsStore | null;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
 	const { merged, newCount } = mergePosts(existing, posts);
 	const putResult = await store.put(merged);
 
@@ -89,8 +88,7 @@ const storeComments = async (backend: Backend, accountId: string, comments: Redd
 	if (!storeResult.ok) return defaultStats;
 
 	const store = storeResult.value.store;
-	// Note: corpus json_codec applies Zod defaults during decode, so the runtime type is correct
-	const existing = (to_nullable(await store.get_latest())?.data ?? null) as RedditCommentsStore | null;
+	const existing = to_nullable(await store.get_latest())?.data ?? null;
 	const { merged, newCount } = mergeComments(existing, comments);
 	const putResult = await store.put(merged);
 
