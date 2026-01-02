@@ -8,17 +8,18 @@ import * as schema from "./schema/database";
 
 export type Bindings = {
 	DB: D1Database;
-	BUCKET: R2Bucket;
-	EncryptionKey: string;
+	CORPUS_BUCKET: R2Bucket;
+	ASSETS: Fetcher;
+	ENCRYPTION_KEY: string;
 	ENVIRONMENT: string;
-	MEDIA_REDDIT_CLIENT_ID?: string;
-	MEDIA_REDDIT_CLIENT_SECRET?: string;
-	MEDIA_TWITTER_CLIENT_ID?: string;
-	MEDIA_TWITTER_CLIENT_SECRET?: string;
-	MEDIA_GITHUB_CLIENT_ID?: string;
-	MEDIA_GITHUB_CLIENT_SECRET?: string;
-	MEDIA_API_URL?: string;
-	MEDIA_FRONTEND_URL?: string;
+	API_URL: string;
+	FRONTEND_URL: string;
+	REDDIT_CLIENT_ID?: string;
+	REDDIT_CLIENT_SECRET?: string;
+	TWITTER_CLIENT_ID?: string;
+	TWITTER_CLIENT_SECRET?: string;
+	GITHUB_CLIENT_ID?: string;
+	GITHUB_CLIENT_SECRET?: string;
 };
 
 type CorpusBackend = {
@@ -33,12 +34,12 @@ type CorpusBackend = {
 
 const toCorpusBackend = (env: Bindings): CorpusBackend => ({
 	d1: env.DB as unknown as CorpusBackend["d1"],
-	r2: env.BUCKET as unknown as CorpusBackend["r2"],
+	r2: env.CORPUS_BUCKET as unknown as CorpusBackend["r2"],
 });
 
 export const createContextFromBindings = (env: Bindings, providerFactory: ProviderFactory): AppContext => ({
 	db: drizzle(env.DB, { schema }),
 	backend: create_cloudflare_backend(toCorpusBackend(env)),
 	providerFactory,
-	encryptionKey: env.EncryptionKey,
+	encryptionKey: env.ENCRYPTION_KEY,
 });

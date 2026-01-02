@@ -1,5 +1,5 @@
-import { type Platform, PLATFORMS } from "../schema/platforms";
 import type { StoreType } from "../connection-delete";
+import { PLATFORMS, type Platform } from "../schema/platforms";
 
 export interface PlatformCapabilities {
 	/** Whether this platform uses multi-store architecture (meta + content stores) */

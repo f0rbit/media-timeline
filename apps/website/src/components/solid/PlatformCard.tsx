@@ -21,7 +21,6 @@ type Props = {
 };
 
 function RedditOAuthButton(props: { profileId: string }) {
-
 	const handleConnect = () => {
 		const apiKey = getApiKey();
 		if (!apiKey) {
@@ -42,7 +41,6 @@ function RedditOAuthButton(props: { profileId: string }) {
 }
 
 function TwitterOAuthButton(props: { profileId: string }) {
-
 	const handleConnect = () => {
 		const apiKey = getApiKey();
 		if (!apiKey) {
@@ -63,7 +61,6 @@ function TwitterOAuthButton(props: { profileId: string }) {
 }
 
 function GitHubOAuthButton(props: { profileId: string }) {
-
 	const handleConnect = () => {
 		const apiKey = getApiKey();
 		if (!apiKey) {

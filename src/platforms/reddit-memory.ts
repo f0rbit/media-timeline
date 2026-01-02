@@ -1,6 +1,6 @@
 import type { RedditComment, RedditMetaStore, RedditPost } from "../schema";
-import type { RedditFetchResult } from "./reddit";
 import { BaseMemoryProvider } from "./memory-base";
+import type { RedditFetchResult } from "./reddit";
 
 export type { RedditFetchResult };
 

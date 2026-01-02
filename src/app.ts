@@ -54,6 +54,8 @@ export function createMediaApp(config: MediaAppConfig = {}) {
 		return authMiddleware(c, next);
 	});
 
+	app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
+
 	app.route("/api/auth", authRoutes);
 	app.route("/api/v1/timeline", timelineRoutes);
 	app.route("/api/v1/connections", connectionRoutes);

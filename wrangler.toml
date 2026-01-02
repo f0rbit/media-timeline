@@ -1,21 +1,91 @@
-name = "media-timeline"
-main = "src/index.ts"
+name = "media-timeline-api"
+main = "dist/_worker.js"
 compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+[assets]
+directory = "dist"
+binding = "ASSETS"
 
 [triggers]
 crons = ["*/5 * * * *"]
 
+# Production environment (default)
+[vars]
+ENVIRONMENT = "production"
+API_URL = "https://media.devpad.tools"
+FRONTEND_URL = "https://media.devpad.tools"
+
 [[d1_databases]]
 binding = "DB"
-database_name = "media-timeline-tom-dbdatabase-mwauhwet"
+database_name = "media-timeline-db"
 database_id = "f5d4e12d-0442-4ecf-8d3f-dc6c7ab7b469"
 migrations_dir = "migrations"
 
 [[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "media-timeline"
+binding = "CORPUS_BUCKET"
+bucket_name = "media-timeline-corpus"
 
-[vars]
-ENVIRONMENT = "development"
-MEDIA_API_URL = "http://localhost:8787"
-MEDIA_FRONTEND_URL = "http://localhost:4321"
+routes = [
+  { pattern = "media.devpad.tools", custom_domain = true }
+]
+
+# Preview environment
+[env.preview]
+name = "media-timeline-api-preview"
+
+[env.preview.triggers]
+crons = ["*/5 * * * *"]
+
+[env.preview.assets]
+directory = "dist"
+binding = "ASSETS"
+
+[env.preview.vars]
+ENVIRONMENT = "preview"
+API_URL = "https://media-preview.devpad.tools"
+FRONTEND_URL = "https://media-preview.devpad.tools"
+
+[[env.preview.d1_databases]]
+binding = "DB"
+database_name = "media-timeline-db-preview"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[env.preview.r2_buckets]]
+binding = "CORPUS_BUCKET"
+bucket_name = "media-timeline-corpus-preview"
+
+[dev]
+port = 8787
+local_protocol = "http"
+
+[observability]
+enabled = false
+head_sampling_rate = 1
+
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1
+
+[env.preview.observability]
+enabled = false
+head_sampling_rate = 1
+
+[env.preview.observability.logs]
+enabled = true
+head_sampling_rate = 1
+persist = true
+invocation_logs = true
+
+[env.preview.observability.traces]
+enabled = false
+persist = true
+head_sampling_rate = 1

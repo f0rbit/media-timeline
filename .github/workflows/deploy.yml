@@ -10,21 +10,20 @@ on:
       stage:
         description: 'Deployment stage'
         required: true
-        default: 'staging'
+        default: 'preview'
         type: choice
         options:
-          - staging
+          - preview
           - production
 
-# Prevent concurrent deployments to the same stage
 concurrency:
-  group: deploy-${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'staging' }}
+  group: deploy-${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'preview' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: ${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'staging' }}
+    environment: ${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'preview' }}
     
     steps:
       - name: Checkout
@@ -52,37 +51,29 @@ jobs:
           elif [ -n "${{ github.event.inputs.stage }}" ]; then
             echo "stage=${{ github.event.inputs.stage }}" >> $GITHUB_OUTPUT
           else
-            echo "stage=staging" >> $GITHUB_OUTPUT
+            echo "stage=preview" >> $GITHUB_OUTPUT
           fi
 
-      - name: Deploy to ${{ steps.stage.outputs.stage }}
-        run: bunx sst deploy --stage ${{ steps.stage.outputs.stage }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_DEFAULT_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-          SST_SECRET_ENCRYPTIONKEY: ${{ secrets.ENCRYPTION_KEY }}
-          SST_SECRET_REDDITCLIENTID: ${{ secrets.REDDIT_CLIENT_ID }}
-          SST_SECRET_REDDITCLIENTSECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
-          SST_SECRET_TWITTERCLIENTID: ${{ secrets.TWITTER_CLIENT_ID }}
-          SST_SECRET_TWITTERCLIENTSECRET: ${{ secrets.TWITTER_CLIENT_SECRET }}
-          SST_SECRET_GITHUBCLIENTID: ${{ secrets.GITHUB_CLIENT_ID }}
-          SST_SECRET_GITHUBCLIENTSECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
+      - name: Build
+        run: bun run build
 
       - name: Run D1 migrations
-        if: success()
         run: |
-          # Get database name from SST output
-          DB_NAME="media-timeline-${{ steps.stage.outputs.stage }}-dbdatabase"
-          
-          # Find the actual database name (SST adds a random suffix)
-          FULL_DB_NAME=$(bunx wrangler d1 list --json | jq -r ".[] | select(.name | startswith(\"$DB_NAME\")) | .name" | head -1)
-          
-          if [ -n "$FULL_DB_NAME" ]; then
-            echo "Running migrations on $FULL_DB_NAME"
-            bunx wrangler d1 migrations apply "$FULL_DB_NAME" --remote
+          if [ "${{ steps.stage.outputs.stage }}" = "production" ]; then
+            bunx wrangler d1 migrations apply media-timeline-db --remote
           else
-            echo "Warning: Could not find D1 database starting with $DB_NAME"
+            bunx wrangler d1 migrations apply media-timeline-db-preview --remote --env preview
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to ${{ steps.stage.outputs.stage }}
+        run: |
+          if [ "${{ steps.stage.outputs.stage }}" = "production" ]; then
+            bunx wrangler deploy
+          else
+            bunx wrangler deploy --env preview
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

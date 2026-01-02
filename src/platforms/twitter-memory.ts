@@ -1,6 +1,6 @@
 import type { TweetMedia, TwitterTweet } from "../schema";
-import type { TwitterFetchResult } from "./twitter";
 import { BaseMemoryProvider } from "./memory-base";
+import type { TwitterFetchResult } from "./twitter";
 
 export type TwitterMemoryConfig = {
 	userId?: string;

@@ -4,8 +4,8 @@ export type { CommitGroup, CommitPayload, CommentPayload, DateGroup, GitHubRepo,
 
 export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
+import { type ApiError, type ApiResult, api as apiUrls, fetchApi } from "./api";
 import { MOCK_API_KEY, MOCK_USER_ID, isDevMode } from "./mock-auth";
-import { api as apiUrls, type ApiError, type ApiResult, fetchApi } from "./api";
 
 export type { ApiError, ApiResult };
 export { apiUrls };
