@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import type { GitHubRepoCommitsStore } from "../../src/schema/github-commits";
-import type { GitHubMetaStore } from "../../src/schema/github-meta";
-import type { RedditPostsStore } from "../../src/schema/reddit-posts";
-import type { TwitterTweetsStore } from "../../src/schema/twitter-tweets";
-import { createGitHubCommitsStore, createGitHubMetaStore, createRedditPostsStore, createTwitterTweetsStore } from "../../src/storage";
-import { unwrap } from "../../src/utils";
+import type { GitHubRepoCommitsStore } from "@media/schema";
+import type { GitHubMetaStore } from "@media/schema";
+import type { RedditPostsStore } from "@media/schema";
+import type { TwitterTweetsStore } from "@media/schema";
+import { createGitHubCommitsStore, createGitHubMetaStore, createRedditPostsStore, createTwitterTweetsStore } from "@media/server/storage";
+import { unwrap } from "@media/server/utils";
 import { ACCOUNTS, API_KEYS, PROFILES, USERS } from "./fixtures";
 import { type ProfileFilterSeed, type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedProfile, seedProfileFilter, seedUser } from "./setup";
 

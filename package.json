@@ -2,7 +2,7 @@
 	"name": "media-timeline",
 	"private": true,
 	"type": "module",
-	"workspaces": ["apps/*"],
+	"workspaces": ["apps/*", "packages/*"],
 	"scripts": {
 		"dev": "bun run --filter @media-timeline/website dev",
 		"dev:app": "bun run --cwd apps/website dev",

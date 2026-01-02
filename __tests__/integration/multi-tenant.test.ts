@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { handleCron } from "../../src/cron";
-import type { TimelineEntry } from "../../src/timeline";
+import { handleCron } from "@media/server/cron";
+import type { TimelineEntry } from "@media/server/timeline";
 import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, PROFILES, USERS, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
 import { type TestContext, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, getUserAccounts, seedAccount, seedProfile, seedUser, setupGitHubProvider } from "./setup";
 

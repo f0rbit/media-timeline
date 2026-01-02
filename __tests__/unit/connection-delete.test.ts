@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type DeletionAttempt, type StoreType, isValidStoreType, summarizeDeletions, validateAccountOwnership } from "../../src/connection-delete";
+import { type DeletionAttempt, type StoreType, isValidStoreType, summarizeDeletions, validateAccountOwnership } from "@media/server/connection-delete";
 
 describe("validateAccountOwnership", () => {
 	const userId = "user-123";

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { type RateLimitState, initialState, isCircuitOpen, shouldFetch, updateOnFailure, updateOnSuccess } from "../../src/storage";
+import { type RateLimitState, initialState, isCircuitOpen, shouldFetch, updateOnFailure, updateOnSuccess } from "@media/server/storage";
 import { ACCOUNTS, PROFILES, USERS } from "./fixtures";
 import { type TestContext, createTestContext, getAccount, getRateLimit, seedAccount, seedProfile, seedRateLimit, seedUser } from "./setup";
 

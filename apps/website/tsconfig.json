@@ -4,7 +4,11 @@
 		"baseUrl": ".",
 		"paths": {
 			"@/*": ["src/*"],
-			"@schema/*": ["../../src/schema/*"]
+			"@schema/*": ["../../src/schema/*"],
+			"@media/schema": ["../../packages/schema/src/index.ts"],
+			"@media/schema/*": ["../../packages/schema/src/*"],
+			"@media/server": ["../../packages/server/src/index.ts"],
+			"@media/server/*": ["../../packages/server/src/*"]
 		},
 		"jsx": "preserve",
 		"jsxImportSource": "solid-js"

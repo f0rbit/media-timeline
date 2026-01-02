@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import type { AppContext } from "@media/server/infrastructure";
+import { decodeOAuthState, encodeOAuthState, validateOAuthQueryKey, validateOAuthRequest } from "@media/server/oauth-helpers";
+import { authRoutes } from "@media/server/routes";
 import { Hono } from "hono";
-import type { AppContext } from "../../src/infrastructure";
-import { decodeOAuthState, encodeOAuthState, validateOAuthQueryKey, validateOAuthRequest } from "../../src/oauth-helpers";
-import { authRoutes } from "../../src/routes";
 import { API_KEYS, PROFILES, USERS } from "./fixtures";
 import { type TestContext, createTestContext, seedApiKey, seedProfile, seedUser } from "./setup";
 

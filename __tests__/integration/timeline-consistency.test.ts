@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { normalizeBluesky } from "../../src/platforms";
-import type { CommitGroup, TimelineItem } from "../../src/schema";
-import { rawStoreId } from "../../src/storage";
-import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "../../src/timeline";
-import { normalizeGitHub } from "../../src/timeline-github";
-import { first, unwrap } from "../../src/utils";
+import type { CommitGroup, TimelineItem } from "@media/schema";
+import { normalizeBluesky } from "@media/server/platforms";
+import { rawStoreId } from "@media/server/storage";
+import { type TimelineEntry, combineTimelines, groupByDate, groupCommits } from "@media/server/timeline";
+import { normalizeGitHub } from "@media/server/timeline-github";
+import { first, unwrap } from "@media/server/utils";
 import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, GITHUB_TIMELINE_FIXTURES, PROFILES, USERS, makeBlueskyFeedItem, makeBlueskyPost, makeBlueskyRaw, makeGitHubExtendedCommit, makeGitHubTimelineData } from "./fixtures";
 import { type TestContext, createTestContext, seedAccount, seedProfile, seedUser } from "./setup";
 

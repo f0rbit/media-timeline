@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type CategorizedAccounts, type RefreshAttempt, type RefreshStrategy, aggregateRefreshResults, categorizeAccountsByPlatform, determineRefreshStrategy, shouldRegenerateTimeline } from "../../src/refresh-service";
+import { type CategorizedAccounts, type RefreshAttempt, type RefreshStrategy, aggregateRefreshResults, categorizeAccountsByPlatform, determineRefreshStrategy, shouldRegenerateTimeline } from "@media/server/refresh-service";
 
 describe("categorizeAccountsByPlatform", () => {
 	type TestAccount = { id: string; platform: string };

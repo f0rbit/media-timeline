@@ -1,6 +1,6 @@
 import { describe, expect, it } from "bun:test";
-import type { CommitGroup, CommitPayload, PullRequestPayload, TimelineItem } from "../../src/schema";
-import { type TimelineEntry, groupByDate, groupCommits } from "../../src/timeline";
+import type { CommitGroup, CommitPayload, PullRequestPayload, TimelineItem } from "@media/schema";
+import { type TimelineEntry, groupByDate, groupCommits } from "@media/server/timeline";
 
 type CommitItem = TimelineItem & { payload: CommitPayload };
 type PRItem = TimelineItem & { payload: PullRequestPayload };

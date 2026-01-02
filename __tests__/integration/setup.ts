@@ -1,16 +1,15 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { type Backend, type Store, create_corpus, create_memory_backend, define_store, json_codec } from "@f0rbit/corpus";
+import type { Platform } from "@media/schema";
+import * as schema from "@media/schema/database";
+import { authMiddleware, connectionRoutes, profileRoutes, timelineRoutes } from "@media/server";
+import type { ProviderFactory } from "@media/server/cron";
+import type { AppContext } from "@media/server/infrastructure";
+import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, TwitterMemoryProvider, YouTubeMemoryProvider } from "@media/server/platforms";
+import { encrypt, err, hash_api_key, ok, unwrap, unwrap_err, uuid } from "@media/server/utils";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Hono } from "hono";
 import { z } from "zod";
-import { authMiddleware } from "../../src/auth";
-import type { ProviderFactory } from "../../src/cron";
-import type { AppContext } from "../../src/infrastructure";
-import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, TwitterMemoryProvider, YouTubeMemoryProvider } from "../../src/platforms";
-import { connectionRoutes, profileRoutes, timelineRoutes } from "../../src/routes";
-import type { Platform } from "../../src/schema";
-import * as schema from "../../src/schema/database";
-import { encrypt, err, hash_api_key, ok, unwrap, unwrap_err, uuid } from "../../src/utils";
 import { ACCOUNTS, PROFILES } from "./fixtures";
 
 // Note: apiKeys used by seedApiKey comes from schema via the drizzle instance
@@ -586,9 +585,9 @@ export const createProviderFactoryFromAccounts = (dataByAccountId: Record<string
 	return createProviderFactoryByToken(dataByToken);
 };
 
-import type { GitHubProviderLike } from "../../src/infrastructure";
-import type { GitHubFetchResult } from "../../src/platforms/github";
-import type { GitHubRaw as LegacyGitHubRaw } from "../../src/schema";
+import type { GitHubRaw as LegacyGitHubRaw } from "@media/schema";
+import type { GitHubProviderLike } from "@media/server/infrastructure";
+import type { GitHubFetchResult } from "@media/server/platforms/github";
 import { GITHUB_V2_FIXTURES, makeGitHubFetchResult } from "./fixtures";
 
 type GitHubV2DataByAccountId = Record<string, GitHubFetchResult>;

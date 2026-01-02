@@ -1,0 +1,105 @@
+{
+	"name": "@media/server",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"main": "./src/index.ts",
+	"types": "./src/index.ts",
+	"exports": {
+		".": {
+			"types": "./src/index.ts",
+			"import": "./src/index.ts"
+		},
+		"./utils": {
+			"types": "./src/utils.ts",
+			"import": "./src/utils.ts"
+		},
+		"./db": {
+			"types": "./src/db.ts",
+			"import": "./src/db.ts"
+		},
+		"./platforms": {
+			"types": "./src/platforms/index.ts",
+			"import": "./src/platforms/index.ts"
+		},
+		"./platforms/github": {
+			"types": "./src/platforms/github.ts",
+			"import": "./src/platforms/github.ts"
+		},
+		"./timeline-github": {
+			"types": "./src/timeline-github.ts",
+			"import": "./src/timeline-github.ts"
+		},
+		"./timeline-reddit": {
+			"types": "./src/timeline-reddit.ts",
+			"import": "./src/timeline-reddit.ts"
+		},
+		"./timeline-twitter": {
+			"types": "./src/timeline-twitter.ts",
+			"import": "./src/timeline-twitter.ts"
+		},
+		"./timeline": {
+			"types": "./src/timeline.ts",
+			"import": "./src/timeline.ts"
+		},
+		"./storage": {
+			"types": "./src/storage.ts",
+			"import": "./src/storage.ts"
+		},
+		"./cron": {
+			"types": "./src/cron.ts",
+			"import": "./src/cron.ts"
+		},
+		"./cron-github": {
+			"types": "./src/cron-github.ts",
+			"import": "./src/cron-github.ts"
+		},
+		"./cron-reddit": {
+			"types": "./src/cron-reddit.ts",
+			"import": "./src/cron-reddit.ts"
+		},
+		"./cron-twitter": {
+			"types": "./src/cron-twitter.ts",
+			"import": "./src/cron-twitter.ts"
+		},
+		"./infrastructure": {
+			"types": "./src/infrastructure/index.ts",
+			"import": "./src/infrastructure/index.ts"
+		},
+		"./oauth-helpers": {
+			"types": "./src/oauth-helpers.ts",
+			"import": "./src/oauth-helpers.ts"
+		},
+		"./refresh-service": {
+			"types": "./src/refresh-service.ts",
+			"import": "./src/refresh-service.ts"
+		},
+		"./devpad-auth": {
+			"types": "./src/devpad-auth.ts",
+			"import": "./src/devpad-auth.ts"
+		},
+		"./connection-delete": {
+			"types": "./src/connection-delete.ts",
+			"import": "./src/connection-delete.ts"
+		},
+		"./routes": {
+			"types": "./src/routes.ts",
+			"import": "./src/routes.ts"
+		}
+	},
+	"dependencies": {
+		"@media/schema": "workspace:*"
+	},
+	"peerDependencies": {
+		"@f0rbit/corpus": "0.2.2",
+		"@xdevplatform/xdk": "^0.3.0",
+		"drizzle-orm": "^0.44.7",
+		"hono": "^4.10.7",
+		"octokit": "^5.0.5",
+		"zod": "3.24.3"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20251205.0",
+		"typescript": "^5.9.3"
+	}
+}

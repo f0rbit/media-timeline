@@ -3,19 +3,15 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
+import * as schema from "@media/schema/database";
+import { type Database as DrizzleDB, type ProviderFactory, authMiddleware, authRoutes, connectionRoutes, defaultProviderFactory, hash_api_key, profileRoutes, timelineRoutes } from "@media/server";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { authMiddleware } from "../src/auth";
-import type { Database as DrizzleDB } from "../src/db";
-import { type ProviderFactory, defaultProviderFactory } from "../src/platforms";
-import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "../src/routes";
-import * as schema from "../src/schema/database";
-import { hash_api_key } from "../src/utils";
 
-type AppContext = {
+type DevAppContext = {
 	db: DrizzleDB;
 	backend: Backend;
 	providerFactory: ProviderFactory;
@@ -28,7 +24,7 @@ const MOCK_API_KEY = `mt_dev_${Buffer.from(MOCK_USER_ID).toString("base64").slic
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
-	appContext: AppContext;
+	appContext: DevAppContext;
 };
 
 async function startDevServer() {
@@ -54,9 +50,9 @@ async function startDevServer() {
 
 	const backend = create_file_backend({ base_path: "./local/corpus" });
 
-	const appContext: AppContext = {
-		db: dbWithBatch as unknown as AppContext["db"],
-		backend: backend as unknown as AppContext["backend"],
+	const appContext: DevAppContext = {
+		db: dbWithBatch as unknown as DevAppContext["db"],
+		backend: backend as unknown as DevAppContext["backend"],
 		providerFactory: defaultProviderFactory,
 		encryptionKey: ENCRYPTION_KEY,
 	};

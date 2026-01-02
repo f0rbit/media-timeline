@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { type DecodeStateError, type OAuthState, type TokenValidationError, type ValidatedTokens, calculateTokenExpiry, decodeOAuthStateData, validateTokenResponse } from "../../src/oauth-helpers";
+import { type DecodeStateError, type OAuthState, type TokenValidationError, type ValidatedTokens, calculateTokenExpiry, decodeOAuthStateData, validateTokenResponse } from "@media/server/oauth-helpers";
 
 describe("decodeOAuthStateData", () => {
 	const encodeState = <T extends Record<string, unknown>>(data: T): string => btoa(JSON.stringify(data));

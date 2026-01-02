@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
+import * as devpadAuth from "@media/server/devpad-auth";
+import { type DevpadAuthContext, devpadAuthMiddleware, getDevpadAuth } from "@media/server/devpad-auth";
+import type { AppContext } from "@media/server/infrastructure";
 import { Hono } from "hono";
-import * as devpadAuth from "../../src/devpad-auth";
-import { type DevpadAuthContext, devpadAuthMiddleware, getDevpadAuth } from "../../src/devpad-auth";
-import type { AppContext } from "../../src/infrastructure";
 import { USERS } from "./fixtures";
 import { type TestContext, createTestContext, seedUser } from "./setup";
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { handleCron } from "../../src/cron";
-import type { GitHubRaw, Platform } from "../../src/schema";
-import type { TimelineEntry } from "../../src/timeline";
+import type { GitHubRaw, Platform } from "@media/schema";
+import { handleCron } from "@media/server/cron";
+import type { TimelineEntry } from "@media/server/timeline";
 import { ACCOUNTS, BLUESKY_FIXTURES, DEVPAD_FIXTURES, GITHUB_FIXTURES, PROFILES, REDDIT_FIXTURES, USERS, YOUTUBE_FIXTURES, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
 import { type TestContext, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, seedAccount, seedProfile, seedRateLimit, seedUser, setupGitHubProvider } from "./setup";
 
