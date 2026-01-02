@@ -2,14 +2,12 @@ import type { Backend } from "@f0rbit/corpus";
 import type { CommitGroup, DateGroup, Platform, TimelineItem } from "@media/schema";
 import { type Profile, type ProfileFilter, accounts, profileFilters, profiles } from "@media/schema";
 import { and, eq, inArray } from "drizzle-orm";
-import type { Database } from "./db";
-import { createLogger } from "./logger";
-import { groupByDate, groupCommits } from "./timeline";
-import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
-import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
-import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
-import type { Result } from "./utils";
-import { err, ok } from "./utils";
+import type { Database } from "../db";
+import { createLogger } from "../logger";
+import { type Result, err, ok } from "../utils";
+import { groupByDate, groupCommits } from "./grouping";
+import { loadGitHubData, loadRedditData, loadTwitterData } from "./loaders";
+import { normalizeGitHub, normalizeReddit, normalizeTwitter } from "./normalizers";
 
 const log = createLogger("timeline:profile");
 
@@ -219,16 +217,16 @@ type PlatformLoader = {
 
 const platformLoaders: Record<string, PlatformLoader> = {
 	github: {
-		load: loadGitHubDataForAccount,
-		normalize: data => normalizeGitHub(data as Awaited<ReturnType<typeof loadGitHubDataForAccount>>),
+		load: loadGitHubData,
+		normalize: data => normalizeGitHub(data as Awaited<ReturnType<typeof loadGitHubData>>),
 	},
 	reddit: {
-		load: loadRedditDataForAccount,
-		normalize: data => normalizeReddit(data as Awaited<ReturnType<typeof loadRedditDataForAccount>>, ""),
+		load: loadRedditData,
+		normalize: data => normalizeReddit(data as Awaited<ReturnType<typeof loadRedditData>>, ""),
 	},
 	twitter: {
-		load: loadTwitterDataForAccount,
-		normalize: data => normalizeTwitter(data as Awaited<ReturnType<typeof loadTwitterDataForAccount>>),
+		load: loadTwitterData,
+		normalize: data => normalizeTwitter(data as Awaited<ReturnType<typeof loadTwitterData>>),
 	},
 };
 

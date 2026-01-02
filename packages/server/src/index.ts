@@ -30,3 +30,13 @@ export * from "./services";
 
 // Route helpers
 export { handleResult, handleResultWith, handleResultNoContent, type ServiceError, type Variables } from "./utils/route-helpers";
+
+// Rate limiting
+export {
+	type RateLimitState,
+	initialState,
+	isCircuitOpen,
+	shouldFetch,
+	updateOnSuccess,
+	updateOnFailure,
+} from "./rate-limits";

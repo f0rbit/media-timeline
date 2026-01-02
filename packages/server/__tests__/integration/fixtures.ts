@@ -18,7 +18,7 @@ import type {
 	YouTubeVideo,
 } from "@media/schema";
 import type { GitHubFetchResult } from "@media/server/platforms/github";
-import type { GitHubTimelineData } from "@media/server/timeline-github";
+import type { GitHubTimelineData } from "@media/server/timeline";
 import { type DeepPartial, days_ago, hours_ago, merge_deep, minutes_ago, random_sha, uuid } from "@media/server/utils";
 
 export type GitHubExtendedCommitInput = {

@@ -12,10 +12,7 @@ import { GitHubProvider, type ProviderError, type ProviderFactory, getPlatformCa
 import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
 import { type RateLimitState, type RawData, createRawStore, createTimelineStore, rawStoreId, shouldFetch } from "./storage";
-import { groupByDate, groupCommits } from "./timeline";
-import { loadGitHubDataForAccount, normalizeGitHub } from "./timeline-github";
-import { loadRedditDataForAccount, normalizeReddit } from "./timeline-reddit";
-import { loadTwitterDataForAccount, normalizeTwitter } from "./timeline-twitter";
+import { groupByDate, groupCommits, loadGitHubDataForAccount, loadRedditDataForAccount, loadTwitterDataForAccount, normalizeGitHub, normalizeReddit, normalizeTwitter } from "./timeline";
 import { type Result, decrypt, pipe, to_nullable, try_catch, uuid } from "./utils";
 
 const log = createLogger("cron");

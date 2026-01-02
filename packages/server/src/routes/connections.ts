@@ -1,5 +1,4 @@
-import { PlatformSchema, accountId, accounts, profiles, userId } from "@media/schema";
-import { and, eq } from "drizzle-orm";
+import { PlatformSchema, accountId, userId } from "@media/schema";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthContext, getAuth } from "../auth";
@@ -8,13 +7,13 @@ import { badRequest, notFound, serverError } from "../http-errors";
 import type { AppContext } from "../infrastructure";
 import {
 	createConnection,
+	deleteConnectionWithTimelineRegen,
 	getConnectionSettings,
 	getGitHubRepos,
 	getRedditSubreddits,
 	listConnections,
 	refreshAllUserConnections,
 	refreshConnection,
-	removeConnection,
 	updateConnectionSettings,
 	updateConnectionStatus,
 } from "../services/connections";
@@ -83,46 +82,14 @@ connectionRoutes.delete("/:account_id", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
 	const accId = accountId(c.req.param("account_id"));
-	const uid = userId(auth.user_id);
 
-	const result = await removeConnection(ctx, uid, accId);
+	const { result, backgroundTask } = await deleteConnectionWithTimelineRegen(ctx, userId(auth.user_id), accId);
 
-	if (!result.ok) {
-		return handleResult(c, result);
+	if (backgroundTask) {
+		safeWaitUntil(c, backgroundTask, "connection-delete");
 	}
 
-	const regenerateTimelines = async () => {
-		const { gatherLatestSnapshots, combineUserTimeline } = await import("../cron");
-
-		const affectedUsers = await ctx.db
-			.select({ user_id: profiles.user_id })
-			.from(accounts)
-			.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-			.where(eq(profiles.user_id, uid))
-			.then(rows => [...new Set(rows.map(r => r.user_id))]);
-
-		for (const affectedUserId of affectedUsers) {
-			const userAccounts = await ctx.db
-				.select({
-					id: accounts.id,
-					platform: accounts.platform,
-					platform_user_id: accounts.platform_user_id,
-					access_token_encrypted: accounts.access_token_encrypted,
-					refresh_token_encrypted: accounts.refresh_token_encrypted,
-					user_id: profiles.user_id,
-				})
-				.from(accounts)
-				.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-				.where(and(eq(profiles.user_id, affectedUserId), eq(accounts.is_active, true)));
-
-			const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
-			await combineUserTimeline(ctx.backend, affectedUserId, snapshots);
-		}
-	};
-
-	safeWaitUntil(c, regenerateTimelines, "connection-delete");
-
-	return c.json(result.value);
+	return handleResult(c, result);
 });
 
 connectionRoutes.post("/:account_id/refresh", async c => {

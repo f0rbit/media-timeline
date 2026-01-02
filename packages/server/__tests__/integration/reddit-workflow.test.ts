@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { processRedditAccount } from "@media/server/cron-reddit";
 import { RedditMemoryProvider } from "@media/server/platforms/reddit-memory";
-import { loadRedditDataForAccount, normalizeReddit } from "@media/server/timeline-reddit";
+import { loadRedditDataForAccount, normalizeReddit } from "@media/server/timeline";
 import { at, first, unwrap } from "@media/server/utils";
 import { ACCOUNTS, PROFILES, REDDIT_FIXTURES, USERS, makeRedditComment, makeRedditPost } from "./fixtures";
 import { type TestContext, createTestContext, seedAccount, seedProfile, seedUser } from "./setup";

@@ -1,6 +1,6 @@
 import type { CommitGroup, CommitPayload, DateGroup, PullRequestPayload, TimelineItem } from "@media/schema";
-import { createLogger } from "./logger";
-import { extract_date_key } from "./utils";
+import { createLogger } from "../logger";
+import { extract_date_key } from "../utils";
 
 const log = createLogger("timeline");
 
@@ -60,33 +60,21 @@ type DeduplicationResult = {
 	otherItems: TimelineItem[];
 };
 
-/**
- * Associates commits with their parent PRs using SHA matching.
- * Commits found in a PR are removed from standalone display and attached to the PR.
- *
- * @param items - All timeline items (commits, PRs, posts, etc.)
- * @returns Separated items: orphan commits (not in any PR), enriched PRs (with commit details), other items
- */
 const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult => {
 	const commits = items.filter(isCommitItem);
 	const prs = items.filter(isPRItem);
 	const otherItems = items.filter(i => !isCommitItem(i) && !isPRItem(i));
 
-	// Build a map of commit SHA -> commit item for quick lookup
 	const commitBySha = new Map<string, CommitItem>();
 	for (const commit of commits) {
 		commitBySha.set(commit.payload.sha, commit);
 	}
 
-	// Build a set of all commit SHAs that belong to any PR
 	const prCommitShas = new Set<string>();
-
-	// Map PR id -> list of commit SHAs it owns
 	const prToCommitShas = new Map<string, string[]>();
 
 	for (const pr of prs) {
 		const shas = pr.payload.commit_shas ?? [];
-
 		prToCommitShas.set(pr.id, shas);
 		for (const sha of shas) {
 			prCommitShas.add(sha);
@@ -96,7 +84,6 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 		}
 	}
 
-	// Separate orphan commits (not in any PR) from PR-owned commits
 	const orphanCommits: CommitItem[] = [];
 	for (const commit of commits) {
 		if (!prCommitShas.has(commit.payload.sha)) {
@@ -104,7 +91,6 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 		}
 	}
 
-	// Enrich PRs with their commit details
 	const enrichedPRs = prs.map(pr => {
 		const shas = prToCommitShas.get(pr.id) ?? [];
 		const prCommits: PRCommitInfo[] = [];
@@ -136,22 +122,11 @@ const deduplicateCommitsFromPRs = (items: TimelineItem[]): DeduplicationResult =
 
 export const combineTimelines = (items: TimelineItem[]): TimelineItem[] => [...items].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
 
-/**
- * Groups commits by repo/date and deduplicates commits that belong to PRs.
- *
- * Flow:
- * 1. Separate commits, PRs, and other items
- * 2. Match commits to PRs by SHA
- * 3. Orphan commits (not in any PR) get grouped by repo/date
- * 4. PRs get enriched with their commit details
- */
 export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 	log.debug("Grouping commits", { total_items: items.length });
 
-	// Step 1: Deduplicate commits that belong to PRs
 	const { orphanCommits, enrichedPRs, otherItems } = deduplicateCommitsFromPRs(items);
 
-	// Step 2: Group only orphan commits by repo/branch/date
 	const groupedByRepoBranchDate = orphanCommits.reduce<Map<string, CommitItem[]>>((acc, commit) => {
 		const date = extract_date_key(commit.timestamp);
 		const key = makeGroupKey(commit.payload.repo, commit.payload.branch, date);
@@ -168,7 +143,6 @@ export const groupCommits = (items: TimelineItem[]): TimelineEntry[] => {
 		return buildCommitGroup(repo, branch, date, groupCommits);
 	});
 
-	// Step 3: Combine all entries
 	const result = [...commitGroups, ...enrichedPRs, ...otherItems];
 
 	log.debug("Commit grouping complete", { commit_groups: commitGroups.length, total_entries: result.length });

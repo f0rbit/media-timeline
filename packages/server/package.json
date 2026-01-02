@@ -26,21 +26,25 @@
 			"types": "./src/platforms/github.ts",
 			"import": "./src/platforms/github.ts"
 		},
-		"./timeline-github": {
-			"types": "./src/timeline-github.ts",
-			"import": "./src/timeline-github.ts"
-		},
-		"./timeline-reddit": {
-			"types": "./src/timeline-reddit.ts",
-			"import": "./src/timeline-reddit.ts"
-		},
-		"./timeline-twitter": {
-			"types": "./src/timeline-twitter.ts",
-			"import": "./src/timeline-twitter.ts"
-		},
 		"./timeline": {
-			"types": "./src/timeline.ts",
-			"import": "./src/timeline.ts"
+			"types": "./src/timeline/index.ts",
+			"import": "./src/timeline/index.ts"
+		},
+		"./timeline/loaders": {
+			"types": "./src/timeline/loaders.ts",
+			"import": "./src/timeline/loaders.ts"
+		},
+		"./timeline/normalizers": {
+			"types": "./src/timeline/normalizers.ts",
+			"import": "./src/timeline/normalizers.ts"
+		},
+		"./timeline/grouping": {
+			"types": "./src/timeline/grouping.ts",
+			"import": "./src/timeline/grouping.ts"
+		},
+		"./timeline/profile": {
+			"types": "./src/timeline/profile.ts",
+			"import": "./src/timeline/profile.ts"
 		},
 		"./storage": {
 			"types": "./src/storage.ts",

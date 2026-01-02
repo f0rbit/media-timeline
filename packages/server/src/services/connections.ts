@@ -2,6 +2,7 @@ import { type AccountId, type Platform, type UserId, accountSettings, accounts, 
 import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership } from "../auth-ownership";
 import { deleteConnection } from "../connection-delete";
+import { combineUserTimeline, gatherLatestSnapshots } from "../cron";
 import type { AppContext } from "../infrastructure";
 import { refreshAllAccounts, refreshSingleAccount } from "../refresh-service";
 import { createGitHubMetaStore, createRedditMetaStore } from "../storage";
@@ -148,6 +149,50 @@ export const removeConnection = async (ctx: AppContext, uid: UserId, accId: Acco
 		deleted_stores: result.value.deleted_stores.length,
 		affected_users: result.value.affected_users.length,
 	});
+};
+
+type DeleteWithRegenResult = {
+	result: Result<DeleteResult, ServiceError>;
+	backgroundTask: (() => Promise<void>) | null;
+};
+
+const createTimelineRegenTask = (ctx: AppContext, uid: UserId): (() => Promise<void>) => {
+	return async () => {
+		const affectedUsers = await ctx.db
+			.select({ user_id: profiles.user_id })
+			.from(accounts)
+			.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+			.where(eq(profiles.user_id, uid))
+			.then(rows => [...new Set(rows.map(r => r.user_id))]);
+
+		for (const affectedUserId of affectedUsers) {
+			const userAccounts = await ctx.db
+				.select({
+					id: accounts.id,
+					platform: accounts.platform,
+					platform_user_id: accounts.platform_user_id,
+					access_token_encrypted: accounts.access_token_encrypted,
+					refresh_token_encrypted: accounts.refresh_token_encrypted,
+					user_id: profiles.user_id,
+				})
+				.from(accounts)
+				.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+				.where(and(eq(profiles.user_id, affectedUserId), eq(accounts.is_active, true)));
+
+			const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+			await combineUserTimeline(ctx.backend, affectedUserId, snapshots);
+		}
+	};
+};
+
+export const deleteConnectionWithTimelineRegen = async (ctx: AppContext, uid: UserId, accId: AccountId): Promise<DeleteWithRegenResult> => {
+	const result = await removeConnection(ctx, uid, accId);
+
+	if (!result.ok) {
+		return { result, backgroundTask: null };
+	}
+
+	return { result, backgroundTask: createTimelineRegenTask(ctx, uid) };
 };
 
 export const updateConnectionStatus = async (ctx: AppContext, uid: UserId, accId: AccountId, isActive: boolean): Promise<Result<{ success: boolean; connection: unknown }, ServiceError>> => {

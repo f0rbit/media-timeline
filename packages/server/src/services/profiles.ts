@@ -4,7 +4,7 @@ import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership } from "../auth-ownership";
 import type { Database } from "../db";
 import type { AppContext } from "../infrastructure";
-import { type ProfileTimelineOptions, type ProfileTimelineResult, generateProfileTimeline } from "../timeline-profile";
+import { type ProfileTimelineOptions, type ProfileTimelineResult, generateProfileTimeline } from "../timeline";
 import { type Result, err, ok, uuid } from "../utils";
 import type { ServiceError } from "../utils/route-helpers";
 
