@@ -1,11 +1,10 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { GitHubRepoCommit, GitHubRepoPR, Platform, RedditComment, RedditPost, TweetMedia, TwitterMetaStore, TwitterTweet } from "@media/schema";
 import { createLogger } from "../logger";
+import { type LoadFunction, registerLoader } from "../platforms/registry";
 import { createGitHubCommitsStore, createGitHubPRsStore, createRedditCommentsStore, createRedditPostsStore, createTwitterMetaStore, createTwitterTweetsStore, listGitHubCommitStores, listGitHubPRStores } from "../storage";
 
 const log = createLogger("timeline:loaders");
-
-// === GITHUB ===
 
 type CommitWithRepo = GitHubRepoCommit & { _repo: string };
 type PRWithRepo = GitHubRepoPR & { _repo: string };
@@ -57,8 +56,6 @@ export const loadGitHubData = async (backend: Backend, accountId: string): Promi
 	return { commits, prs };
 };
 
-// === REDDIT ===
-
 export type RedditTimelineData = {
 	posts: RedditPost[];
 	comments: RedditComment[];
@@ -85,8 +82,6 @@ export const loadRedditData = async (backend: Backend, accountId: string): Promi
 	log.info("Loaded Reddit data", { account_id: accountId, posts: posts.length, comments: comments.length });
 	return { posts, comments };
 };
-
-// === TWITTER ===
 
 export type TwitterTimelineData = {
 	tweets: TwitterTweet[];
@@ -117,9 +112,9 @@ export const loadTwitterData = async (backend: Backend, accountId: string): Prom
 	return { tweets: tweetsData.tweets, media: tweetsData.media, meta };
 };
 
-// === LOADER REGISTRY ===
-
-type LoadFunction<T = unknown> = (backend: Backend, accountId: string) => Promise<T>;
+registerLoader("github", loadGitHubData as LoadFunction);
+registerLoader("reddit", loadRedditData as LoadFunction);
+registerLoader("twitter", loadTwitterData as LoadFunction);
 
 export const loaders: Record<Platform, LoadFunction> = {
 	github: loadGitHubData,
@@ -130,7 +125,6 @@ export const loaders: Record<Platform, LoadFunction> = {
 	devpad: async () => ({}),
 };
 
-// Legacy aliases for backwards compatibility
 export const loadGitHubDataForAccount = loadGitHubData;
 export const loadRedditDataForAccount = loadRedditData;
 export const loadTwitterDataForAccount = loadTwitterData;

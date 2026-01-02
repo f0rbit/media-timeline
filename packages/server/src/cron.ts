@@ -8,33 +8,36 @@ import type { Database } from "./db";
 import type { CronProcessError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { createLogger } from "./logger";
-import { GitHubProvider, type ProviderError, type ProviderFactory, getPlatformCapabilities, getPlatformsWithMultiStore, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
+import {
+	type AccountWithUser,
+	type CronProcessor,
+	GitHubProvider,
+	type ProviderError,
+	type ProviderFactory,
+	getCronProcessor,
+	getPlatformCapabilities,
+	getPlatformsWithMultiStore,
+	normalizeBluesky,
+	normalizeDevpad,
+	normalizeYouTube,
+	registerCronProcessor,
+} from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
 import { type RateLimitState, type RawData, createRawStore, createTimelineStore, rawStoreId, shouldFetch } from "./storage";
-import { groupByDate, groupCommits, loadGitHubDataForAccount, loadRedditDataForAccount, loadTwitterDataForAccount, normalizeGitHub, normalizeReddit, normalizeTwitter } from "./timeline";
+import { groupByDate, groupCommits, loadGitHubDataForAccount, loadRedditDataForAccount, loadTwitterDataForAccount, normalizeGitHub, normalizeReddit, normalizeTwitter } from "./timeline/index";
 import { type Result, decrypt, pipe, to_nullable, try_catch, uuid } from "./utils";
 
 const log = createLogger("cron");
 
-export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline, getPlatformProcessor };
-export type { ProviderFactory, RawSnapshot, PlatformGroups, PlatformProcessor };
+export { processAccount, gatherLatestSnapshots, combineUserTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, generateTimeline, storeTimeline };
+export type { ProviderFactory, RawSnapshot, PlatformGroups };
 
 type RawSnapshot = {
 	account_id: string;
 	platform: string;
 	version: string;
 	data: unknown;
-};
-
-type AccountWithUser = {
-	id: string;
-	platform: string;
-	platform_user_id: string | null;
-	access_token_encrypted: string;
-	refresh_token_encrypted: string | null;
-	user_id: string;
-	last_fetched_at?: string | null;
 };
 
 type RateLimitRow = {
@@ -74,6 +77,24 @@ const toRateLimitState = (row: RateLimitRow | null): RateLimitState => ({
 	consecutive_failures: row?.consecutive_failures ?? 0,
 	last_failure_at: null,
 	circuit_open_until: parseDate(row?.circuit_open_until ?? null),
+});
+
+registerCronProcessor("github", {
+	shouldFetch: () => true,
+	createProvider: (ctx: AppContext) => ctx.gitHubProvider ?? new GitHubProvider(),
+	processAccount: processGitHubAccount as CronProcessor["processAccount"],
+});
+
+registerCronProcessor("reddit", {
+	shouldFetch: () => true,
+	createProvider: () => new RedditProvider(),
+	processAccount: processRedditAccount as CronProcessor["processAccount"],
+});
+
+registerCronProcessor("twitter", {
+	shouldFetch: (_account, lastFetched) => shouldFetchForPlatform("twitter", lastFetched),
+	createProvider: (ctx: AppContext) => ctx.twitterProvider ?? new TwitterProvider(),
+	processAccount: processTwitterAccount as CronProcessor["processAccount"],
 });
 
 export async function handleCron(ctx: AppContext): Promise<CronResult> {
@@ -238,69 +259,28 @@ type PlatformProcessResult = {
 	stats: Record<string, unknown>;
 };
 
-type PlatformProcessor = {
-	platform: Platform;
-	shouldFetch: (account: AccountWithUser, lastFetchedAt: string | null) => boolean;
-	createProvider: (ctx: AppContext) => unknown;
-	processAccount: (backend: Backend, accountId: string, token: string, provider: unknown) => Promise<Result<PlatformProcessResult, { kind: string; message?: string }>>;
-};
-
-const getPlatformProcessor = (platform: Platform): PlatformProcessor | null => {
-	switch (platform) {
-		case "github":
-			return {
-				platform: "github" as const,
-				shouldFetch: () => true,
-				createProvider: (ctx: AppContext) => ctx.gitHubProvider ?? new GitHubProvider(),
-				processAccount: processGitHubAccount as PlatformProcessor["processAccount"],
-			};
-		case "reddit":
-			return {
-				platform: "reddit" as const,
-				shouldFetch: () => true,
-				createProvider: () => new RedditProvider(),
-				processAccount: processRedditAccount as PlatformProcessor["processAccount"],
-			};
-		case "twitter":
-			return {
-				platform: "twitter" as const,
-				shouldFetch: (_account: AccountWithUser, lastFetched: string | null) => shouldFetchForPlatform("twitter", lastFetched),
-				createProvider: (ctx: AppContext) => ctx.twitterProvider ?? new TwitterProvider(),
-				processAccount: processTwitterAccount as PlatformProcessor["processAccount"],
-			};
-		case "bluesky":
-		case "youtube":
-		case "devpad":
-			return null;
-		default: {
-			const _exhaustiveCheck: never = platform;
-			return null;
-		}
-	}
-};
-
 type ProcessingError = { kind: string; message?: string };
 
-const processPlatformAccountWithProcessor = async (ctx: AppContext, account: AccountWithUser, processor: PlatformProcessor): Promise<RawSnapshot | null> => {
+const processPlatformAccountWithProcessor = async (ctx: AppContext, account: AccountWithUser, processor: CronProcessor, platform: Platform): Promise<RawSnapshot | null> => {
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
 		.map_err((e): ProcessingError => ({ kind: e.kind, message: e.message }))
-		.tap_err(() => log.error("Decryption failed", { platform: processor.platform, account_id: account.id }))
+		.tap_err(() => log.error("Decryption failed", { platform, account_id: account.id }))
 		.flat_map(async (token): Promise<Result<PlatformProcessResult, ProcessingError>> => {
 			const provider = processor.createProvider(ctx);
 			return processor.processAccount(ctx.backend, account.id, token, provider);
 		})
 		.tap_err(e => {
-			log.error("Processing failed", { platform: processor.platform, account_id: account.id, error: e });
+			log.error("Processing failed", { platform, account_id: account.id, error: e });
 			recordFailure(ctx.db, account.id);
 		})
 		.tap(() => recordSuccess(ctx.db, account.id))
 		.map(
 			(result): RawSnapshot => ({
 				account_id: account.id,
-				platform: processor.platform,
+				platform,
 				version: result.meta_version,
 				data: {
-					type: `${processor.platform}_multi_store`,
+					type: `${platform}_multi_store`,
 					...result.stats,
 				},
 			})
@@ -361,7 +341,8 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		return null;
 	}
 
-	const processor = getPlatformProcessor(account.platform as Platform);
+	const platform = account.platform as Platform;
+	const processor = getCronProcessor(platform);
 
 	if (!processor) {
 		return processGenericAccount(ctx, account);
@@ -371,7 +352,7 @@ const processAccount = async (ctx: AppContext, account: AccountWithUser): Promis
 		return null;
 	}
 
-	return processPlatformAccountWithProcessor(ctx, account, processor);
+	return processPlatformAccountWithProcessor(ctx, account, processor, platform);
 };
 
 const getLatestSnapshot = async (backend: Backend, account: AccountWithUser): Promise<RawSnapshot | null> => {

@@ -1,12 +1,12 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { RedditCommentsStore, RedditMetaStore, RedditPostsStore } from "@media/schema";
-import type { FetchError, StoreError } from "./errors";
+import { type ProcessError, type StoreStats, defaultStats, formatFetchError, storeMeta as genericStoreMeta, storeWithMerge } from "./cron/platform-processor";
 import { createLogger } from "./logger";
 import { mergeByKey } from "./merge";
 import type { RedditFetchResult } from "./platforms/reddit";
 import type { ProviderError } from "./platforms/types";
 import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "./storage";
-import { type Result, ok, pipe, to_nullable } from "./utils";
+import { type Result, ok, pipe } from "./utils";
 
 const log = createLogger("cron:reddit");
 
@@ -23,32 +23,18 @@ export type RedditProcessResult = {
 	};
 };
 
-type RedditProcessError = FetchError | StoreError;
-
 const mergePosts = (existing: RedditPostsStore | null, incoming: RedditPostsStore): { merged: RedditPostsStore; newCount: number } => {
 	const { merged: posts, newCount } = mergeByKey(existing?.posts, incoming.posts, p => p.id);
-
 	return {
-		merged: {
-			username: incoming.username,
-			posts,
-			total_posts: posts.length,
-			fetched_at: incoming.fetched_at,
-		},
+		merged: { username: incoming.username, posts, total_posts: posts.length, fetched_at: incoming.fetched_at },
 		newCount,
 	};
 };
 
 const mergeComments = (existing: RedditCommentsStore | null, incoming: RedditCommentsStore): { merged: RedditCommentsStore; newCount: number } => {
 	const { merged: comments, newCount } = mergeByKey(existing?.comments, incoming.comments, c => c.id);
-
 	return {
-		merged: {
-			username: incoming.username,
-			comments,
-			total_comments: comments.length,
-			fetched_at: incoming.fetched_at,
-		},
+		merged: { username: incoming.username, comments, total_comments: comments.length, fetched_at: incoming.fetched_at },
 		newCount,
 	};
 };
@@ -57,51 +43,18 @@ type RedditProvider = {
 	fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>>;
 };
 
-type StoreStats = { version: string; newCount: number; total: number };
-const defaultStats: StoreStats = { version: "", newCount: 0, total: 0 };
+const storeMeta = (backend: Backend, accountId: string, meta: RedditMetaStore): Promise<string> => genericStoreMeta(backend, accountId, createRedditMetaStore, meta);
 
-const storeMeta = async (backend: Backend, accountId: string, meta: RedditMetaStore): Promise<string> => {
-	const storeResult = createRedditMetaStore(backend, accountId);
-	if (!storeResult.ok) return "";
+const storePosts = (backend: Backend, accountId: string, posts: RedditPostsStore): Promise<StoreStats> =>
+	storeWithMerge(backend, accountId, { name: "posts", create: createRedditPostsStore, merge: mergePosts, getKey: () => "", getTotal: m => m.total_posts }, posts);
 
-	const putResult = await storeResult.value.store.put(meta);
-	return putResult.ok ? putResult.value.version : "";
-};
+const storeComments = (backend: Backend, accountId: string, comments: RedditCommentsStore): Promise<StoreStats> =>
+	storeWithMerge(backend, accountId, { name: "comments", create: createRedditCommentsStore, merge: mergeComments, getKey: () => "", getTotal: m => m.total_comments }, comments);
 
-const storePosts = async (backend: Backend, accountId: string, posts: RedditPostsStore): Promise<StoreStats> => {
-	const storeResult = createRedditPostsStore(backend, accountId);
-	if (!storeResult.ok) return defaultStats;
-
-	const store = storeResult.value.store;
-	const existing = to_nullable(await store.get_latest())?.data ?? null;
-	const { merged, newCount } = mergePosts(existing, posts);
-	const putResult = await store.put(merged);
-
-	return pipe(putResult)
-		.map(({ version }) => ({ version, newCount, total: merged.total_posts }))
-		.tap(({ newCount: n, total }) => log.debug("Stored posts", { new: n, total }))
-		.unwrap_or(defaultStats);
-};
-
-const storeComments = async (backend: Backend, accountId: string, comments: RedditCommentsStore): Promise<StoreStats> => {
-	const storeResult = createRedditCommentsStore(backend, accountId);
-	if (!storeResult.ok) return defaultStats;
-
-	const store = storeResult.value.store;
-	const existing = to_nullable(await store.get_latest())?.data ?? null;
-	const { merged, newCount } = mergeComments(existing, comments);
-	const putResult = await store.put(merged);
-
-	return pipe(putResult)
-		.map(({ version }) => ({ version, newCount, total: merged.total_comments }))
-		.tap(({ newCount: n, total }) => log.debug("Stored comments", { new: n, total }))
-		.unwrap_or(defaultStats);
-};
-
-export const processRedditAccount = (backend: Backend, accountId: string, token: string, provider: RedditProvider): Promise<Result<RedditProcessResult, RedditProcessError>> =>
+export const processRedditAccount = (backend: Backend, accountId: string, token: string, provider: RedditProvider): Promise<Result<RedditProcessResult, ProcessError>> =>
 	pipe(provider.fetch(token))
 		.tap(() => log.info("Processing account", { account_id: accountId }))
-		.map_err((e): RedditProcessError => ({ kind: "fetch_failed", message: `Reddit fetch failed: ${e.kind}` }))
+		.map_err((e): ProcessError => formatFetchError("Reddit", e))
 		.flat_map(async ({ meta, posts, comments }) => {
 			const [metaVersion, postsResult, commentsResult] = await Promise.all([storeMeta(backend, accountId, meta), storePosts(backend, accountId, posts), storeComments(backend, accountId, comments)]);
 

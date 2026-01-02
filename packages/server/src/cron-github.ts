@@ -1,6 +1,6 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { GitHubMetaStore, GitHubRepoCommitsStore, GitHubRepoPRsStore } from "@media/schema";
-import type { FetchError, StoreError } from "./errors";
+import { type ProcessError, formatFetchError, storeMeta as genericStoreMeta } from "./cron/platform-processor";
 import { createLogger } from "./logger";
 import { mergeByKey } from "./merge";
 import type { GitHubFetchResult } from "./platforms/github";
@@ -24,11 +24,8 @@ export type GitHubProcessResult = {
 	};
 };
 
-type GitHubProcessError = FetchError | StoreError;
-
 const mergeCommits = (existing: GitHubRepoCommitsStore | null, incoming: GitHubRepoCommitsStore): { merged: GitHubRepoCommitsStore; newCount: number } => {
 	const { merged: commits, newCount } = mergeByKey(existing?.commits, incoming.commits, c => c.sha);
-
 	return {
 		merged: {
 			owner: incoming.owner,
@@ -44,15 +41,8 @@ const mergeCommits = (existing: GitHubRepoCommitsStore | null, incoming: GitHubR
 
 const mergePRs = (existing: GitHubRepoPRsStore | null, incoming: GitHubRepoPRsStore): { merged: GitHubRepoPRsStore; newCount: number } => {
 	const { merged: pull_requests, newCount } = mergeByKey(existing?.pull_requests, incoming.pull_requests, pr => String(pr.number));
-
 	return {
-		merged: {
-			owner: incoming.owner,
-			repo: incoming.repo,
-			pull_requests,
-			total_prs: pull_requests.length,
-			fetched_at: incoming.fetched_at,
-		},
+		merged: { owner: incoming.owner, repo: incoming.repo, pull_requests, total_prs: pull_requests.length, fetched_at: incoming.fetched_at },
 		newCount,
 	};
 };
@@ -64,13 +54,7 @@ type GitHubProvider = {
 type RepoStoreStats = { owner: string; repo: string; version: string; newCount: number; total: number };
 const defaultRepoStats = (owner: string, repo: string): RepoStoreStats => ({ owner, repo, version: "", newCount: 0, total: 0 });
 
-const storeMeta = async (backend: Backend, accountId: string, meta: GitHubMetaStore): Promise<string> => {
-	const storeResult = createGitHubMetaStore(backend, accountId);
-	if (!storeResult.ok) return "";
-
-	const putResult = await storeResult.value.store.put(meta);
-	return putResult.ok ? putResult.value.version : "";
-};
+const storeMeta = (backend: Backend, accountId: string, meta: GitHubMetaStore): Promise<string> => genericStoreMeta(backend, accountId, createGitHubMetaStore, meta);
 
 const storeCommits = async (backend: Backend, accountId: string, owner: string, repo: string, incoming: GitHubRepoCommitsStore): Promise<RepoStoreStats> => {
 	const storeResult = createGitHubCommitsStore(backend, accountId, owner, repo);
@@ -102,19 +86,15 @@ const storePRs = async (backend: Backend, accountId: string, owner: string, repo
 		.unwrap_or(defaultRepoStats(owner, repo));
 };
 
-export async function processGitHubAccount(backend: Backend, accountId: string, token: string, provider: GitHubProvider): Promise<Result<GitHubProcessResult, GitHubProcessError>> {
+export async function processGitHubAccount(backend: Backend, accountId: string, token: string, provider: GitHubProvider): Promise<Result<GitHubProcessResult, ProcessError>> {
 	log.info("Processing account", { account_id: accountId });
 
 	const fetchResult = await provider.fetch(token);
 	if (!fetchResult.ok) {
-		return err({
-			kind: "fetch_failed",
-			message: `GitHub fetch failed: ${fetchResult.error.kind}`,
-		});
+		return err(formatFetchError("GitHub", fetchResult.error));
 	}
 
 	const { meta, repos } = fetchResult.value;
-
 	const metaVersion = await storeMeta(backend, accountId, meta);
 
 	const commitStores: Array<{ owner: string; repo: string; version: string }> = [];
@@ -143,26 +123,13 @@ export async function processGitHubAccount(backend: Backend, accountId: string, 
 		}
 	}
 
-	log.info("Processing complete", {
-		account_id: accountId,
-		repos: repos.size,
-		total_commits: totalCommits,
-		new_commits: newCommits,
-		total_prs: totalPRs,
-		new_prs: newPRs,
-	});
+	log.info("Processing complete", { account_id: accountId, repos: repos.size, total_commits: totalCommits, new_commits: newCommits, total_prs: totalPRs, new_prs: newPRs });
 
 	return ok({
 		account_id: accountId,
 		meta_version: metaVersion,
 		commit_stores: commitStores,
 		pr_stores: prStores,
-		stats: {
-			repos_processed: repos.size,
-			total_commits: totalCommits,
-			total_prs: totalPRs,
-			new_commits: newCommits,
-			new_prs: newPRs,
-		},
+		stats: { repos_processed: repos.size, total_commits: totalCommits, total_prs: totalPRs, new_commits: newCommits, new_prs: newPRs },
 	});
 }

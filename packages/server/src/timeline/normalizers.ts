@@ -1,11 +1,10 @@
 import type { Platform, TimelineItem } from "@media/schema";
 import { createLogger } from "../logger";
+import { type NormalizeFunction, registerNormalizer } from "../platforms/registry";
 import { truncate } from "../utils";
 import type { GitHubTimelineData, RedditTimelineData, TwitterTimelineData } from "./loaders";
 
 const log = createLogger("timeline:normalizers");
-
-// === GITHUB ===
 
 export const normalizeGitHub = (data: GitHubTimelineData): TimelineItem[] => {
 	const items: TimelineItem[] = [];
@@ -65,8 +64,6 @@ export const normalizeGitHub = (data: GitHubTimelineData): TimelineItem[] => {
 	return items;
 };
 
-// === REDDIT ===
-
 export const normalizeReddit = (data: RedditTimelineData, _username: string): TimelineItem[] => {
 	const items: TimelineItem[] = [];
 
@@ -125,8 +122,6 @@ export const normalizeReddit = (data: RedditTimelineData, _username: string): Ti
 	return items;
 };
 
-// === TWITTER ===
-
 export const normalizeTwitter = (data: TwitterTimelineData): TimelineItem[] => {
 	const items: TimelineItem[] = [];
 
@@ -164,9 +159,9 @@ export const normalizeTwitter = (data: TwitterTimelineData): TimelineItem[] => {
 	return items;
 };
 
-// === NORMALIZER REGISTRY ===
-
-type NormalizeFunction = (data: unknown, username?: string) => TimelineItem[];
+registerNormalizer("github", data => normalizeGitHub(data as GitHubTimelineData));
+registerNormalizer("reddit", (data, username) => normalizeReddit(data as RedditTimelineData, username ?? ""));
+registerNormalizer("twitter", data => normalizeTwitter(data as TwitterTimelineData));
 
 export const normalizers: Record<Platform, NormalizeFunction> = {
 	github: data => normalizeGitHub(data as GitHubTimelineData),
