@@ -3,25 +3,46 @@ import type { z } from "zod";
 
 export * from "./branded";
 export { accountSettings, accounts, apiKeys, profileFilters, profiles, rateLimits, users, type Profile, type ProfileFilter, type NewProfile, type NewProfileFilter } from "./database";
-export {
-	type GitHubRepoCommit,
-	GitHubRepoCommitSchema,
-	type GitHubRepoCommitsStore,
-	GitHubRepoCommitsStoreSchema,
-} from "./github-commits";
-export {
-	type GitHubMetaStore,
-	GitHubMetaStoreSchema,
-	type GitHubRepoMeta,
-	GitHubRepoMetaSchema,
-} from "./github-meta";
 
 export {
-	type GitHubRepoPR,
+	GitHubRepoCommitSchema,
+	GitHubRepoCommitsStoreSchema,
+	GitHubRepoMetaSchema,
+	GitHubMetaStoreSchema,
 	GitHubRepoPRSchema,
-	type GitHubRepoPRsStore,
 	GitHubRepoPRsStoreSchema,
-} from "./github-prs";
+	RedditCommentSchema,
+	RedditCommentsStoreSchema,
+	RedditMetaStoreSchema,
+	RedditPostSchema,
+	RedditPostsStoreSchema,
+	TwitterUserMetricsSchema,
+	TwitterMetaStoreSchema,
+	TweetMetricsSchema,
+	TweetMediaSchema,
+	TweetUrlSchema,
+	TwitterTweetSchema,
+	TwitterTweetsStoreSchema,
+	type GitHubRepoCommit,
+	type GitHubRepoCommitsStore,
+	type GitHubRepoMeta,
+	type GitHubMetaStore,
+	type GitHubRepoPR,
+	type GitHubRepoPRsStore,
+	type RedditComment,
+	type RedditCommentsStore,
+	type RedditMetaStore,
+	type RedditPost,
+	type RedditPostsStore,
+	type TwitterUserMetrics,
+	type TwitterMetaStore,
+	type TweetMetrics,
+	type TweetMedia,
+	type TweetUrl,
+	type TwitterTweet,
+	type TwitterTweetsStore,
+} from "./platforms/index";
+
 export {
 	BlueskyAuthorSchema,
 	BlueskyFeedItemSchema,
@@ -42,26 +63,9 @@ export {
 	YouTubeRawSchema,
 	YouTubeThumbnailSchema,
 	YouTubeVideoSchema,
-} from "./platforms";
-export type { MultiStorePlatform } from "./platforms";
+} from "./platforms.ts";
+export type { MultiStorePlatform, Platform } from "./platforms.ts";
 
-export {
-	type RedditComment,
-	RedditCommentSchema,
-	type RedditCommentsStore,
-	RedditCommentsStoreSchema,
-} from "./reddit-comments";
-
-export {
-	type RedditMetaStore,
-	RedditMetaStoreSchema,
-} from "./reddit-meta";
-export {
-	type RedditPost,
-	RedditPostSchema,
-	type RedditPostsStore,
-	RedditPostsStoreSchema,
-} from "./reddit-posts";
 export {
 	type BlueskySettings,
 	BlueskySettingsSchema,
@@ -74,7 +78,7 @@ export {
 	type YouTubeSettings,
 	YouTubeSettingsSchema,
 } from "./settings";
-export type { Platform } from "./platforms";
+
 export type {
 	CommentPayload,
 	CommitGroup,
@@ -105,12 +109,7 @@ export {
 	TimelineTypeSchema,
 	VideoPayloadSchema,
 } from "./timeline";
-export {
-	type TwitterMetaStore,
-	TwitterMetaStoreSchema,
-	type TwitterUserMetrics,
-	TwitterUserMetricsSchema,
-} from "./twitter-meta";
+
 export {
 	AddFilterSchema,
 	CreateProfileSchema,
@@ -124,18 +123,6 @@ export {
 	type FilterType,
 	type UpdateProfileInput,
 } from "./profiles";
-export {
-	type TweetMedia,
-	TweetMediaSchema,
-	type TweetMetrics,
-	TweetMetricsSchema,
-	type TweetUrl,
-	TweetUrlSchema,
-	type TwitterTweet,
-	TwitterTweetSchema,
-	type TwitterTweetsStore,
-	TwitterTweetsStoreSchema,
-} from "./twitter-tweets";
 
 import type { accountSettings, accounts, apiKeys, rateLimits, users } from "./database";
 import type {
@@ -154,7 +141,7 @@ import type {
 	YouTubeRawSchema,
 	YouTubeThumbnailSchema,
 	YouTubeVideoSchema,
-} from "./platforms";
+} from "./platforms.ts";
 
 export type GitHubRepo = z.infer<typeof GitHubRepoSchema>;
 export type GitHubExtendedCommit = z.infer<typeof GitHubExtendedCommitSchema>;

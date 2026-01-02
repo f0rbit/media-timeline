@@ -1,4 +1,4 @@
-import { connections } from "@/utils/api-client";
+import { connections } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
 import ChevronIcon from "../ChevronIcon";
 import { useSettings } from "./useSettings";

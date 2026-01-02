@@ -1,4 +1,4 @@
-import { connections } from "@/utils/api-client";
+import { connections } from "@/utils/api";
 import { formatPlatformName } from "@/utils/formatters";
 import { Show, createSignal } from "solid-js";
 

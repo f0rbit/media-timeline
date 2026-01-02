@@ -1,4 +1,4 @@
-import type { CommitGroup, TimelineItem } from "@/utils/api-client";
+import type { CommitGroup, TimelineItem } from "@/utils/api";
 import { formatRelativeTime } from "@/utils/formatters";
 import { For, Show } from "solid-js";
 import PlatformIcon from "../PlatformIcon";

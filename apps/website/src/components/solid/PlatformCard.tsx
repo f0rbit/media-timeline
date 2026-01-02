@@ -1,5 +1,5 @@
-import type { ConnectionWithSettings } from "@/utils/api-client";
-import { apiUrls, getApiKey } from "@/utils/api-client";
+import type { ConnectionWithSettings } from "@/utils/api";
+import { apiUrls, getApiKey } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
 import { Match, Show, Switch } from "solid-js";
 import ConnectionActions from "./ConnectionActions";

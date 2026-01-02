@@ -5,8 +5,22 @@ export { createUnifiedApp, handleScheduled, type UnifiedApp } from "./worker";
 export { type Bindings, createContextFromBindings } from "./bindings";
 export { handleCron, type CronResult, type ProviderFactory as CronProviderFactory } from "./cron";
 export { defaultProviderFactory } from "./platforms";
-export { authMiddleware, getAuth, type AuthContext } from "./auth";
-export { devpadAuthMiddleware, getDevpadAuth, type DevpadAuthContext } from "./devpad-auth";
+export {
+	authMiddleware,
+	devpadAuthMiddleware,
+	getAuth,
+	getDevpadAuth,
+	syncDevpadUser,
+	verifyApiKey,
+	verifyJWT,
+	verifySessionCookie,
+	type AuthContext,
+	type DevpadAuthContext,
+	type DevpadUser,
+	type SyncError,
+	type VerifyOptions,
+	type VerifyResponse,
+} from "./auth";
 export { timelineRoutes, connectionRoutes, authRoutes, profileRoutes } from "./routes";
 export { createDb, type Database } from "./db";
 export { hash_api_key } from "./utils";

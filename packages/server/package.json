@@ -74,9 +74,9 @@
 			"types": "./src/refresh-service.ts",
 			"import": "./src/refresh-service.ts"
 		},
-		"./devpad-auth": {
-			"types": "./src/devpad-auth.ts",
-			"import": "./src/devpad-auth.ts"
+		"./auth": {
+			"types": "./src/auth.ts",
+			"import": "./src/auth.ts"
 		},
 		"./connection-delete": {
 			"types": "./src/connection-delete.ts",

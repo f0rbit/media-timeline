@@ -1,4 +1,4 @@
-import { type ApiResult, type CommitGroup, type PRCommit, type ProfileTimelineResponse, type PullRequestPayload, type TimelineGroup, type TimelineItem, initMockAuth, profiles } from "@/utils/api-client";
+import { type ApiResult, type CommitGroup, type PRCommit, type ProfileTimelineResponse, type PullRequestPayload, type TimelineGroup, type TimelineItem, initMockAuth, profiles } from "@/utils/api";
 import { formatRelativeTime } from "@/utils/formatters";
 import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";

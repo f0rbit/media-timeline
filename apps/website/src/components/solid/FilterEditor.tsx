@@ -1,4 +1,4 @@
-import { apiUrls } from "@/utils/api-client";
+import { apiUrls } from "@/utils/api";
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import PlatformIcon from "./PlatformIcon";
 

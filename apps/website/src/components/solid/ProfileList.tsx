@@ -1,4 +1,4 @@
-import { api, apiUrls, initMockAuth } from "@/utils/api-client";
+import { api, apiUrls, initMockAuth } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
 
 type ProfileFilter = {

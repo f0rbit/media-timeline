@@ -1,4 +1,4 @@
-import { type ConnectionWithSettings, connections, initMockAuth, profiles } from "@/utils/api-client";
+import { type ConnectionWithSettings, connections, initMockAuth, profiles } from "@/utils/api";
 import { For, Show, createEffect, createResource, createSignal, on } from "solid-js";
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";

@@ -1,5 +1,5 @@
 import { type DashboardStats as Stats, calculateActivityByWeek, calculateContentTypes, calculateDashboardStats, calculatePlatformDistribution, getItemsForDate, getRecentItems } from "@/utils/analytics";
-import { type ApiResult, type ProfileTimelineResponse, initMockAuth, profiles } from "@/utils/api-client";
+import { type ApiResult, type ProfileTimelineResponse, initMockAuth, profiles } from "@/utils/api";
 import { Show, createSignal } from "solid-js";
 import { createResource } from "solid-js";
 import ActivityChart, { ActivityPreview } from "./ActivityChart";
