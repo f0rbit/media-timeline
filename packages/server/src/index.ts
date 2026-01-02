@@ -10,3 +10,9 @@ export { devpadAuthMiddleware, getDevpadAuth, type DevpadAuthContext } from "./d
 export { timelineRoutes, connectionRoutes, authRoutes, profileRoutes } from "./routes";
 export { createDb, type Database } from "./db";
 export { hash_api_key } from "./utils";
+
+// Services
+export * from "./services";
+
+// Route helpers
+export { handleResult, handleResultWith, handleResultNoContent, type ServiceError, type Variables } from "./utils/route-helpers";

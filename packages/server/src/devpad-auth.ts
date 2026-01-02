@@ -1,6 +1,7 @@
 import { type User, users } from "@media/schema";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
+import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
@@ -20,6 +21,7 @@ type VerifyResponse = { authenticated: true; user: DevpadUser } | { authenticate
 type SyncError = { kind: "db_error"; message: string } | { kind: "user_not_found"; devpad_id: string };
 
 const DEFAULT_DEVPAD_URL = "https://devpad.tools";
+const JWT_PREFIX = "Bearer jwt:";
 
 type VerifyOptions = {
 	baseUrl?: string;
@@ -34,6 +36,8 @@ const verifyRequest = (headers: HeadersInit, options: VerifyOptions = {}): Promi
 export const verifySessionCookie = (cookie: string, options: VerifyOptions = {}): Promise<VerifyResponse> => verifyRequest({ Cookie: cookie }, options);
 
 export const verifyApiKey = (apiKey: string, options: VerifyOptions = {}): Promise<VerifyResponse> => verifyRequest({ Authorization: `Bearer ${apiKey}` }, options);
+
+export const verifyJWT = (jwt: string, options: VerifyOptions = {}): Promise<VerifyResponse> => verifyRequest({ Authorization: `Bearer jwt:${jwt}` }, options);
 
 const findByDevpadId = async (db: Database, devpadId: string): Promise<User | undefined> => db.select().from(users).where(eq(users.devpad_user_id, devpadId)).get();
 
@@ -89,6 +93,7 @@ export const syncDevpadUser = async (db: Database, devpadUser: DevpadUser): Prom
 export type DevpadAuthContext = {
 	user_id: string;
 	devpad_user_id: string;
+	jwt_token?: string;
 };
 
 type Variables = {
@@ -110,19 +115,95 @@ const getContext = (c: Context<{ Bindings: Bindings; Variables: Variables }>): A
 	return ctx;
 };
 
+const getDevpadUrl = (env: (Bindings & { DEVPAD_URL?: string }) | undefined): string => env?.DEVPAD_URL ?? DEFAULT_DEVPAD_URL;
+
+const extractJWTFromAuthHeader = (authHeader: string): string | null => {
+	if (authHeader.startsWith(JWT_PREFIX)) {
+		const token = authHeader.slice(JWT_PREFIX.length);
+		return token.length > 0 ? token : null;
+	}
+	return null;
+};
+
+const extractBearerToken = (authHeader: string): string | null => {
+	if (authHeader.startsWith("Bearer ") && !authHeader.startsWith(JWT_PREFIX)) {
+		const token = authHeader.slice(7);
+		return token.length > 0 ? token : null;
+	}
+	return null;
+};
+
 /**
  * Middleware for routes that require devpad authentication.
- * Checks session cookie first (for web UI), then API key header (for external API).
+ * Checks in order:
+ * 1. Auth-Token header (JWT)
+ * 2. Authorization: Bearer jwt:... header (JWT)
+ * 3. devpad_jwt cookie (JWT)
+ * 4. Full Cookie header (session cookie)
+ * 5. Authorization: Bearer <api-key> (DevPad API key)
  *
- * On success, sets `devpadAuth` context with { user_id, devpad_user_id }.
+ * On success, sets `devpadAuth` context with { user_id, devpad_user_id, jwt_token? }.
  * On failure, returns 401 Unauthorized.
  */
 export const devpadAuthMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables }>(async (c, next) => {
 	const ctx = getContext(c);
+	const devpadUrl = getDevpadUrl(c.env as Bindings & { DEVPAD_URL?: string });
+	const options = { baseUrl: devpadUrl };
+
+	const authToken = c.req.header("Auth-Token");
+	if (authToken) {
+		const result = await verifyJWT(authToken, options);
+		if (result.authenticated) {
+			const syncResult = await syncDevpadUser(ctx.db, result.user);
+			if (syncResult.ok) {
+				c.set("devpadAuth", {
+					user_id: syncResult.value.id,
+					devpad_user_id: result.user.id,
+					jwt_token: authToken,
+				});
+				return next();
+			}
+		}
+	}
+
+	const authHeader = c.req.header("Authorization");
+	if (authHeader) {
+		const jwtFromAuth = extractJWTFromAuthHeader(authHeader);
+		if (jwtFromAuth) {
+			const result = await verifyJWT(jwtFromAuth, options);
+			if (result.authenticated) {
+				const syncResult = await syncDevpadUser(ctx.db, result.user);
+				if (syncResult.ok) {
+					c.set("devpadAuth", {
+						user_id: syncResult.value.id,
+						devpad_user_id: result.user.id,
+						jwt_token: jwtFromAuth,
+					});
+					return next();
+				}
+			}
+		}
+	}
+
+	const jwtCookie = getCookie(c, "devpad_jwt");
+	if (jwtCookie) {
+		const result = await verifyJWT(jwtCookie, options);
+		if (result.authenticated) {
+			const syncResult = await syncDevpadUser(ctx.db, result.user);
+			if (syncResult.ok) {
+				c.set("devpadAuth", {
+					user_id: syncResult.value.id,
+					devpad_user_id: result.user.id,
+					jwt_token: jwtCookie,
+				});
+				return next();
+			}
+		}
+	}
 
 	const cookieHeader = c.req.header("Cookie");
 	if (cookieHeader) {
-		const result = await verifySessionCookie(cookieHeader);
+		const result = await verifySessionCookie(cookieHeader, options);
 		if (result.authenticated) {
 			const syncResult = await syncDevpadUser(ctx.db, result.user);
 			if (syncResult.ok) {
@@ -135,18 +216,19 @@ export const devpadAuthMiddleware = createMiddleware<{ Bindings: Bindings; Varia
 		}
 	}
 
-	const authHeader = c.req.header("Authorization");
-	if (authHeader?.startsWith("Bearer ")) {
-		const apiKey = authHeader.slice(7);
-		const result = await verifyApiKey(apiKey);
-		if (result.authenticated) {
-			const syncResult = await syncDevpadUser(ctx.db, result.user);
-			if (syncResult.ok) {
-				c.set("devpadAuth", {
-					user_id: syncResult.value.id,
-					devpad_user_id: result.user.id,
-				});
-				return next();
+	if (authHeader) {
+		const apiKey = extractBearerToken(authHeader);
+		if (apiKey) {
+			const result = await verifyApiKey(apiKey, options);
+			if (result.authenticated) {
+				const syncResult = await syncDevpadUser(ctx.db, result.user);
+				if (syncResult.ok) {
+					c.set("devpadAuth", {
+						user_id: syncResult.value.id,
+						devpad_user_id: result.user.id,
+					});
+					return next();
+				}
 			}
 		}
 	}

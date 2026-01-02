@@ -10,7 +10,7 @@ import type { ProviderFactory } from "./platforms/types";
 import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "./routes";
 
 type Variables = {
-	auth: { user_id: string; key_id: string };
+	auth: { user_id: string; key_id?: string; devpad_user_id?: string; jwt_token?: string };
 	appContext: AppContext;
 };
 
@@ -36,7 +36,7 @@ export function createMediaApp(config: MediaAppConfig = {}) {
 				return null;
 			},
 			allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-			allowHeaders: ["Content-Type", "Authorization"],
+			allowHeaders: ["Content-Type", "Authorization", "Auth-Token"],
 			credentials: true,
 		})
 	);

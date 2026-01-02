@@ -44,7 +44,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(401);
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Unauthorized");
-			expect(data.message).toBe("Missing or invalid Authorization header");
+			expect(data.message).toBe("Authentication required");
 		});
 
 		it("returns 401 when invalid API key", async () => {
@@ -59,7 +59,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(401);
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Unauthorized");
-			expect(data.message).toBe("Invalid API key");
+			expect(data.message).toBe("Authentication required");
 		});
 
 		it("returns 200 with valid API key", async () => {
@@ -138,7 +138,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(404);
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Not found");
-			expect(data.message).toBe("No timeline data available");
+			expect(data.message).toBe("Resource not found: timeline");
 		});
 
 		it("filters by date range with from/to params", async () => {
@@ -218,7 +218,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(404);
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Not found");
-			expect(data.message).toBe("No raw data available for this account");
+			expect(data.message).toBe("Resource not found: raw_data");
 		});
 	});
 
@@ -411,7 +411,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(404);
 			const data = (await res.json()) as ErrorResponse;
 			expect(data.error).toBe("Not found");
-			expect(data.message).toBe("Account not found");
+			expect(data.message).toBe("Resource not found: account");
 		});
 	});
 

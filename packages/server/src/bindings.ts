@@ -14,6 +14,7 @@ export type Bindings = {
 	ENVIRONMENT: string;
 	API_URL: string;
 	FRONTEND_URL: string;
+	DEVPAD_URL?: string;
 	REDDIT_CLIENT_ID?: string;
 	REDDIT_CLIENT_SECRET?: string;
 	TWITTER_CLIENT_ID?: string;

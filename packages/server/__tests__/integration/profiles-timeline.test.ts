@@ -530,7 +530,7 @@ describe("Profile Timeline API", () => {
 				expect(res.status).toBe(404);
 				const data = (await res.json()) as ErrorResponse;
 				expect(data.error).toBe("Not found");
-				expect(data.message).toContain("Profile not found");
+				expect(data.message).toContain("profile");
 			});
 		});
 
