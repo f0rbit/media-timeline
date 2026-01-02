@@ -1,6 +1,6 @@
 /// <reference types="@cloudflare/workers-types" />
 
-import { createMediaApp } from "./app";
+import { createApiApp } from "./app";
 import { type Bindings, createContextFromBindings } from "./bindings";
 import { handleCron } from "./cron";
 import { defaultProviderFactory } from "./platforms";
@@ -13,7 +13,7 @@ const API_PREFIX = "/media/api";
 const HEALTH_PATH = "/media/health";
 
 export const createUnifiedApp = (env: Bindings, astroHandler: AstroHandler) => {
-	const mediaApp = createMediaApp({
+	const mediaApp = createApiApp(env, {
 		basePath: "/media",
 		providerFactory: defaultProviderFactory,
 	});

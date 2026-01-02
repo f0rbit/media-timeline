@@ -1,6 +1,6 @@
 // Main exports for @media/server package
 
-export { createMediaApp, type MediaAppConfig, type MediaBindings, type AppContext, type ProviderFactory } from "./app";
+export { createApiApp, type ApiAppConfig, type MediaBindings, type AppContext, type ProviderFactory } from "./app";
 export { createUnifiedApp, handleScheduled, type UnifiedApp } from "./worker";
 export { type Bindings, createContextFromBindings } from "./bindings";
 export { handleCron, type CronResult, type ProviderFactory as CronProviderFactory } from "./cron";

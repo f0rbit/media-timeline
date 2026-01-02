@@ -14,13 +14,13 @@ type Variables = {
 	appContext: AppContext;
 };
 
-export type MediaAppConfig = {
+export type ApiAppConfig = {
 	basePath?: string;
 	corsOrigins?: string[];
 	providerFactory?: ProviderFactory;
 };
 
-export function createMediaApp(config: MediaAppConfig = {}) {
+export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 	const { basePath = "/media", corsOrigins, providerFactory = defaultProviderFactory } = config;
 
 	const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
@@ -42,7 +42,7 @@ export function createMediaApp(config: MediaAppConfig = {}) {
 	);
 
 	app.use("/api/*", async (c, next) => {
-		const ctx = createContextFromBindings(c.env, providerFactory);
+		const ctx = createContextFromBindings(env, providerFactory);
 		c.set("appContext", ctx);
 		await next();
 	});

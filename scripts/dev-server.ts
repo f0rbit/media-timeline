@@ -32,7 +32,7 @@ async function startDevServer() {
 
 	mkdirSync("local/corpus", { recursive: true });
 
-	const sqliteDb = new Database("local/dev.db");
+	const sqliteDb = new Database("local/sqlite.db");
 	const db = drizzle(sqliteDb, { schema });
 
 	console.log("📋 Running Drizzle migrations...");
@@ -150,7 +150,7 @@ async function startDevServer() {
 	const port = 8787;
 
 	console.log("");
-	console.log("📦 SQLite database at local/dev.db");
+	console.log("📦 SQLite database at local/sqlite.db");
 	console.log("📦 Corpus storage at local/corpus/");
 	console.log("");
 	console.log(`🌐 Server running at http://localhost:${port}`);

@@ -26,6 +26,6 @@
 			"@media/server/*": ["./packages/server/src/*"]
 		}
 	},
-	"include": ["src/**/*", "packages/**/*", "__tests__/**/*"],
+	"include": ["src/**/*", "packages/**/*", "__tests__/**/*", "scripts/**/*"],
 	"exclude": ["node_modules", ".sst"]
 }

@@ -1,21 +1,26 @@
 import type { Context } from "hono";
+import type { ContentfulStatusCode } from "hono/utils/http-status";
 
-type ErrorResponse = {
-	error: string;
-	message: string;
-	details?: unknown;
+type ErrorResponseBody = { error: string; message: string; details?: unknown };
+
+const ERROR_NAMES: Record<number, string> = {
+	400: "Bad request",
+	401: "Unauthorized",
+	403: "Forbidden",
+	404: "Not found",
+	409: "Conflict",
+	500: "Internal server error",
 };
 
-export const notFound = (c: Context, message: string) => c.json<ErrorResponse>({ error: "Not found", message }, 404);
-
-export const forbidden = (c: Context, message: string) => c.json<ErrorResponse>({ error: "Forbidden", message }, 403);
-
-export const badRequest = (c: Context, message: string, details?: unknown) => {
-	const response: ErrorResponse = { error: "Bad request", message };
-	if (details !== undefined) response.details = details;
-	return c.json<ErrorResponse>(response, 400);
+const httpError = (c: Context, status: ContentfulStatusCode, message: string, details?: unknown): Response => {
+	const body: ErrorResponseBody = { error: ERROR_NAMES[status] ?? "Error", message };
+	if (details !== undefined) body.details = details;
+	return c.json(body, status);
 };
 
-export const unauthorized = (c: Context, message: string) => c.json<ErrorResponse>({ error: "Unauthorized", message }, 401);
-
-export const serverError = (c: Context, message: string) => c.json<ErrorResponse>({ error: "Internal server error", message }, 500);
+export const badRequest = (c: Context, message: string, details?: unknown) => httpError(c, 400, message, details);
+export const unauthorized = (c: Context, message: string) => httpError(c, 401, message);
+export const forbidden = (c: Context, message: string) => httpError(c, 403, message);
+export const notFound = (c: Context, message: string) => httpError(c, 404, message);
+export const conflict = (c: Context, message: string) => httpError(c, 409, message);
+export const serverError = (c: Context, message: string) => httpError(c, 500, message);
