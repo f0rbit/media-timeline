@@ -7,15 +7,12 @@ export { handleCron, type CronResult, type ProviderFactory as CronProviderFactor
 export { defaultProviderFactory } from "./platforms";
 export {
 	authMiddleware,
-	devpadAuthMiddleware,
 	getAuth,
-	getDevpadAuth,
 	syncDevpadUser,
 	verifyApiKey,
 	verifyJWT,
 	verifySessionCookie,
 	type AuthContext,
-	type DevpadAuthContext,
 	type DevpadUser,
 	type SyncError,
 	type VerifyOptions,

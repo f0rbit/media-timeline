@@ -1,4 +1,4 @@
-import { type User, apiKeys, users } from "@media/schema";
+import { type User, users } from "@media/schema";
 import { eq } from "drizzle-orm";
 import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
@@ -6,7 +6,7 @@ import { createMiddleware } from "hono/factory";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
-import { type FetchError, type Result, err, hash_api_key, ok, pipe, try_catch_async, uuid } from "./utils";
+import { type FetchError, type Result, ok, pipe, try_catch_async, uuid } from "./utils";
 
 const JWT_PREFIX = "Bearer jwt:";
 const DEFAULT_DEVPAD_URL = "https://devpad.tools";
@@ -27,13 +27,6 @@ type VerifyOptions = { baseUrl?: string };
 
 export type AuthContext = {
 	user_id: string;
-	key_id?: string;
-	devpad_user_id?: string;
-	jwt_token?: string;
-};
-
-export type DevpadAuthContext = {
-	user_id: string;
 	devpad_user_id: string;
 	jwt_token?: string;
 };
@@ -43,15 +36,9 @@ type AuthVariables = {
 	appContext: AppContext;
 };
 
-type DevpadAuthVariables = {
-	devpadAuth: DevpadAuthContext;
-	appContext: AppContext;
-};
-
 declare module "hono" {
 	interface ContextVariableMap {
 		auth: AuthContext;
-		devpadAuth: DevpadAuthContext;
 	}
 }
 
@@ -125,27 +112,10 @@ export const syncDevpadUser = async (db: Database, devpadUser: DevpadUser): Prom
 	return existing ? updateUserIfChanged(db, existing, devpadUser) : createUser(db, devpadUser);
 };
 
-const validateApiKey = async (db: Database, token: string): Promise<Result<AuthContext, { kind: "invalid_api_key"; message: string }>> => {
-	const keyHash = await hash_api_key(token);
-	const result = await db.select({ id: apiKeys.id, user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
-	if (!result) return err({ kind: "invalid_api_key", message: "Invalid API key" });
-
-	await db.update(apiKeys).set({ last_used_at: new Date().toISOString() }).where(eq(apiKeys.id, result.id));
-	return ok({ user_id: result.user_id, key_id: result.id });
-};
-
 export const getAuth = (c: Context): AuthContext => {
 	const auth = c.get("auth");
 	if (!auth) {
 		throw new Error("Auth context not found. Ensure authMiddleware is applied to this route. Add `app.use('/api/*', authMiddleware)` in index.ts");
-	}
-	return auth;
-};
-
-export const getDevpadAuth = (c: Context): DevpadAuthContext => {
-	const auth = c.get("devpadAuth");
-	if (!auth) {
-		throw new Error("DevpadAuth context not found. Ensure devpadAuthMiddleware is applied to this route. Add `app.use('/api/*', devpadAuthMiddleware)` in index.ts");
 	}
 	return auth;
 };
@@ -155,17 +125,22 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	const devpadUrl = getDevpadUrl(c.env as Bindings & { DEVPAD_URL?: string });
 	const options = { baseUrl: devpadUrl };
 
-	const authHeader = c.req.header("Authorization");
-	if (authHeader) {
-		const bearerToken = extractBearerToken(authHeader);
-		if (bearerToken) {
-			const result = await validateApiKey(ctx.db, bearerToken);
-			if (result.ok) {
-				c.set("auth", result.value);
+	// 1. Try Auth-Token header (JWT) - preferred method
+	const authToken = c.req.header("Auth-Token");
+	if (authToken) {
+		const result = await verifyJWT(authToken, options);
+		if (result.authenticated) {
+			const syncResult = await syncDevpadUser(ctx.db, result.user);
+			if (syncResult.ok) {
+				c.set("auth", { user_id: syncResult.value.id, devpad_user_id: result.user.id, jwt_token: authToken });
 				return next();
 			}
 		}
+	}
 
+	// 2. Try Authorization: Bearer jwt:<token>
+	const authHeader = c.req.header("Authorization");
+	if (authHeader) {
 		const jwtFromAuth = extractJWTFromAuthHeader(authHeader);
 		if (jwtFromAuth) {
 			const result = await verifyJWT(jwtFromAuth, options);
@@ -179,18 +154,7 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 		}
 	}
 
-	const authToken = c.req.header("Auth-Token");
-	if (authToken) {
-		const result = await verifyJWT(authToken, options);
-		if (result.authenticated) {
-			const syncResult = await syncDevpadUser(ctx.db, result.user);
-			if (syncResult.ok) {
-				c.set("auth", { user_id: syncResult.value.id, devpad_user_id: result.user.id, jwt_token: authToken });
-				return next();
-			}
-		}
-	}
-
+	// 3. Try devpad_jwt cookie
 	const jwtCookie = getCookie(c, "devpad_jwt");
 	if (jwtCookie) {
 		const result = await verifyJWT(jwtCookie, options);
@@ -203,6 +167,7 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 		}
 	}
 
+	// 4. Try session cookie
 	const cookieHeader = c.req.header("Cookie");
 	if (cookieHeader) {
 		const result = await verifySessionCookie(cookieHeader, options);
@@ -215,77 +180,7 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 		}
 	}
 
-	return c.json({ error: "Unauthorized", message: "Authentication required" }, 401);
-});
-
-/**
- * Middleware for routes that require devpad authentication.
- * Checks in order:
- * 1. Auth-Token header (JWT)
- * 2. Authorization: Bearer jwt:... header (JWT)
- * 3. devpad_jwt cookie (JWT)
- * 4. Full Cookie header (session cookie)
- * 5. Authorization: Bearer <api-key> (DevPad API key)
- *
- * On success, sets `devpadAuth` context with { user_id, devpad_user_id, jwt_token? }.
- * On failure, returns 401 Unauthorized.
- */
-export const devpadAuthMiddleware = createMiddleware<{ Bindings: Bindings; Variables: DevpadAuthVariables }>(async (c, next) => {
-	const ctx = getContext(c);
-	const devpadUrl = getDevpadUrl(c.env as Bindings & { DEVPAD_URL?: string });
-	const options = { baseUrl: devpadUrl };
-
-	const authToken = c.req.header("Auth-Token");
-	if (authToken) {
-		const result = await verifyJWT(authToken, options);
-		if (result.authenticated) {
-			const syncResult = await syncDevpadUser(ctx.db, result.user);
-			if (syncResult.ok) {
-				c.set("devpadAuth", { user_id: syncResult.value.id, devpad_user_id: result.user.id, jwt_token: authToken });
-				return next();
-			}
-		}
-	}
-
-	const authHeader = c.req.header("Authorization");
-	if (authHeader) {
-		const jwtFromAuth = extractJWTFromAuthHeader(authHeader);
-		if (jwtFromAuth) {
-			const result = await verifyJWT(jwtFromAuth, options);
-			if (result.authenticated) {
-				const syncResult = await syncDevpadUser(ctx.db, result.user);
-				if (syncResult.ok) {
-					c.set("devpadAuth", { user_id: syncResult.value.id, devpad_user_id: result.user.id, jwt_token: jwtFromAuth });
-					return next();
-				}
-			}
-		}
-	}
-
-	const jwtCookie = getCookie(c, "devpad_jwt");
-	if (jwtCookie) {
-		const result = await verifyJWT(jwtCookie, options);
-		if (result.authenticated) {
-			const syncResult = await syncDevpadUser(ctx.db, result.user);
-			if (syncResult.ok) {
-				c.set("devpadAuth", { user_id: syncResult.value.id, devpad_user_id: result.user.id, jwt_token: jwtCookie });
-				return next();
-			}
-		}
-	}
-
-	const cookieHeader = c.req.header("Cookie");
-	if (cookieHeader) {
-		const result = await verifySessionCookie(cookieHeader, options);
-		if (result.authenticated) {
-			const syncResult = await syncDevpadUser(ctx.db, result.user);
-			if (syncResult.ok) {
-				c.set("devpadAuth", { user_id: syncResult.value.id, devpad_user_id: result.user.id });
-				return next();
-			}
-		}
-	}
-
+	// 5. Try DevPad API key (remote verification)
 	if (authHeader) {
 		const apiKey = extractBearerToken(authHeader);
 		if (apiKey) {
@@ -293,14 +188,14 @@ export const devpadAuthMiddleware = createMiddleware<{ Bindings: Bindings; Varia
 			if (result.authenticated) {
 				const syncResult = await syncDevpadUser(ctx.db, result.user);
 				if (syncResult.ok) {
-					c.set("devpadAuth", { user_id: syncResult.value.id, devpad_user_id: result.user.id });
+					c.set("auth", { user_id: syncResult.value.id, devpad_user_id: result.user.id });
 					return next();
 				}
 			}
 		}
 	}
 
-	return c.json({ error: "Unauthorized", message: "Valid session cookie or API key required" }, 401);
+	return c.json({ error: "Unauthorized", message: "Authentication required" }, 401);
 });
 
 export type { DevpadUser, SyncError, VerifyOptions, VerifyResponse };

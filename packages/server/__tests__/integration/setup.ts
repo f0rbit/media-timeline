@@ -2,7 +2,7 @@ import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { type Backend, type Store, create_corpus, create_memory_backend, define_store, json_codec } from "@f0rbit/corpus";
 import type { Platform } from "@media/schema";
 import * as schema from "@media/schema/database";
-import { authMiddleware, connectionRoutes, profileRoutes, timelineRoutes } from "@media/server";
+import { connectionRoutes, profileRoutes, timelineRoutes } from "@media/server";
 import type { ProviderFactory } from "@media/server/cron";
 import type { AppContext } from "@media/server/infrastructure";
 import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, TwitterMemoryProvider, YouTubeMemoryProvider } from "@media/server/platforms";
@@ -502,8 +502,35 @@ export const createTestContext = (): TestContext => {
 };
 
 type TestVariables = {
-	auth: { user_id: string; key_id: string };
+	auth: { user_id: string; devpad_user_id: string; jwt_token?: string };
 	appContext: AppContext;
+};
+
+/**
+ * Test auth middleware that validates API keys from local database.
+ * This is a test-only middleware that simulates auth without calling DevPad.
+ */
+const createTestAuthMiddleware = (ctx: TestContext) => {
+	return async (c: { req: { header: (name: string) => string | undefined }; set: (key: string, value: unknown) => void; json: (body: unknown, status?: number) => Response }, next: () => Promise<void>) => {
+		const authHeader = c.req.header("Authorization");
+		if (authHeader?.startsWith("Bearer ")) {
+			const token = authHeader.slice(7);
+			const keyHash = await hash_api_key(token);
+			const result = await ctx.d1
+				.prepare("SELECT ak.id, ak.user_id, u.devpad_user_id FROM media_api_keys ak JOIN media_users u ON ak.user_id = u.id WHERE ak.key_hash = ?")
+				.bind(keyHash)
+				.first<{ id: string; user_id: string; devpad_user_id: string | null }>();
+
+			if (result) {
+				c.set("auth", {
+					user_id: result.user_id,
+					devpad_user_id: result.devpad_user_id ?? `devpad-${result.user_id}`,
+				});
+				return next();
+			}
+		}
+		return c.json({ error: "Unauthorized", message: "Authentication required" }, 401);
+	};
 };
 
 export const createTestApp = (ctx: TestContext) => {
@@ -518,7 +545,8 @@ export const createTestApp = (ctx: TestContext) => {
 		await next();
 	});
 
-	mediaApp.use("/api/*", authMiddleware);
+	// Use test auth middleware that validates local API keys
+	mediaApp.use("/api/*", createTestAuthMiddleware(ctx));
 
 	mediaApp.route("/api/v1/timeline", timelineRoutes);
 	mediaApp.route("/api/v1/connections", connectionRoutes);

@@ -1,20 +1,20 @@
 import { beforeEach, describe, expect, it, mock, spyOn } from "bun:test";
 import * as devpadAuth from "@media/server/auth";
-import { type DevpadAuthContext, devpadAuthMiddleware, getDevpadAuth } from "@media/server/auth";
+import { type AuthContext, authMiddleware, getAuth } from "@media/server/auth";
 import type { AppContext } from "@media/server/infrastructure";
 import { Hono } from "hono";
 import { USERS } from "./fixtures";
 import { type TestContext, createTestContext, seedUser } from "./setup";
 
 type TestVariables = {
-	devpadAuth: DevpadAuthContext;
+	auth: AuthContext;
 	appContext: AppContext;
 };
 
 type AuthResponse = { user_id: string; devpad_user_id: string };
 type ErrorResponse = { error: string; message?: string };
 
-const createDevpadAuthTestApp = (ctx: TestContext) => {
+const createAuthTestApp = (ctx: TestContext) => {
 	const app = new Hono<{ Variables: TestVariables }>();
 
 	app.use("/media/api/*", async (c, next) => {
@@ -22,17 +22,17 @@ const createDevpadAuthTestApp = (ctx: TestContext) => {
 		await next();
 	});
 
-	app.use("/media/api/*", devpadAuthMiddleware);
+	app.use("/media/api/*", authMiddleware);
 
 	app.get("/media/api/me", c => {
-		const auth = getDevpadAuth(c);
+		const auth = getAuth(c);
 		return c.json({ user_id: auth.user_id, devpad_user_id: auth.devpad_user_id });
 	});
 
 	return app;
 };
 
-describe("devpadAuthMiddleware", () => {
+describe("authMiddleware", () => {
 	let ctx: TestContext;
 
 	beforeEach(() => {
@@ -54,7 +54,7 @@ describe("devpadAuthMiddleware", () => {
 				user: mockDevpadUser,
 			});
 
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me", {
 				headers: { Cookie: "auth_session=valid-session-token" },
 			});
@@ -86,7 +86,7 @@ describe("devpadAuthMiddleware", () => {
 				user: mockDevpadUser,
 			});
 
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me", {
 				headers: { Cookie: "auth_session=valid-session-token" },
 			});
@@ -104,7 +104,7 @@ describe("devpadAuthMiddleware", () => {
 				authenticated: false,
 			});
 
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me", {
 				headers: { Cookie: "auth_session=invalid-session" },
 			});
@@ -132,7 +132,7 @@ describe("devpadAuthMiddleware", () => {
 				user: mockDevpadUser,
 			});
 
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me", {
 				headers: { Authorization: "Bearer valid-api-key" },
 			});
@@ -149,7 +149,7 @@ describe("devpadAuthMiddleware", () => {
 				authenticated: false,
 			});
 
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me", {
 				headers: { Authorization: "Bearer invalid-api-key" },
 			});
@@ -182,7 +182,7 @@ describe("devpadAuthMiddleware", () => {
 				user: { ...mockDevpadUser, id: "api-key-user" },
 			});
 
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me", {
 				headers: {
 					Cookie: "auth_session=valid-session",
@@ -217,7 +217,7 @@ describe("devpadAuthMiddleware", () => {
 				user: mockDevpadUser,
 			});
 
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me", {
 				headers: {
 					Cookie: "auth_session=invalid-session",
@@ -236,21 +236,21 @@ describe("devpadAuthMiddleware", () => {
 
 	describe("no authentication", () => {
 		it("returns 401 when no credentials provided", async () => {
-			const app = createDevpadAuthTestApp(ctx);
+			const app = createAuthTestApp(ctx);
 			const res = await app.request("/media/api/me");
 
 			expect(res.status).toBe(401);
 			const body = (await res.json()) as ErrorResponse;
 			expect(body.error).toBe("Unauthorized");
-			expect(body.message).toBe("Valid session cookie or API key required");
+			expect(body.message).toBe("Authentication required");
 		});
 	});
 
-	describe("getDevpadAuth helper", () => {
-		it("returns 500 when middleware not applied and getDevpadAuth is called", async () => {
+	describe("getAuth helper", () => {
+		it("returns 500 when middleware not applied and getAuth is called", async () => {
 			const app = new Hono();
 			app.get("/media/api/test", c => {
-				getDevpadAuth(c);
+				getAuth(c);
 				return c.json({ ok: true });
 			});
 
