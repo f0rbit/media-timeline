@@ -43,8 +43,7 @@ binding = "ASSETS"
 
 [env.preview.vars]
 ENVIRONMENT = "preview"
-API_URL = "https://media-preview.devpad.tools"
-FRONTEND_URL = "https://media-preview.devpad.tools"
+# Uses auto-generated workers.dev URL (no custom domain for preview)
 
 [[env.preview.d1_databases]]
 binding = "DB"
