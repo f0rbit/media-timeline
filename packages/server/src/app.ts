@@ -11,6 +11,7 @@ import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "./r
 
 type Variables = {
 	auth: { user_id: string; key_id?: string; devpad_user_id?: string; jwt_token?: string };
+	devpadAuth?: { user_id: string; devpad_user_id: string; jwt_token?: string };
 	appContext: AppContext;
 };
 

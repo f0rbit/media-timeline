@@ -38,8 +38,12 @@ export type DevpadAuthContext = {
 	jwt_token?: string;
 };
 
-type Variables = {
+type AuthVariables = {
 	auth: AuthContext;
+	appContext: AppContext;
+};
+
+type DevpadAuthVariables = {
 	devpadAuth: DevpadAuthContext;
 	appContext: AppContext;
 };
@@ -65,7 +69,7 @@ const extractBearerToken = (authHeader: string): string | null => {
 
 const getDevpadUrl = (env: (Bindings & { DEVPAD_URL?: string }) | undefined): string => env?.DEVPAD_URL ?? DEFAULT_DEVPAD_URL;
 
-const getContext = (c: Context<{ Bindings: Bindings; Variables: Variables }>): AppContext => {
+const getContext = (c: Context): AppContext => {
 	const ctx = c.get("appContext");
 	if (!ctx) throw new Error("AppContext not set. Ensure context middleware runs before auth middleware.");
 	return ctx;
@@ -146,7 +150,7 @@ export const getDevpadAuth = (c: Context): DevpadAuthContext => {
 	return auth;
 };
 
-export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables }>(async (c, next) => {
+export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: AuthVariables }>(async (c, next) => {
 	const ctx = getContext(c);
 	const devpadUrl = getDevpadUrl(c.env as Bindings & { DEVPAD_URL?: string });
 	const options = { baseUrl: devpadUrl };
@@ -226,7 +230,7 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
  * On success, sets `devpadAuth` context with { user_id, devpad_user_id, jwt_token? }.
  * On failure, returns 401 Unauthorized.
  */
-export const devpadAuthMiddleware = createMiddleware<{ Bindings: Bindings; Variables: Variables }>(async (c, next) => {
+export const devpadAuthMiddleware = createMiddleware<{ Bindings: Bindings; Variables: DevpadAuthVariables }>(async (c, next) => {
 	const ctx = getContext(c);
 	const devpadUrl = getDevpadUrl(c.env as Bindings & { DEVPAD_URL?: string });
 	const options = { baseUrl: devpadUrl };
