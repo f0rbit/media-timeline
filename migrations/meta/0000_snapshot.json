@@ -1,11 +1,11 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "97a15aab-4242-4ea5-a71d-e0f51d4aa450",
+	"id": "1cc0fc46-1706-4217-8f8a-f4d5e9acddc8",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"tables": {
-		"account_settings": {
-			"name": "account_settings",
+		"media_account_settings": {
+			"name": "media_account_settings",
 			"columns": {
 				"id": {
 					"name": "id",
@@ -51,22 +51,22 @@
 				}
 			},
 			"indexes": {
-				"idx_account_settings_unique": {
-					"name": "idx_account_settings_unique",
+				"idx_media_account_settings_unique": {
+					"name": "idx_media_account_settings_unique",
 					"columns": ["account_id", "setting_key"],
 					"isUnique": true
 				},
-				"idx_account_settings_account": {
-					"name": "idx_account_settings_account",
+				"idx_media_account_settings_account": {
+					"name": "idx_media_account_settings_account",
 					"columns": ["account_id"],
 					"isUnique": false
 				}
 			},
 			"foreignKeys": {
-				"account_settings_account_id_accounts_id_fk": {
-					"name": "account_settings_account_id_accounts_id_fk",
-					"tableFrom": "account_settings",
-					"tableTo": "accounts",
+				"media_account_settings_account_id_media_accounts_id_fk": {
+					"name": "media_account_settings_account_id_media_accounts_id_fk",
+					"tableFrom": "media_account_settings",
+					"tableTo": "media_accounts",
 					"columnsFrom": ["account_id"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
@@ -77,8 +77,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"accounts": {
-			"name": "accounts",
+		"media_accounts": {
+			"name": "media_accounts",
 			"columns": {
 				"id": {
 					"name": "id",
@@ -167,22 +167,22 @@
 				}
 			},
 			"indexes": {
-				"idx_accounts_profile": {
-					"name": "idx_accounts_profile",
+				"idx_media_accounts_profile": {
+					"name": "idx_media_accounts_profile",
 					"columns": ["profile_id"],
 					"isUnique": false
 				},
-				"idx_accounts_profile_platform_user": {
-					"name": "idx_accounts_profile_platform_user",
+				"idx_media_accounts_profile_platform_user": {
+					"name": "idx_media_accounts_profile_platform_user",
 					"columns": ["profile_id", "platform", "platform_user_id"],
 					"isUnique": true
 				}
 			},
 			"foreignKeys": {
-				"accounts_profile_id_profiles_id_fk": {
-					"name": "accounts_profile_id_profiles_id_fk",
-					"tableFrom": "accounts",
-					"tableTo": "profiles",
+				"media_accounts_profile_id_media_profiles_id_fk": {
+					"name": "media_accounts_profile_id_media_profiles_id_fk",
+					"tableFrom": "media_accounts",
+					"tableTo": "media_profiles",
 					"columnsFrom": ["profile_id"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
@@ -193,8 +193,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"api_keys": {
-			"name": "api_keys",
+		"media_api_keys": {
+			"name": "media_api_keys",
 			"columns": {
 				"id": {
 					"name": "id",
@@ -240,22 +240,22 @@
 				}
 			},
 			"indexes": {
-				"api_keys_key_hash_unique": {
-					"name": "api_keys_key_hash_unique",
+				"media_api_keys_key_hash_unique": {
+					"name": "media_api_keys_key_hash_unique",
 					"columns": ["key_hash"],
 					"isUnique": true
 				},
-				"idx_api_keys_user": {
-					"name": "idx_api_keys_user",
+				"idx_media_api_keys_user": {
+					"name": "idx_media_api_keys_user",
 					"columns": ["user_id"],
 					"isUnique": false
 				}
 			},
 			"foreignKeys": {
-				"api_keys_user_id_users_id_fk": {
-					"name": "api_keys_user_id_users_id_fk",
-					"tableFrom": "api_keys",
-					"tableTo": "users",
+				"media_api_keys_user_id_media_users_id_fk": {
+					"name": "media_api_keys_user_id_media_users_id_fk",
+					"tableFrom": "media_api_keys",
+					"tableTo": "media_users",
 					"columnsFrom": ["user_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -266,8 +266,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"corpus_parents": {
-			"name": "corpus_parents",
+		"media_corpus_parents": {
+			"name": "media_corpus_parents",
 			"columns": {
 				"child_store_id": {
 					"name": "child_store_id",
@@ -306,8 +306,8 @@
 				}
 			},
 			"indexes": {
-				"corpus_parents_pk": {
-					"name": "corpus_parents_pk",
+				"media_corpus_parents_pk": {
+					"name": "media_corpus_parents_pk",
 					"columns": ["child_store_id", "child_version", "parent_store_id", "parent_version"],
 					"isUnique": true
 				}
@@ -317,8 +317,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"corpus_snapshots": {
-			"name": "corpus_snapshots",
+		"media_corpus_snapshots": {
+			"name": "media_corpus_snapshots",
 			"columns": {
 				"store_id": {
 					"name": "store_id",
@@ -364,18 +364,18 @@
 				}
 			},
 			"indexes": {
-				"corpus_snapshots_pk": {
-					"name": "corpus_snapshots_pk",
+				"media_corpus_snapshots_pk": {
+					"name": "media_corpus_snapshots_pk",
 					"columns": ["store_id", "version"],
 					"isUnique": true
 				},
-				"idx_corpus_snapshots_store": {
-					"name": "idx_corpus_snapshots_store",
+				"idx_media_corpus_snapshots_store": {
+					"name": "idx_media_corpus_snapshots_store",
 					"columns": ["store_id"],
 					"isUnique": false
 				},
-				"idx_corpus_snapshots_created": {
-					"name": "idx_corpus_snapshots_created",
+				"idx_media_corpus_snapshots_created": {
+					"name": "idx_media_corpus_snapshots_created",
 					"columns": ["store_id", "created_at"],
 					"isUnique": false
 				}
@@ -385,8 +385,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"profile_filters": {
-			"name": "profile_filters",
+		"media_profile_filters": {
+			"name": "media_profile_filters",
 			"columns": {
 				"id": {
 					"name": "id",
@@ -446,31 +446,31 @@
 				}
 			},
 			"indexes": {
-				"idx_profile_filters_profile": {
-					"name": "idx_profile_filters_profile",
+				"idx_media_profile_filters_profile": {
+					"name": "idx_media_profile_filters_profile",
 					"columns": ["profile_id"],
 					"isUnique": false
 				},
-				"idx_profile_filters_account": {
-					"name": "idx_profile_filters_account",
+				"idx_media_profile_filters_account": {
+					"name": "idx_media_profile_filters_account",
 					"columns": ["account_id"],
 					"isUnique": false
 				}
 			},
 			"foreignKeys": {
-				"profile_filters_profile_id_profiles_id_fk": {
-					"name": "profile_filters_profile_id_profiles_id_fk",
-					"tableFrom": "profile_filters",
-					"tableTo": "profiles",
+				"media_profile_filters_profile_id_media_profiles_id_fk": {
+					"name": "media_profile_filters_profile_id_media_profiles_id_fk",
+					"tableFrom": "media_profile_filters",
+					"tableTo": "media_profiles",
 					"columnsFrom": ["profile_id"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
 					"onUpdate": "no action"
 				},
-				"profile_filters_account_id_accounts_id_fk": {
-					"name": "profile_filters_account_id_accounts_id_fk",
-					"tableFrom": "profile_filters",
-					"tableTo": "accounts",
+				"media_profile_filters_account_id_media_accounts_id_fk": {
+					"name": "media_profile_filters_account_id_media_accounts_id_fk",
+					"tableFrom": "media_profile_filters",
+					"tableTo": "media_accounts",
 					"columnsFrom": ["account_id"],
 					"columnsTo": ["id"],
 					"onDelete": "cascade",
@@ -481,8 +481,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"profiles": {
-			"name": "profiles",
+		"media_profiles": {
+			"name": "media_profiles",
 			"columns": {
 				"id": {
 					"name": "id",
@@ -542,22 +542,22 @@
 				}
 			},
 			"indexes": {
-				"idx_profiles_user": {
-					"name": "idx_profiles_user",
+				"idx_media_profiles_user": {
+					"name": "idx_media_profiles_user",
 					"columns": ["user_id"],
 					"isUnique": false
 				},
-				"idx_profiles_user_slug": {
-					"name": "idx_profiles_user_slug",
+				"idx_media_profiles_user_slug": {
+					"name": "idx_media_profiles_user_slug",
 					"columns": ["user_id", "slug"],
 					"isUnique": true
 				}
 			},
 			"foreignKeys": {
-				"profiles_user_id_users_id_fk": {
-					"name": "profiles_user_id_users_id_fk",
-					"tableFrom": "profiles",
-					"tableTo": "users",
+				"media_profiles_user_id_media_users_id_fk": {
+					"name": "media_profiles_user_id_media_users_id_fk",
+					"tableFrom": "media_profiles",
+					"tableTo": "media_users",
 					"columnsFrom": ["user_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -568,8 +568,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"rate_limits": {
-			"name": "rate_limits",
+		"media_rate_limits": {
+			"name": "media_rate_limits",
 			"columns": {
 				"id": {
 					"name": "id",
@@ -637,17 +637,17 @@
 				}
 			},
 			"indexes": {
-				"idx_rate_limits_account": {
-					"name": "idx_rate_limits_account",
+				"idx_media_rate_limits_account": {
+					"name": "idx_media_rate_limits_account",
 					"columns": ["account_id"],
 					"isUnique": true
 				}
 			},
 			"foreignKeys": {
-				"rate_limits_account_id_accounts_id_fk": {
-					"name": "rate_limits_account_id_accounts_id_fk",
-					"tableFrom": "rate_limits",
-					"tableTo": "accounts",
+				"media_rate_limits_account_id_media_accounts_id_fk": {
+					"name": "media_rate_limits_account_id_media_accounts_id_fk",
+					"tableFrom": "media_rate_limits",
+					"tableTo": "media_accounts",
 					"columnsFrom": ["account_id"],
 					"columnsTo": ["id"],
 					"onDelete": "no action",
@@ -658,8 +658,8 @@
 			"uniqueConstraints": {},
 			"checkConstraints": {}
 		},
-		"users": {
-			"name": "users",
+		"media_users": {
+			"name": "media_users",
 			"columns": {
 				"id": {
 					"name": "id",
@@ -682,13 +682,6 @@
 					"notNull": false,
 					"autoincrement": false
 				},
-				"devpad_user_id": {
-					"name": "devpad_user_id",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
@@ -705,14 +698,9 @@
 				}
 			},
 			"indexes": {
-				"users_email_unique": {
-					"name": "users_email_unique",
+				"media_users_email_unique": {
+					"name": "media_users_email_unique",
 					"columns": ["email"],
-					"isUnique": true
-				},
-				"idx_users_devpad_user_id": {
-					"name": "idx_users_devpad_user_id",
-					"columns": ["devpad_user_id"],
 					"isUnique": true
 				}
 			},

@@ -1,5 +1,5 @@
 import { type DashboardStats as Stats, calculateActivityByWeek, calculateContentTypes, calculateDashboardStats, calculatePlatformDistribution, getItemsForDate, getRecentItems } from "@/utils/analytics";
-import { type ApiResult, type ProfileTimelineResponse, initMockAuth, profiles } from "@/utils/api-client";
+import { type ApiResult, type ProfileTimelineResponse, initMockAuth, profiles } from "@/utils/api";
 import { Show, createSignal } from "solid-js";
 import { createResource } from "solid-js";
 import ActivityChart, { ActivityPreview } from "./ActivityChart";
@@ -20,8 +20,8 @@ export default function Dashboard(props: DashboardProps) {
 		async slug => {
 			if (!slug) return null;
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
-			if (result.ok === false) throw new Error(result.error.message);
-			return result.data;
+			if (!result.ok) throw new Error(result.error.message);
+			return result.value;
 		}
 	);
 

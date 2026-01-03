@@ -1,5 +1,5 @@
 import { For, Show, createEffect, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
-import { type ProfileSummary, initMockAuth, profiles } from "../../utils/api-client";
+import { type ProfileSummary, initMockAuth, profiles } from "../../utils/api";
 
 type AuthState = { authenticated: true; profiles: ProfileSummary[] } | { authenticated: false };
 
@@ -20,7 +20,7 @@ const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => 
 		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
 		return initial ?? { authenticated: true, profiles: [] };
 	}
-	return { authenticated: true, profiles: result.data.profiles };
+	return { authenticated: true, profiles: result.value.profiles };
 };
 
 const getSlugFromUrl = () => {

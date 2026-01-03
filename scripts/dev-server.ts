@@ -3,19 +3,15 @@ import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import type { Backend } from "@f0rbit/corpus";
 import { create_file_backend } from "@f0rbit/corpus";
+import * as schema from "@media/schema/database";
+import { type Database as DrizzleDB, type ProviderFactory, authMiddleware, authRoutes, connectionRoutes, defaultProviderFactory, hash_api_key, profileRoutes, timelineRoutes } from "@media/server";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { authMiddleware } from "../src/auth";
-import type { Database as DrizzleDB } from "../src/db";
-import { type ProviderFactory, defaultProviderFactory } from "../src/platforms";
-import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "../src/routes";
-import * as schema from "../src/schema/database";
-import { hash_api_key } from "../src/utils";
 
-type AppContext = {
+type DevAppContext = {
 	db: DrizzleDB;
 	backend: Backend;
 	providerFactory: ProviderFactory;
@@ -28,7 +24,7 @@ const MOCK_API_KEY = `mt_dev_${Buffer.from(MOCK_USER_ID).toString("base64").slic
 
 type Variables = {
 	auth: { user_id: string; key_id: string };
-	appContext: AppContext;
+	appContext: DevAppContext;
 };
 
 async function startDevServer() {
@@ -36,7 +32,7 @@ async function startDevServer() {
 
 	mkdirSync("local/corpus", { recursive: true });
 
-	const sqliteDb = new Database("local/dev.db");
+	const sqliteDb = new Database("local/sqlite.db");
 	const db = drizzle(sqliteDb, { schema });
 
 	console.log("📋 Running Drizzle migrations...");
@@ -54,9 +50,9 @@ async function startDevServer() {
 
 	const backend = create_file_backend({ base_path: "./local/corpus" });
 
-	const appContext: AppContext = {
-		db: dbWithBatch as unknown as AppContext["db"],
-		backend: backend as unknown as AppContext["backend"],
+	const appContext: DevAppContext = {
+		db: dbWithBatch as unknown as DevAppContext["db"],
+		backend: backend as unknown as DevAppContext["backend"],
 		providerFactory: defaultProviderFactory,
 		encryptionKey: ENCRYPTION_KEY,
 	};
@@ -109,8 +105,9 @@ async function startDevServer() {
 
 	app.get("/health", c => c.json({ status: "ok", timestamp: new Date().toISOString() }));
 
-	// Set up mock env bindings for routes that need them (like OAuth)
-	app.use("/api/*", async (c, next) => {
+	const mediaApp = new Hono<{ Variables: Variables }>();
+
+	mediaApp.use("/api/*", async (c, next) => {
 		// biome-ignore lint: env bindings for dev server
 		(c as any).env = {
 			REDDIT_CLIENT_ID: process.env.REDDIT_CLIENT_ID || "",
@@ -119,17 +116,16 @@ async function startDevServer() {
 			TWITTER_CLIENT_SECRET: process.env.TWITTER_CLIENT_SECRET || "",
 			GITHUB_CLIENT_ID: process.env.GITHUB_CLIENT_ID || "",
 			GITHUB_CLIENT_SECRET: process.env.GITHUB_CLIENT_SECRET || "",
-			APP_URL: "http://localhost:8787",
+			API_URL: "http://localhost:8787",
 			FRONTEND_URL: "http://localhost:4321",
-			EncryptionKey: ENCRYPTION_KEY,
+			ENCRYPTION_KEY: ENCRYPTION_KEY,
 		};
 		c.set("appContext", appContext);
 		await next();
 	});
 
-	// Auth middleware - skip for /api/auth/* (OAuth routes handle their own auth)
-	app.use("/api/*", async (c, next) => {
-		if (c.req.path.startsWith("/api/auth")) {
+	mediaApp.use("/api/*", async (c, next) => {
+		if (c.req.path.startsWith("/media/api/auth")) {
 			console.log(`[dev-server] Skipping auth for OAuth route: ${c.req.path}`);
 			return next();
 		}
@@ -137,11 +133,12 @@ async function startDevServer() {
 		return authMiddleware(c as any, next);
 	});
 
-	// Routes
-	app.route("/api/auth", authRoutes);
-	app.route("/api/v1/timeline", timelineRoutes);
-	app.route("/api/v1/connections", connectionRoutes);
-	app.route("/api/v1/profiles", profileRoutes);
+	mediaApp.route("/api/auth", authRoutes);
+	mediaApp.route("/api/v1/timeline", timelineRoutes);
+	mediaApp.route("/api/v1/connections", connectionRoutes);
+	mediaApp.route("/api/v1/profiles", profileRoutes);
+
+	app.route("/media", mediaApp);
 
 	app.notFound(c => c.json({ error: "Not found", path: c.req.path }, 404));
 
@@ -153,7 +150,7 @@ async function startDevServer() {
 	const port = 8787;
 
 	console.log("");
-	console.log("📦 SQLite database at local/dev.db");
+	console.log("📦 SQLite database at local/sqlite.db");
 	console.log("📦 Corpus storage at local/corpus/");
 	console.log("");
 	console.log(`🌐 Server running at http://localhost:${port}`);

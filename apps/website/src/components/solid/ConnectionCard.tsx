@@ -1,4 +1,4 @@
-import { type Connection, connections } from "@/utils/api-client";
+import { type Connection, connections } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
 import { Show, createSignal } from "solid-js";
 import PlatformIcon from "./PlatformIcon";

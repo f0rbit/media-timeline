@@ -5,15 +5,25 @@ on:
     branches: [main]
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Deployment stage'
+        required: true
+        default: 'preview'
+        type: choice
+        options:
+          - preview
+          - production
 
-# Prevent concurrent deployments to the same stage
 concurrency:
-  group: deploy-${{ github.event_name == 'release' && 'production' || 'staging' }}
+  group: deploy-${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'preview' }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.stage || (github.event_name == 'release' && 'production') || 'preview' }}
     
     steps:
       - name: Checkout
@@ -27,6 +37,9 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Typecheck
+        run: bun run typecheck
+
       - name: Run tests
         run: bun test
 
@@ -35,32 +48,32 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "stage=production" >> $GITHUB_OUTPUT
-            echo "Deploying to production (release: ${{ github.event.release.tag_name }})"
+          elif [ -n "${{ github.event.inputs.stage }}" ]; then
+            echo "stage=${{ github.event.inputs.stage }}" >> $GITHUB_OUTPUT
           else
-            echo "stage=staging" >> $GITHUB_OUTPUT
-            echo "Deploying to staging (commit: ${{ github.sha }})"
+            echo "stage=preview" >> $GITHUB_OUTPUT
           fi
 
-      - name: Deploy to ${{ steps.stage.outputs.stage }}
-        run: bunx sst deploy --stage ${{ steps.stage.outputs.stage }}
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_DEFAULT_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Build
+        run: bun run build
 
       - name: Run D1 migrations
-        if: success()
         run: |
-          # Get database name from SST output
-          DB_NAME="media-timeline-${{ steps.stage.outputs.stage }}-dbdatabase"
-          
-          # Find the actual database name (SST adds a random suffix)
-          FULL_DB_NAME=$(bunx wrangler d1 list --json | jq -r ".[] | select(.name | startswith(\"$DB_NAME\")) | .name" | head -1)
-          
-          if [ -n "$FULL_DB_NAME" ]; then
-            echo "Running migrations on $FULL_DB_NAME"
-            bunx wrangler d1 migrations apply "$FULL_DB_NAME" --remote
+          if [ "${{ steps.stage.outputs.stage }}" = "production" ]; then
+            bunx wrangler d1 migrations apply media-timeline-db --remote
           else
-            echo "Warning: Could not find D1 database starting with $DB_NAME"
+            bunx wrangler d1 migrations apply media-timeline-db-preview --remote --env preview
+          fi
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Deploy to ${{ steps.stage.outputs.stage }}
+        run: |
+          if [ "${{ steps.stage.outputs.stage }}" = "production" ]; then
+            bunx wrangler deploy
+          else
+            bunx wrangler deploy --env preview
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

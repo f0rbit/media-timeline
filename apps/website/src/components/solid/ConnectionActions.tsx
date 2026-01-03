@@ -1,4 +1,4 @@
-import { connections } from "@/utils/api-client";
+import { connections } from "@/utils/api";
 import { Show, createSignal } from "solid-js";
 
 type Props = {

@@ -1,4 +1,4 @@
-import { api, initMockAuth } from "@/utils/api-client";
+import { api, apiUrls, initMockAuth } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
 
 type ProfileFilter = {
@@ -28,8 +28,6 @@ type CreateProfileResponse = {
 	profile: Profile;
 };
 
-const API_BASE_URL = "https://media.devpad.tools";
-
 const fetchProfiles = async (): Promise<Profile[]> => {
 	initMockAuth();
 	const result = await api.get<ProfilesResponse>("/profiles");
@@ -37,13 +35,13 @@ const fetchProfiles = async (): Promise<Profile[]> => {
 		console.error("[ProfileList] Failed to fetch profiles:", result.error);
 		throw new Error(result.error.message);
 	}
-	return result.data.profiles;
+	return result.value.profiles;
 };
 
 const createProfile = async (data: { slug: string; name: string; description?: string }): Promise<Profile> => {
 	const result = await api.post<CreateProfileResponse>("/profiles", data);
 	if (!result.ok) throw new Error(result.error.message);
-	return result.data.profile;
+	return result.value.profile;
 };
 
 const deleteProfile = async (id: string): Promise<void> => {
@@ -54,7 +52,7 @@ const deleteProfile = async (id: string): Promise<void> => {
 const updateProfile = async (id: string, data: { slug?: string; name?: string; description?: string | null }): Promise<Profile> => {
 	const result = await api.patch<{ profile: Profile }>(`/profiles/${id}`, data);
 	if (!result.ok) throw new Error(result.error.message);
-	return result.data.profile;
+	return result.value.profile;
 };
 
 export type ProfileSummary = Profile;
@@ -72,7 +70,7 @@ export default function ProfileList() {
 	const [showCreateForm, setShowCreateForm] = createSignal(false);
 	const [copiedSlug, setCopiedSlug] = createSignal<string | null>(null);
 
-	const getApiEndpoint = (slug: string): string => `${API_BASE_URL}/api/v1/profiles/${slug}/timeline`;
+	const getApiEndpoint = (slug: string): string => `${apiUrls.profiles(`/${slug}/timeline`)}`;
 
 	const handleCopy = async (slug: string) => {
 		const endpoint = getApiEndpoint(slug);
@@ -174,7 +172,7 @@ type ProfileCardProps = {
 };
 
 function ProfileCard(props: ProfileCardProps) {
-	const endpoint = `https://media.devpad.tools/api/v1/profiles/${props.profile.slug}/timeline`;
+	const endpoint = apiUrls.profiles(`/${props.profile.slug}/timeline`);
 
 	return (
 		<div class={`card ${props.isCurrent ? "card-active" : ""}`}>

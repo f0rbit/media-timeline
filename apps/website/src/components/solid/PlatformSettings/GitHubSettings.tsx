@@ -1,4 +1,4 @@
-import { type GitHubRepo, connections } from "@/utils/api-client";
+import { type GitHubRepo, connections } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
 import ChevronIcon from "../ChevronIcon";
 import { useSettings } from "./useSettings";
@@ -18,7 +18,7 @@ export default function GitHubSettings(props: Props) {
 	const [repos] = createResource(async () => {
 		const result = await connections.getRepos(props.accountId);
 		if (!result.ok) return [];
-		return result.data.repos;
+		return result.value.repos;
 	});
 
 	const hiddenRepos = () => new Set(props.settings?.hidden_repos ?? []);

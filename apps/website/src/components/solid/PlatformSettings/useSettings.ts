@@ -1,4 +1,4 @@
-import { connections } from "@/utils/api-client";
+import { connections } from "@/utils/api";
 import { createSignal } from "solid-js";
 
 export function useSettings(accountId: string, onUpdate?: () => void) {

@@ -17,8 +17,15 @@
 		"esModuleInterop": true,
 		"declaration": true,
 		"declarationMap": true,
-		"types": ["@cloudflare/workers-types", "bun"]
+		"types": ["@cloudflare/workers-types", "bun"],
+		"baseUrl": ".",
+		"paths": {
+			"@media/schema": ["./packages/schema/src/index.ts"],
+			"@media/schema/*": ["./packages/schema/src/*"],
+			"@media/server": ["./packages/server/src/index.ts"],
+			"@media/server/*": ["./packages/server/src/*"]
+		}
 	},
-	"include": ["src/**/*", "__tests__/**/*"],
-	"exclude": ["node_modules", "packages", ".sst"]
+	"include": ["src/**/*", "packages/**/*", "__tests__/**/*", "scripts/**/*"],
+	"exclude": ["node_modules", ".sst"]
 }

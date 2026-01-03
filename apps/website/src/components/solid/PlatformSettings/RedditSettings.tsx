@@ -1,4 +1,4 @@
-import { connections } from "@/utils/api-client";
+import { connections } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
 import ChevronIcon from "../ChevronIcon";
 import { useSettings } from "./useSettings";
@@ -22,7 +22,7 @@ export default function RedditSettings(props: Props) {
 	const [subreddits] = createResource(async () => {
 		const result = await connections.getSubreddits(props.accountId);
 		if (!result.ok) return [];
-		return result.data.subreddits;
+		return result.value.subreddits;
 	});
 
 	const hiddenSubreddits = () => new Set(props.settings?.hidden_subreddits ?? []);

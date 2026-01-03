@@ -1,3 +1,4 @@
+import { apiUrls } from "@/utils/api";
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
 import PlatformIcon from "./PlatformIcon";
 
@@ -40,7 +41,7 @@ const FILTER_KEY_LABELS: Record<string, string> = {
 };
 
 const fetchFilters = async (profileId: string): Promise<Filter[]> => {
-	const res = await fetch(`/api/v1/profiles/${profileId}/filters`, {
+	const res = await fetch(apiUrls.profiles(`/${profileId}/filters`), {
 		credentials: "include",
 	});
 	if (!res.ok) throw new Error("Failed to fetch filters");
@@ -97,7 +98,7 @@ export default function FilterEditor(props: FilterEditorProps) {
 		setError(null);
 
 		try {
-			const res = await fetch(`/api/v1/profiles/${props.profileId}/filters`, {
+			const res = await fetch(apiUrls.profiles(`/${props.profileId}/filters`), {
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
 				body: JSON.stringify({
@@ -125,7 +126,7 @@ export default function FilterEditor(props: FilterEditorProps) {
 
 	const removeFilter = async (filterId: string) => {
 		try {
-			const res = await fetch(`/api/v1/profiles/${props.profileId}/filters/${filterId}`, {
+			const res = await fetch(apiUrls.profiles(`/${props.profileId}/filters/${filterId}`), {
 				method: "DELETE",
 				credentials: "include",
 			});
