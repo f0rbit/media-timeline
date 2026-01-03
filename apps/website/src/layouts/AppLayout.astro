@@ -1,6 +1,7 @@
 ---
 import ProfileSelector from "../components/solid/ProfileSelector.tsx";
 import Layout from "./Layout.astro";
+import { getSSRAuth } from "../utils/ssr-auth";
 
 interface Props {
 	title?: string;
@@ -26,6 +27,23 @@ const buildUrl = (path: string) => {
 	if (!profileSlug) return path;
 	return `${path}?profile=${encodeURIComponent(profileSlug)}`;
 };
+
+// Fetch auth status and profiles using direct database access
+let isAuthenticated = false;
+let initialProfiles: { id: string; slug: string; name: string; description: string | null; created_at: string }[] = [];
+
+// @ts-expect-error - Astro.locals.runtime is provided by Cloudflare adapter
+const runtime = Astro.locals.runtime;
+
+if (runtime?.env?.DB) {
+	try {
+		const authResult = await getSSRAuth(Astro.request, runtime);
+		isAuthenticated = authResult.authenticated;
+		initialProfiles = authResult.profiles;
+	} catch {
+		// Auth failed, will show login button
+	}
+}
 ---
 
 <Layout title={title} description={description} ogImage={ogImage} noindex={noindex}>
@@ -38,6 +56,8 @@ const buildUrl = (path: string) => {
             <ProfileSelector 
               client:load
               currentSlug={profileSlug}
+              initialProfiles={initialProfiles}
+              isAuthenticated={isAuthenticated}
             />
           </div>
         </div>

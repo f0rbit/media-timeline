@@ -126,10 +126,12 @@ export const api = {
 	ssr: async (path: string, incomingRequest: Request, options: RequestInit = {}): Promise<Response> => {
 		const url = new URL(path, incomingRequest.url);
 		const cookie = incomingRequest.headers.get("cookie") ?? "";
+		const origin = new URL(incomingRequest.url).origin;
 
-		// Build headers including forwarded cookie
+		// Build headers including forwarded cookie and origin for CORS
 		const headers: Record<string, string> = {
 			...(options.headers as Record<string, string>),
+			Origin: origin,
 		};
 		if (cookie) {
 			headers.Cookie = cookie;
@@ -252,62 +254,4 @@ export const profiles = {
 		const queryString = query.toString();
 		return request<ProfileTimelineResponse>(apiUrls.profiles(`/${slug}/timeline${queryString ? `?${queryString}` : ""}`));
 	},
-};
-
-export type AuthUser = {
-	id: string;
-	name: string | null;
-	email: string | null;
-	image_url?: string | null;
-};
-
-export type AuthStatus = {
-	authenticated: boolean;
-	user: AuthUser | null;
-};
-
-/**
- * Fetch auth status for SSR context.
- * Must pass the incoming Astro request to forward cookies.
- */
-export const fetchAuthStatusServer = async (incomingRequest: Request): Promise<AuthStatus> => {
-	try {
-		const res = await api.ssr("/media/api/v1/me", incomingRequest);
-		if (!res.ok) {
-			return { authenticated: false, user: null };
-		}
-		const user = (await res.json()) as AuthUser;
-		return { authenticated: true, user };
-	} catch {
-		return { authenticated: false, user: null };
-	}
-};
-
-/**
- * Fetch profiles for SSR context.
- * Must pass the incoming Astro request to forward cookies.
- */
-export const fetchProfilesServer = async (incomingRequest?: Request): Promise<ProfileSummary[]> => {
-	// If we have an incoming request, use SSR method with cookie forwarding
-	if (incomingRequest) {
-		try {
-			const res = await api.ssr("/media/api/v1/profiles", incomingRequest);
-			if (!res.ok) {
-				return [];
-			}
-			const data = (await res.json()) as ProfilesListResponse;
-			return data.profiles;
-		} catch (e) {
-			console.error("[api] SSR fetch profiles failed:", e);
-			return [];
-		}
-	}
-
-	// Fallback to client-side fetch (no cookie forwarding)
-	const result = await profiles.list();
-	if (!result.ok) {
-		console.error("[api] Failed to fetch profiles:", result.error.message);
-		return [];
-	}
-	return result.value.profiles;
 };

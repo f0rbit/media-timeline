@@ -10,6 +10,11 @@ export type ProfileSelectorProps = {
 };
 
 const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => {
+	// If we have SSR data, use it directly without fetching
+	if (initial !== undefined) {
+		return initial;
+	}
+
 	initMockAuth();
 
 	const result = await profiles.list();
@@ -18,7 +23,7 @@ const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => 
 			return { authenticated: false };
 		}
 		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
-		return initial ?? { authenticated: true, profiles: [] };
+		return { authenticated: true, profiles: [] };
 	}
 	return { authenticated: true, profiles: result.value.profiles };
 };
@@ -63,11 +68,25 @@ export default function ProfileSelector(props: ProfileSelectorProps) {
 	};
 
 	const isAuthenticated = () => {
-		if (hasInitialData() && !authState()) {
-			return props.isAuthenticated !== false;
-		}
 		const state = authState();
-		return state?.authenticated ?? props.isAuthenticated !== false;
+
+		// If resource has loaded, trust its result
+		if (state !== undefined) {
+			return state.authenticated;
+		}
+
+		// If SSR passed explicit auth data, use it during loading
+		if (props.isAuthenticated !== undefined) {
+			return props.isAuthenticated;
+		}
+
+		// If we have initial profiles from SSR, user is authenticated
+		if (props.initialProfiles !== undefined && props.initialProfiles.length > 0) {
+			return true;
+		}
+
+		// No data yet - default to false (show Login button)
+		return false;
 	};
 
 	const currentProfile = () => {
