@@ -108,10 +108,6 @@ export default function ProfileSelector(props: ProfileSelectorProps) {
 		setIsOpen(false);
 	};
 
-	const handleLogin = () => {
-		window.location.href = "/media/api/auth/login";
-	};
-
 	const handleClickOutside = (e: MouseEvent) => {
 		if (!containerRef?.contains(e.target as Node)) {
 			setIsOpen(false);
@@ -140,16 +136,11 @@ export default function ProfileSelector(props: ProfileSelectorProps) {
 
 	const isLoading = () => !hasInitialData() && authState.loading;
 
+	// If not authenticated, don't render anything - AuthStatus handles login
+	// If authenticated, show profile selector or create profile link
 	return (
 		<Show when={!isLoading()} fallback={<div class="auth-loading" />}>
-			<Show
-				when={isAuthenticated()}
-				fallback={
-					<button onClick={handleLogin} class="auth-btn login-btn">
-						Login
-					</button>
-				}
-			>
+			<Show when={isAuthenticated()}>
 				<Show
 					when={!hasNoProfiles()}
 					fallback={

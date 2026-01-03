@@ -13,6 +13,8 @@ interface Props {
 
 export default function AuthStatus(props: Props) {
 	const [user] = createSignal<User | null>(props.initialUser ?? null);
+	// Use the authenticated flag from SSR, not just user presence
+	const isAuthenticated = () => props.initialAuthenticated ?? !!user();
 
 	const handleLogin = () => {
 		window.location.href = "/media/api/auth/login";
@@ -25,21 +27,17 @@ export default function AuthStatus(props: Props) {
 	return (
 		<div class="user-info">
 			<Show
-				when={user()}
+				when={isAuthenticated()}
 				fallback={
 					<button onClick={handleLogin} class="auth-btn login-btn">
 						Login
 					</button>
 				}
 			>
-				{u => (
-					<>
-						<span class="user-name">{u().name || u().email || "User"}</span>
-						<button onClick={handleLogout} class="auth-btn logout-btn">
-							Logout
-						</button>
-					</>
-				)}
+				<Show when={user()}>{u => <span class="user-name">{u().name || u().email || "User"}</span>}</Show>
+				<button onClick={handleLogout} class="auth-btn logout-btn">
+					Logout
+				</button>
 			</Show>
 		</div>
 	);
