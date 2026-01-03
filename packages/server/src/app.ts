@@ -48,7 +48,8 @@ export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 	});
 
 	app.use("/api/*", async (c, next) => {
-		if (c.req.path.startsWith(`${basePath}/api/auth`)) {
+		// Skip auth for /api/auth routes (login, callback, logout)
+		if (c.req.path.startsWith("/api/auth")) {
 			return next();
 		}
 		return authMiddleware(c, next);
