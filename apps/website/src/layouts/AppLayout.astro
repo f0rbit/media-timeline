@@ -1,7 +1,5 @@
 ---
-import AuthStatus from "../components/solid/AuthStatus.tsx";
 import ProfileSelector from "../components/solid/ProfileSelector.tsx";
-import { fetchAuthStatusServer, fetchProfilesServer } from "../utils/api";
 import Layout from "./Layout.astro";
 
 interface Props {
@@ -24,11 +22,6 @@ const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
 
 const profileSlug = Astro.url.searchParams.get("profile");
 
-// Fetch auth status and profiles using SSR with cookie forwarding
-const authStatus = await fetchAuthStatusServer(Astro.request);
-const initialProfiles = await fetchProfilesServer(Astro.request);
-const isAuthenticated = import.meta.env.DEV || authStatus.authenticated;
-
 const buildUrl = (path: string) => {
 	if (!profileSlug) return path;
 	return `${path}?profile=${encodeURIComponent(profileSlug)}`;
@@ -45,25 +38,16 @@ const buildUrl = (path: string) => {
             <ProfileSelector 
               client:load
               currentSlug={profileSlug}
-              initialProfiles={initialProfiles}
-              isAuthenticated={isAuthenticated}
             />
           </div>
         </div>
-        <div class="header-right">
-          <nav>
-            {pages.map(p => (
-              <a href={buildUrl(p.href)} class={active === p.name ? "active" : ""}>
-                {p.name}
-              </a>
-            ))}
-          </nav>
-          <AuthStatus 
-            client:load
-            initialUser={authStatus.user}
-            initialAuthenticated={isAuthenticated}
-          />
-        </div>
+        <nav>
+          {pages.map(p => (
+            <a href={buildUrl(p.href)} class={active === p.name ? "active" : ""}>
+              {p.name}
+            </a>
+          ))}
+        </nav>
       </header>
       <main class="flex-col">
         <slot />
@@ -81,12 +65,6 @@ const buildUrl = (path: string) => {
   }
   
   .header-left {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-  
-  .header-right {
     display: flex;
     align-items: center;
     gap: 16px;
