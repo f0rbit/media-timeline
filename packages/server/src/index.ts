@@ -8,13 +8,11 @@ export { defaultProviderFactory } from "./platforms";
 export {
 	authMiddleware,
 	getAuth,
-	syncDevpadUser,
 	verifyApiKey,
 	verifyJWT,
 	verifySessionCookie,
 	type AuthContext,
 	type DevpadUser,
-	type SyncError,
 	type VerifyOptions,
 	type VerifyResponse,
 } from "./auth";

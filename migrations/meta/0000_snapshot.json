@@ -1,7 +1,7 @@
 {
 	"version": "6",
 	"dialect": "sqlite",
-	"id": "ea28a17f-d5b2-4710-a2aa-4c49fbca8d7c",
+	"id": "1cc0fc46-1706-4217-8f8a-f4d5e9acddc8",
 	"prevId": "00000000-0000-0000-0000-000000000000",
 	"tables": {
 		"media_account_settings": {
@@ -682,13 +682,6 @@
 					"notNull": false,
 					"autoincrement": false
 				},
-				"devpad_user_id": {
-					"name": "devpad_user_id",
-					"type": "text",
-					"primaryKey": false,
-					"notNull": false,
-					"autoincrement": false
-				},
 				"created_at": {
 					"name": "created_at",
 					"type": "text",
@@ -708,11 +701,6 @@
 				"media_users_email_unique": {
 					"name": "media_users_email_unique",
 					"columns": ["email"],
-					"isUnique": true
-				},
-				"idx_media_users_devpad_user_id": {
-					"name": "idx_media_users_devpad_user_id",
-					"columns": ["devpad_user_id"],
 					"isUnique": true
 				}
 			},

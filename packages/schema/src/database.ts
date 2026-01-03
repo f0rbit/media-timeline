@@ -1,20 +1,13 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { Platform } from "./platforms";
 
-export const users = sqliteTable(
-	"media_users",
-	{
-		id: text("id").primaryKey(),
-		email: text("email").unique(),
-		name: text("name"),
-		devpad_user_id: text("devpad_user_id"),
-		created_at: text("created_at").notNull(),
-		updated_at: text("updated_at").notNull(),
-	},
-	table => ({
-		devpad_user_idx: uniqueIndex("idx_media_users_devpad_user_id").on(table.devpad_user_id),
-	})
-);
+export const users = sqliteTable("media_users", {
+	id: text("id").primaryKey(),
+	email: text("email").unique(),
+	name: text("name"),
+	created_at: text("created_at").notNull(),
+	updated_at: text("updated_at").notNull(),
+});
 
 export const profiles = sqliteTable(
 	"media_profiles",

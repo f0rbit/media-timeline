@@ -10,7 +10,7 @@ import type { ProviderFactory } from "./platforms/types";
 import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "./routes";
 
 type Variables = {
-	auth: { user_id: string; devpad_user_id: string; jwt_token?: string };
+	auth: { user_id: string; jwt_token?: string };
 	appContext: AppContext;
 };
 

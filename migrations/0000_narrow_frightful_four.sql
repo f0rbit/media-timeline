@@ -108,10 +108,8 @@ CREATE TABLE `media_users` (
 	`id` text PRIMARY KEY NOT NULL,
 	`email` text,
 	`name` text,
-	`devpad_user_id` text,
 	`created_at` text NOT NULL,
 	`updated_at` text NOT NULL
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `media_users_email_unique` ON `media_users` (`email`);--> statement-breakpoint
-CREATE UNIQUE INDEX `idx_media_users_devpad_user_id` ON `media_users` (`devpad_user_id`);
+CREATE UNIQUE INDEX `media_users_email_unique` ON `media_users` (`email`);

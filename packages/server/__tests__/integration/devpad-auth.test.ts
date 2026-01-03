@@ -11,7 +11,7 @@ type TestVariables = {
 	appContext: AppContext;
 };
 
-type AuthResponse = { user_id: string; devpad_user_id: string };
+type AuthResponse = { user_id: string };
 type ErrorResponse = { error: string; message?: string };
 
 const createAuthTestApp = (ctx: TestContext) => {
@@ -26,7 +26,7 @@ const createAuthTestApp = (ctx: TestContext) => {
 
 	app.get("/media/api/me", c => {
 		const auth = getAuth(c);
-		return c.json({ user_id: auth.user_id, devpad_user_id: auth.devpad_user_id });
+		return c.json({ user_id: auth.user_id });
 	});
 
 	return app;
@@ -61,17 +61,14 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.devpad_user_id).toBe("devpad-user-123");
-			expect(body.user_id).toBeDefined();
+			expect(body.user_id).toBe("devpad-user-123");
 
 			verifySpy.mockRestore();
 		});
 
 		it("authenticates with valid session cookie and updates existing user", async () => {
 			const devpadUserId = "devpad-existing-user";
-			await seedUser(ctx, { ...USERS.alice, id: "local-user-id" });
-
-			await ctx.d1.prepare("UPDATE media_users SET devpad_user_id = ? WHERE id = ?").bind(devpadUserId, "local-user-id").run();
+			await seedUser(ctx, { ...USERS.alice, id: devpadUserId });
 
 			const mockDevpadUser = {
 				id: devpadUserId,
@@ -93,8 +90,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.user_id).toBe("local-user-id");
-			expect(body.devpad_user_id).toBe(devpadUserId);
+			expect(body.user_id).toBe(devpadUserId);
 
 			verifySpy.mockRestore();
 		});
@@ -139,7 +135,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.devpad_user_id).toBe("devpad-api-user");
+			expect(body.user_id).toBe("devpad-api-user");
 
 			verifySpy.mockRestore();
 		});
@@ -192,7 +188,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.devpad_user_id).toBe("cookie-user");
+			expect(body.user_id).toBe("cookie-user");
 			expect(apiKeySpy).not.toHaveBeenCalled();
 
 			cookieSpy.mockRestore();
@@ -227,7 +223,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.devpad_user_id).toBe("api-key-user");
+			expect(body.user_id).toBe("api-key-user");
 
 			cookieSpy.mockRestore();
 			apiKeySpy.mockRestore();
@@ -260,78 +256,8 @@ describe("authMiddleware", () => {
 	});
 });
 
-describe("syncDevpadUser", () => {
-	let ctx: TestContext;
-
-	beforeEach(() => {
-		ctx = createTestContext();
-	});
-
-	it("creates new user when devpad_user_id not found", async () => {
-		const devpadUser = {
-			id: "new-devpad-id",
-			name: "New User",
-			email: "new@example.com",
-			github_id: 123,
-			image_url: null,
-		};
-
-		const result = await devpadAuth.syncDevpadUser(ctx.appContext.db, devpadUser);
-
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.value.devpad_user_id).toBe("new-devpad-id");
-			expect(result.value.name).toBe("New User");
-			expect(result.value.email).toBe("new@example.com");
-		}
-
-		const dbUser = await ctx.d1.prepare("SELECT * FROM media_users WHERE devpad_user_id = ?").bind("new-devpad-id").first();
-
-		expect(dbUser).not.toBeNull();
-		expect((dbUser as { name: string }).name).toBe("New User");
-	});
-
-	it("returns existing user without update when data unchanged", async () => {
-		await seedUser(ctx, USERS.alice);
-		await ctx.d1.prepare("UPDATE media_users SET devpad_user_id = ? WHERE id = ?").bind("alice-devpad-id", USERS.alice.id).run();
-
-		const devpadUser = {
-			id: "alice-devpad-id",
-			name: USERS.alice.name ?? null,
-			email: USERS.alice.email ?? null,
-			github_id: null,
-			image_url: null,
-		};
-
-		const result = await devpadAuth.syncDevpadUser(ctx.appContext.db, devpadUser);
-
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.value.id).toBe(USERS.alice.id);
-		}
-	});
-
-	it("updates user when name or email changes", async () => {
-		await seedUser(ctx, USERS.alice);
-		await ctx.d1.prepare("UPDATE media_users SET devpad_user_id = ? WHERE id = ?").bind("alice-devpad-id", USERS.alice.id).run();
-
-		const devpadUser = {
-			id: "alice-devpad-id",
-			name: "Alice Updated",
-			email: "alice.updated@example.com",
-			github_id: null,
-			image_url: null,
-		};
-
-		const result = await devpadAuth.syncDevpadUser(ctx.appContext.db, devpadUser);
-
-		expect(result.ok).toBe(true);
-		if (result.ok) {
-			expect(result.value.name).toBe("Alice Updated");
-			expect(result.value.email).toBe("alice.updated@example.com");
-		}
-	});
-});
+// syncDevpadUser tests removed - function no longer exists
+// User IDs are now DevPad IDs directly, no sync needed
 
 describe("verifySessionCookie", () => {
 	it("returns authenticated false on non-200 response", async () => {

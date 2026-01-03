@@ -126,7 +126,6 @@ const SCHEMA = `
     id TEXT PRIMARY KEY,
     email TEXT UNIQUE,
     name TEXT,
-    devpad_user_id TEXT UNIQUE,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -502,7 +501,7 @@ export const createTestContext = (): TestContext => {
 };
 
 type TestVariables = {
-	auth: { user_id: string; devpad_user_id: string; jwt_token?: string };
+	auth: { user_id: string; jwt_token?: string };
 	appContext: AppContext;
 };
 
@@ -516,16 +515,10 @@ const createTestAuthMiddleware = (ctx: TestContext) => {
 		if (authHeader?.startsWith("Bearer ")) {
 			const token = authHeader.slice(7);
 			const keyHash = await hash_api_key(token);
-			const result = await ctx.d1
-				.prepare("SELECT ak.id, ak.user_id, u.devpad_user_id FROM media_api_keys ak JOIN media_users u ON ak.user_id = u.id WHERE ak.key_hash = ?")
-				.bind(keyHash)
-				.first<{ id: string; user_id: string; devpad_user_id: string | null }>();
+			const result = await ctx.d1.prepare("SELECT ak.id, ak.user_id FROM media_api_keys ak JOIN media_users u ON ak.user_id = u.id WHERE ak.key_hash = ?").bind(keyHash).first<{ id: string; user_id: string }>();
 
 			if (result) {
-				c.set("auth", {
-					user_id: result.user_id,
-					devpad_user_id: result.devpad_user_id ?? `devpad-${result.user_id}`,
-				});
+				c.set("auth", { user_id: result.user_id });
 				return next();
 			}
 		}
