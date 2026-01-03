@@ -1,4 +1,4 @@
-import { Show, createResource } from "solid-js";
+import { Show, createSignal } from "solid-js";
 
 type User = {
 	id: string;
@@ -6,18 +6,13 @@ type User = {
 	email: string | null;
 };
 
-const checkAuth = async (): Promise<User | null> => {
-	try {
-		const res = await fetch("/api/v1/me", { credentials: "include" });
-		if (!res.ok) return null;
-		return (await res.json()) as User;
-	} catch {
-		return null;
-	}
-};
+interface Props {
+	initialUser?: User | null;
+	initialAuthenticated?: boolean;
+}
 
-export default function AuthStatus() {
-	const [user] = createResource(checkAuth);
+export default function AuthStatus(props: Props) {
+	const [user] = createSignal<User | null>(props.initialUser ?? null);
 
 	const handleLogin = () => {
 		window.location.href = "/media/api/auth/login";
@@ -28,7 +23,7 @@ export default function AuthStatus() {
 	};
 
 	return (
-		<Show when={!user.loading}>
+		<div class="user-info">
 			<Show
 				when={user()}
 				fallback={
@@ -37,13 +32,15 @@ export default function AuthStatus() {
 					</button>
 				}
 			>
-				<div class="user-info">
-					<span class="user-name">{user()?.name || user()?.email || "User"}</span>
-					<button onClick={handleLogout} class="auth-btn logout-btn">
-						Logout
-					</button>
-				</div>
+				{u => (
+					<>
+						<span class="user-name">{u().name || u().email || "User"}</span>
+						<button onClick={handleLogout} class="auth-btn logout-btn">
+							Logout
+						</button>
+					</>
+				)}
 			</Show>
-		</Show>
+		</div>
 	);
 }

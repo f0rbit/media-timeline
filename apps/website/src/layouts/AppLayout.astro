@@ -1,6 +1,6 @@
 ---
 import ProfileSelector from "../components/solid/ProfileSelector.tsx";
-import { fetchProfilesServer } from "../utils/api";
+import { fetchAuthStatusServer, fetchProfilesServer } from "../utils/api";
 import Layout from "./Layout.astro";
 
 interface Props {
@@ -22,8 +22,11 @@ const currentPath = Astro.url.pathname;
 const active = pages.find(p => currentPath.startsWith(p.href))?.name ?? "";
 
 const profileSlug = Astro.url.searchParams.get("profile");
-const initialProfiles = await fetchProfilesServer();
-const isAuthenticated = import.meta.env.DEV || initialProfiles.length > 0;
+
+// Fetch auth status and profiles using SSR with cookie forwarding
+const authStatus = await fetchAuthStatusServer(Astro.request);
+const initialProfiles = await fetchProfilesServer(Astro.request);
+const isAuthenticated = import.meta.env.DEV || authStatus.authenticated;
 
 const buildUrl = (path: string) => {
 	if (!profileSlug) return path;

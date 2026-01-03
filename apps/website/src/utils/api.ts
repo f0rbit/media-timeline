@@ -1,5 +1,5 @@
 import { type Result, err, ok } from "@f0rbit/corpus/types";
-import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo, PRCommit, PlatformSettings, PostPayload, PullRequestPayload, TimelineItem, TimelineType } from "@schema/types";
+import type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo, PRCommit, PlatformSettings, PostPayload, PullRequestPayload, TimelineItem, TimelineType } from "@media/schema/types";
 import { MOCK_API_KEY, MOCK_USER_ID, isDevMode } from "./mock-auth";
 
 export type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo, PRCommit, PlatformSettings, PostPayload, PullRequestPayload, TimelineItem, TimelineType };
@@ -17,6 +17,7 @@ export const apiUrls = {
 	timeline: (path = "") => `${API_HOST}/media/api/v1/timeline${path ? normalizePath(path) : ""}`,
 	connections: (path = "") => `${API_HOST}/media/api/v1/connections${path ? normalizePath(path) : ""}`,
 	profiles: (path = "") => `${API_HOST}/media/api/v1/profiles${path ? normalizePath(path) : ""}`,
+	me: () => `${API_HOST}/media/api/v1/me`,
 };
 
 export type ApiError = {
@@ -115,6 +116,29 @@ export const api = {
 	put: <T>(path: string, body?: unknown) => request<T>(apiUrls.media(`/v1${path}`), { method: "PUT", body }),
 	patch: <T>(path: string, body?: unknown) => request<T>(apiUrls.media(`/v1${path}`), { method: "PATCH", body }),
 	delete: <T>(path: string) => request<T>(apiUrls.media(`/v1${path}`), { method: "DELETE" }),
+
+	/**
+	 * Make an SSR request to the API.
+	 * Forwards the incoming request's cookies to the API for authentication.
+	 * If running in unified worker, could use direct internal call (not implemented yet).
+	 */
+	ssr: async (path: string, incomingRequest: Request, options: RequestInit = {}): Promise<Response> => {
+		const url = new URL(path, incomingRequest.url);
+		const cookie = incomingRequest.headers.get("cookie") ?? "";
+
+		// Build headers including forwarded cookie
+		const headers: Record<string, string> = {
+			...(options.headers as Record<string, string>),
+		};
+		if (cookie) {
+			headers.Cookie = cookie;
+		}
+
+		return fetch(url.toString(), {
+			...options,
+			headers,
+		});
+	},
 };
 
 export type Connection = {
@@ -229,7 +253,56 @@ export const profiles = {
 	},
 };
 
-export const fetchProfilesServer = async (): Promise<ProfileSummary[]> => {
+export type AuthUser = {
+	id: string;
+	name: string | null;
+	email: string | null;
+	image_url?: string | null;
+};
+
+export type AuthStatus = {
+	authenticated: boolean;
+	user: AuthUser | null;
+};
+
+/**
+ * Fetch auth status for SSR context.
+ * Must pass the incoming Astro request to forward cookies.
+ */
+export const fetchAuthStatusServer = async (incomingRequest: Request): Promise<AuthStatus> => {
+	try {
+		const res = await api.ssr("/media/api/v1/me", incomingRequest);
+		if (!res.ok) {
+			return { authenticated: false, user: null };
+		}
+		const user = (await res.json()) as AuthUser;
+		return { authenticated: true, user };
+	} catch {
+		return { authenticated: false, user: null };
+	}
+};
+
+/**
+ * Fetch profiles for SSR context.
+ * Must pass the incoming Astro request to forward cookies.
+ */
+export const fetchProfilesServer = async (incomingRequest?: Request): Promise<ProfileSummary[]> => {
+	// If we have an incoming request, use SSR method with cookie forwarding
+	if (incomingRequest) {
+		try {
+			const res = await api.ssr("/media/api/v1/profiles", incomingRequest);
+			if (!res.ok) {
+				return [];
+			}
+			const data = (await res.json()) as ProfilesListResponse;
+			return data.profiles;
+		} catch (e) {
+			console.error("[api] SSR fetch profiles failed:", e);
+			return [];
+		}
+	}
+
+	// Fallback to client-side fetch (no cookie forwarding)
 	const result = await profiles.list();
 	if (!result.ok) {
 		console.error("[api] Failed to fetch profiles:", result.error.message);
