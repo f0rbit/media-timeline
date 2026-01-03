@@ -109,8 +109,7 @@ export default function ProfileSelector(props: ProfileSelectorProps) {
 	};
 
 	const handleLogin = () => {
-		const returnUrl = encodeURIComponent(window.location.href);
-		window.location.href = `https://devpad.tools/login?redirect=${returnUrl}`;
+		window.location.href = "/media/api/auth/login";
 	};
 
 	const handleClickOutside = (e: MouseEvent) => {

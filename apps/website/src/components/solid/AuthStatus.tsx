@@ -20,13 +20,11 @@ export default function AuthStatus() {
 	const [user] = createResource(checkAuth);
 
 	const handleLogin = () => {
-		const returnUrl = encodeURIComponent(window.location.href);
-		window.location.href = `https://devpad.tools/login?redirect=${returnUrl}`;
+		window.location.href = "/media/api/auth/login";
 	};
 
-	const handleLogout = async () => {
-		await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
-		window.location.href = "/";
+	const handleLogout = () => {
+		window.location.href = "/media/api/auth/logout";
 	};
 
 	return (

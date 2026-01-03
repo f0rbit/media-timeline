@@ -1,5 +1,6 @@
 import type { FetchError, Result } from "@f0rbit/corpus";
 import { Hono } from "hono";
+import { deleteCookie, setCookie } from "hono/cookie";
 import type { AuthContext } from "../auth";
 import type { Bindings } from "../bindings";
 import type { AppContext } from "../infrastructure";
@@ -259,4 +260,41 @@ authRoutes.get("/github/callback", async c => {
 	};
 
 	return createOAuthCallback(configWithSecrets)(c);
+});
+
+authRoutes.get("/login", c => {
+	const origin = new URL(c.req.url).origin;
+	const isPreview = !origin.includes("devpad.tools");
+	const devpadUrl = c.env.DEVPAD_URL || "https://devpad.tools";
+
+	const params = new URLSearchParams({
+		return_to: `${origin}/api/auth/callback`,
+		...(isPreview && { mode: "jwt" }),
+	});
+
+	return c.redirect(`${devpadUrl}/api/auth/login?${params}`);
+});
+
+authRoutes.get("/callback", c => {
+	const token = c.req.query("token");
+	if (!token) {
+		return c.redirect("/?error=no_token");
+	}
+
+	setCookie(c, "devpad_jwt", token, {
+		httpOnly: true,
+		secure: true,
+		sameSite: "Lax",
+		path: "/",
+		maxAge: 60 * 60 * 24 * 7,
+	});
+
+	return c.redirect("/dashboard");
+});
+
+authRoutes.get("/logout", c => {
+	deleteCookie(c, "devpad_jwt");
+	deleteCookie(c, "devpad_session");
+	deleteCookie(c, "session");
+	return c.redirect("/");
 });

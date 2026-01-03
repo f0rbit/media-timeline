@@ -69,11 +69,21 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Deploy to ${{ steps.stage.outputs.stage }}
+        id: deploy
         run: |
           if [ "${{ steps.stage.outputs.stage }}" = "production" ]; then
-            bunx wrangler deploy
+            DEPLOY_OUTPUT=$(bunx wrangler deploy 2>&1) || true
           else
-            bunx wrangler deploy --env preview
+            DEPLOY_OUTPUT=$(bunx wrangler deploy --env preview 2>&1) || true
+          fi
+          echo "$DEPLOY_OUTPUT"
+          
+          # Extract deployed URL from output
+          if [ "${{ steps.stage.outputs.stage }}" = "production" ]; then
+            echo "url=https://media.devpad.tools" >> $GITHUB_OUTPUT
+          else
+            DEPLOYED_URL=$(echo "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9-]+\.[a-zA-Z0-9-]+\.workers\.dev' | head -1)
+            echo "url=$DEPLOYED_URL" >> $GITHUB_OUTPUT
           fi
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -85,6 +95,7 @@ jobs:
           echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "- **Stage:** ${{ steps.stage.outputs.stage }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **URL:** ${{ steps.deploy.outputs.url }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Trigger:** ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
           if [ "${{ github.event_name }}" = "release" ]; then
             echo "- **Release:** ${{ github.event.release.tag_name }}" >> $GITHUB_STEP_SUMMARY
