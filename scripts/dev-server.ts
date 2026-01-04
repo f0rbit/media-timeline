@@ -2,7 +2,7 @@
 import { Database } from "bun:sqlite";
 import { mkdirSync } from "node:fs";
 import type { Backend } from "@f0rbit/corpus";
-import { create_file_backend } from "@f0rbit/corpus";
+import { create_file_backend } from "@f0rbit/corpus/file";
 import * as schema from "@media/schema/database";
 import { type Database as DrizzleDB, type ProviderFactory, authMiddleware, authRoutes, connectionRoutes, defaultProviderFactory, hash_api_key, profileRoutes, timelineRoutes } from "@media/server";
 import { eq } from "drizzle-orm";

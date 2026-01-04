@@ -24,7 +24,7 @@
 		"deploy:production": "bun run build && wrangler deploy"
 	},
 	"dependencies": {
-		"@f0rbit/corpus": "0.3.0",
+		"@f0rbit/corpus": "0.3.1",
 		"@xdevplatform/xdk": "^0.3.0",
 		"drizzle-orm": "^0.44.7",
 		"hono": "^4.10.7",
