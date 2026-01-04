@@ -13,7 +13,7 @@ if (profileSlug) {
 		const result = await api.ssr<ProfileTimelineResponse>(`/media/api/v1/profiles/${profileSlug}/timeline`, Astro.request, {}, runtime);
 
 		if (result.ok) {
-			initialGroups = result.data.data.groups;
+			initialGroups = result.value.data.groups;
 		}
 	} catch {
 		// SSR fetch failed, component will fetch client-side
