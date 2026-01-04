@@ -17,8 +17,8 @@ type SSRRuntime = {
 
 export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
-// Use relative URLs in production/preview, localhost in dev
-const API_HOST = import.meta.env.PUBLIC_API_URL || (typeof window !== "undefined" ? "" : "http://localhost:8787");
+// Use relative URLs in production/preview (same worker), localhost only in dev
+const API_HOST = import.meta.env.PUBLIC_API_URL || (import.meta.env.DEV ? "http://localhost:8787" : "");
 
 const normalizePath = (path: string) => (path.startsWith("/") ? path : `/${path}`);
 
