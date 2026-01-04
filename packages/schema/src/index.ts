@@ -2,7 +2,22 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { z } from "zod";
 
 export * from "./branded";
-export { accountSettings, accounts, apiKeys, profileFilters, profiles, rateLimits, users, type Profile, type ProfileFilter, type NewProfile, type NewProfileFilter } from "./database";
+export {
+	accountSettings,
+	accounts,
+	apiKeys,
+	platformCredentials,
+	profileFilters,
+	profiles,
+	rateLimits,
+	users,
+	type Profile,
+	type ProfileFilter,
+	type NewProfile,
+	type NewProfileFilter,
+	type PlatformCredential,
+	type NewPlatformCredential,
+} from "./database";
 
 export {
 	GitHubRepoCommitSchema,

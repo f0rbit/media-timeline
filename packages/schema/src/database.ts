@@ -175,3 +175,28 @@ export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
 export type ProfileFilter = typeof profileFilters.$inferSelect;
 export type NewProfileFilter = typeof profileFilters.$inferInsert;
+
+export const platformCredentials = sqliteTable(
+	"media_platform_credentials",
+	{
+		id: text("id").primaryKey(),
+		profile_id: text("profile_id")
+			.notNull()
+			.references(() => profiles.id, { onDelete: "cascade" }),
+		platform: text("platform").notNull().$type<Platform>(),
+		client_id: text("client_id").notNull(),
+		client_secret_encrypted: text("client_secret_encrypted").notNull(),
+		redirect_uri: text("redirect_uri"),
+		metadata: text("metadata"),
+		is_verified: integer("is_verified", { mode: "boolean" }).default(false),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		profile_platform_idx: uniqueIndex("idx_platform_credentials_unique").on(table.profile_id, table.platform),
+		profile_idx: index("idx_platform_credentials_profile").on(table.profile_id),
+	})
+);
+
+export type PlatformCredential = typeof platformCredentials.$inferSelect;
+export type NewPlatformCredential = typeof platformCredentials.$inferInsert;

@@ -5,7 +5,7 @@ import { type Bindings, createContextFromBindings } from "./bindings";
 import type { AppContext } from "./infrastructure";
 import { defaultProviderFactory } from "./platforms";
 import type { ProviderFactory } from "./platforms/types";
-import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "./routes";
+import { authRoutes, connectionRoutes, credentialRoutes, profileRoutes, timelineRoutes } from "./routes";
 
 type Variables = {
 	auth: AuthContext;
@@ -63,6 +63,7 @@ export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 	app.route("/api/auth", authRoutes);
 	app.route("/api/v1/timeline", timelineRoutes);
 	app.route("/api/v1/connections", connectionRoutes);
+	app.route("/api/v1/credentials", credentialRoutes);
 	app.route("/api/v1/profiles", profileRoutes);
 
 	app.get("/api/v1/me", c => {

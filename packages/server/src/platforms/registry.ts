@@ -14,6 +14,7 @@ type PlatformProcessResult = {
 
 export type AccountWithUser = {
 	id: string;
+	profile_id: string;
 	platform: string;
 	platform_user_id: string | null;
 	access_token_encrypted: string;

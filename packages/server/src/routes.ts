@@ -1,1 +1,1 @@
-export { timelineRoutes, connectionRoutes, profileRoutes, authRoutes, refreshRedditToken, refreshTwitterToken } from "./routes/index";
+export { timelineRoutes, connectionRoutes, credentialRoutes, profileRoutes, authRoutes, refreshRedditToken, refreshTwitterToken } from "./routes/index";

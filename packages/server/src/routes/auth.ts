@@ -4,7 +4,20 @@ import { deleteCookie, setCookie } from "hono/cookie";
 import type { AuthContext } from "../auth";
 import type { Bindings } from "../bindings";
 import type { AppContext } from "../infrastructure";
-import { type OAuthCallbackConfig, createOAuthCallback, encodeOAuthState, validateOAuthQueryKeyAndProfile } from "../oauth-helpers";
+import {
+	type OAuthCallbackConfig,
+	createOAuthCallback,
+	decodeOAuthState,
+	encodeOAuthState,
+	exchangeCodeForTokens,
+	fetchOAuthUserProfile,
+	getFrontendUrl,
+	redirectWithError,
+	redirectWithSuccess,
+	upsertOAuthAccount,
+	validateOAuthQueryKeyAndProfile,
+} from "../oauth-helpers";
+import { getCredentials, markCredentialsVerified } from "../services/credentials";
 import { pipe } from "../utils";
 
 type Variables = {
@@ -164,13 +177,22 @@ authRoutes.get("/reddit", async c => {
 	if (!validation.ok) return validation.error;
 	const { user_id, profile_id } = validation.value;
 
-	const clientId = c.env.REDDIT_CLIENT_ID;
+	// Check for BYO credentials first
+	const byoCredentials = await getCredentials(ctx, profile_id, "reddit");
+
+	// Use BYO credentials if available, otherwise fall back to env
+	const clientId = byoCredentials?.clientId ?? c.env.REDDIT_CLIENT_ID;
+
 	if (!clientId) {
-		return c.json({ error: "Reddit OAuth not configured" }, 500);
+		return c.redirect(`${getFrontendUrl(c)}/connections?error=reddit_no_credentials`);
 	}
 
 	const redirectUri = `${c.env.API_URL || "http://localhost:8787"}/media/api/auth/reddit/callback`;
-	const state = encodeOAuthState(user_id, profile_id);
+
+	// Include byo flag in state so callback knows to use BYO credentials
+	const state = encodeOAuthState(user_id, profile_id, {
+		byo: !!byoCredentials,
+	});
 
 	const authUrl = new URL("https://www.reddit.com/api/v1/authorize");
 	authUrl.searchParams.set("client_id", clientId);
@@ -183,7 +205,80 @@ authRoutes.get("/reddit", async c => {
 	return c.redirect(authUrl.toString());
 });
 
-authRoutes.get("/reddit/callback", createOAuthCallback(redditOAuthConfig));
+authRoutes.get("/reddit/callback", async c => {
+	const ctx = c.get("appContext");
+	if (!ctx) throw new Error("AppContext not set");
+
+	const code = c.req.query("code");
+	const error = c.req.query("error");
+	const stateParam = c.req.query("state");
+
+	if (error) {
+		console.error("[reddit-oauth] Authorization denied:", error);
+		return redirectWithError(c, "reddit", "auth_denied");
+	}
+
+	if (!code) {
+		return redirectWithError(c, "reddit", "no_code");
+	}
+
+	// Decode state to check for BYO flag
+	const stateResult = decodeOAuthState<{ byo?: boolean }>(c, stateParam, "reddit");
+	if (!stateResult.ok) return stateResult.error;
+	const stateData = stateResult.value;
+
+	// Get credentials - BYO or env
+	let clientId: string | undefined;
+	let clientSecret: string | undefined;
+
+	if (stateData.byo) {
+		const byoCredentials = await getCredentials(ctx, stateData.profile_id, "reddit");
+		if (!byoCredentials) {
+			return redirectWithError(c, "reddit", "credentials_not_found");
+		}
+		clientId = byoCredentials.clientId;
+		clientSecret = byoCredentials.clientSecret;
+	} else {
+		clientId = c.env.REDDIT_CLIENT_ID;
+		clientSecret = c.env.REDDIT_CLIENT_SECRET;
+	}
+
+	if (!clientId || !clientSecret) {
+		return redirectWithError(c, "reddit", "not_configured");
+	}
+
+	const redirectUri = `${c.env.API_URL || "http://localhost:8787"}/media/api/auth/reddit/callback`;
+
+	// Exchange code for tokens
+	const tokenResult = await exchangeCodeForTokens(code, redirectUri, clientId, clientSecret, redditOAuthConfig as OAuthCallbackConfig<{ byo?: boolean }>, stateData);
+
+	if (!tokenResult.ok) {
+		console.error("[reddit-oauth] Token exchange failed:", tokenResult.error.message);
+		return redirectWithError(c, "reddit", "token_failed");
+	}
+
+	// Fetch user info
+	const userResult = await fetchOAuthUserProfile(tokenResult.value.access_token, redditOAuthConfig as OAuthCallbackConfig<{ byo?: boolean }>);
+	if (!userResult.ok) {
+		console.error("[reddit-oauth] User fetch failed:", userResult.error.message);
+		return redirectWithError(c, "reddit", "user_failed");
+	}
+
+	// Save account
+	const saveResult = await upsertOAuthAccount(ctx.db, ctx.encryptionKey, stateData.profile_id, "reddit", userResult.value, tokenResult.value);
+
+	if (!saveResult.ok) {
+		console.error("[reddit-oauth] Save failed:", saveResult.error.message);
+		return redirectWithError(c, "reddit", "save_failed");
+	}
+
+	// If BYO credentials were used, mark them as verified
+	if (stateData.byo) {
+		await markCredentialsVerified(ctx, stateData.profile_id, "reddit");
+	}
+
+	return redirectWithSuccess(c, "reddit");
+});
 
 authRoutes.get("/twitter", async c => {
 	const ctx = getContext(c);

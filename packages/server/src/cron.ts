@@ -110,6 +110,7 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 	const accountsWithUsers = await ctx.db
 		.select({
 			id: accounts.id,
+			profile_id: accounts.profile_id,
 			platform: accounts.platform,
 			platform_user_id: accounts.platform_user_id,
 			access_token_encrypted: accounts.access_token_encrypted,

@@ -8,6 +8,13 @@
 			"when": 1767400581677,
 			"tag": "0000_narrow_frightful_four",
 			"breakpoints": true
+		},
+		{
+			"idx": 1,
+			"version": "6",
+			"when": 1767509400000,
+			"tag": "0001_platform_credentials",
+			"breakpoints": true
 		}
 	]
 }
