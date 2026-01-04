@@ -132,13 +132,11 @@ function EmptyTimeline() {
 		<div class="empty-state">
 			<h3>No timeline data yet</h3>
 			<p class="muted">Your timeline will populate once you connect platforms and run a sync.</p>
-			<div class="empty-state-actions">
-				<a href="/connections" class="btn btn-primary">
-					Connect Platforms
-				</a>
-			</div>
+			<a href="/connections" class="oauth-button">
+				Connect Platforms
+			</a>
 			<p class="text-sm muted" style={{ "margin-top": "1rem" }}>
-				After connecting, data syncs automatically every 5 minutes, or you can trigger a manual sync from the connections page.
+				Data syncs automatically every 5 minutes.
 			</p>
 		</div>
 	);
