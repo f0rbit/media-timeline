@@ -1,7 +1,7 @@
 import type { ConnectionWithSettings } from "@/utils/api";
 import { api, apiUrls } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
-import { createEffect, createSignal, Match, Show, Switch } from "solid-js";
+import { Match, Show, Switch, createEffect, createSignal } from "solid-js";
 import ConnectionActions from "./ConnectionActions";
 import PlatformIcon from "./PlatformIcon";
 import BlueskySettings from "./PlatformSettings/BlueskySettings";

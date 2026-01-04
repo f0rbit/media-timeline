@@ -1,5 +1,5 @@
-import { createSignal, Show } from "solid-js";
 import { api } from "@/utils/api";
+import { Show, createSignal } from "solid-js";
 
 type RedditCredentialsFormProps = {
 	profileId: string;
@@ -26,7 +26,7 @@ export default function RedditCredentialsForm(props: RedditCredentialsFormProps)
 		setSubmitting(true);
 
 		try {
-			const result = await api.post<{ success: boolean; message?: string; error?: string }>(`/credentials/reddit`, {
+			const result = await api.post<{ success: boolean; message?: string; error?: string }>("/credentials/reddit", {
 				profile_id: props.profileId,
 				client_id: clientId().trim(),
 				client_secret: clientSecret().trim(),
