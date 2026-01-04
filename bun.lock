@@ -5,7 +5,7 @@
     "": {
       "name": "media-timeline",
       "dependencies": {
-        "@f0rbit/corpus": "0.2.2",
+        "@f0rbit/corpus": "0.3.0",
         "@xdevplatform/xdk": "^0.3.0",
         "drizzle-orm": "^0.44.7",
         "hono": "^4.10.7",
@@ -60,7 +60,7 @@
         "typescript": "^5.9.3",
       },
       "peerDependencies": {
-        "@f0rbit/corpus": "0.2.2",
+        "@f0rbit/corpus": "0.3.0",
         "@xdevplatform/xdk": "^0.3.0",
         "drizzle-orm": "^0.44.7",
         "hono": "^4.10.7",
@@ -244,7 +244,7 @@
 
     "@esbuild/win32-x64": ["@esbuild/win32-x64@0.25.12", "", { "os": "win32", "cpu": "x64" }, "sha512-alJC0uCZpTFrSL0CCDjcgleBXPnCrEAhTBILpeAp7M/OFgoqtAetfBzX0xM00MUsVVPpVjlPuMbREqnZCXaTnA=="],
 
-    "@f0rbit/corpus": ["@f0rbit/corpus@0.2.2", "", { "dependencies": { "drizzle-orm": "^0.44.7" }, "peerDependencies": { "typescript": "^5", "zod": "^3" } }, "sha512-/iyIhaOZswFXO6AIIYa8LXrXwv0FJayqYM86Um0udN4VdaliffR8KrBAk6V47g1guKnRxpSdR5f8ehae4PBRaw=="],
+    "@f0rbit/corpus": ["@f0rbit/corpus@0.3.0", "", { "dependencies": { "drizzle-orm": "^0.44.7" }, "peerDependencies": { "typescript": "^5", "zod": "^3" } }, "sha512-a4cD0kctQOpnZvP3ZTdeCA73oWIKfGex6oeQ4YrhDQop3C0lVX62bmDZFq8TCyHSKPQKJEN79tNCHHt5VY/dxA=="],
 
     "@fastify/busboy": ["@fastify/busboy@2.1.1", "", {}, "sha512-vBZP4NlzfOlerQTnba4aqZoMhE/a9HY7HRqoOPaETQcSQuWEIyZMHGfVu6w9wGtGK5fED5qRs2DteVCjOH60sA=="],
 
@@ -1351,6 +1351,8 @@
     "@jridgewell/gen-mapping/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
 
     "@jridgewell/remapping/@jridgewell/trace-mapping": ["@jridgewell/trace-mapping@0.3.31", "", { "dependencies": { "@jridgewell/resolve-uri": "^3.1.0", "@jridgewell/sourcemap-codec": "^1.4.14" } }, "sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw=="],
+
+    "@media-timeline/website/@f0rbit/corpus": ["@f0rbit/corpus@0.2.2", "", { "dependencies": { "drizzle-orm": "^0.44.7" }, "peerDependencies": { "typescript": "^5", "zod": "^3" } }, "sha512-/iyIhaOZswFXO6AIIYa8LXrXwv0FJayqYM86Um0udN4VdaliffR8KrBAk6V47g1guKnRxpSdR5f8ehae4PBRaw=="],
 
     "@poppinss/dumper/supports-color": ["supports-color@10.2.2", "", {}, "sha512-SS+jx45GF1QjgEXQx4NJZV9ImqmO2NPz5FNsIHrsDjh2YsHnawpan7SNQ1o8NuhrbHZy9AZhIoCUiCeaW/C80g=="],
 
