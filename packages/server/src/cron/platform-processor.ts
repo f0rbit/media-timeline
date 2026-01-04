@@ -27,7 +27,7 @@ export type StoreConfig<TIncoming, TStored> = {
 	getTotal: (merged: TStored) => number;
 };
 
-export type ProcessError = { kind: "fetch_failed"; message: string };
+export type ProcessError = { kind: "fetch_failed"; message: string; original_kind?: string };
 
 export type PlatformProvider<TFetch> = {
 	fetch(token: string): Promise<Result<TFetch, ProviderError>>;
@@ -73,4 +73,5 @@ export const createMerger =
 export const formatFetchError = (platform: string, error: ProviderError): ProcessError => ({
 	kind: "fetch_failed",
 	message: `${platform} fetch failed: ${error.kind}`,
+	original_kind: error.kind,
 });

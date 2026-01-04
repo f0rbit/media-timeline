@@ -43,4 +43,12 @@ export const createContextFromBindings = (env: Bindings, providerFactory: Provid
 	backend: create_cloudflare_backend(toCorpusBackend(env)),
 	providerFactory,
 	encryptionKey: env.ENCRYPTION_KEY,
+	env: {
+		REDDIT_CLIENT_ID: env.REDDIT_CLIENT_ID,
+		REDDIT_CLIENT_SECRET: env.REDDIT_CLIENT_SECRET,
+		TWITTER_CLIENT_ID: env.TWITTER_CLIENT_ID,
+		TWITTER_CLIENT_SECRET: env.TWITTER_CLIENT_SECRET,
+		GITHUB_CLIENT_ID: env.GITHUB_CLIENT_ID,
+		GITHUB_CLIENT_SECRET: env.GITHUB_CLIENT_SECRET,
+	},
 });

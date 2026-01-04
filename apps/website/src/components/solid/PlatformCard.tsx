@@ -1,7 +1,7 @@
 import type { ConnectionWithSettings } from "@/utils/api";
-import { apiUrls } from "@/utils/api";
+import { api, apiUrls } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
-import { Match, Show, Switch } from "solid-js";
+import { createEffect, createSignal, Match, Show, Switch } from "solid-js";
 import ConnectionActions from "./ConnectionActions";
 import PlatformIcon from "./PlatformIcon";
 import BlueskySettings from "./PlatformSettings/BlueskySettings";
@@ -11,6 +11,7 @@ import RedditSettings from "./PlatformSettings/RedditSettings";
 import TwitterSettings from "./PlatformSettings/TwitterSettings";
 import YouTubeSettings from "./PlatformSettings/YouTubeSettings";
 import PlatformSetupForm, { type Platform } from "./PlatformSetupForm";
+import RedditCredentialsForm from "./RedditCredentialsForm";
 import StatusBadge, { type ConnectionState } from "./StatusBadge";
 
 type Props = {
@@ -20,18 +21,57 @@ type Props = {
 	onConnectionChange: () => void;
 };
 
-function RedditOAuthButton(props: { profileId: string }) {
+function RedditSetup(props: { profileId: string; onConnectionChange: () => void }) {
+	const [hasCredentials, setHasCredentials] = createSignal<boolean | null>(null);
+	const [existingClientId, setExistingClientId] = createSignal<string | null>(null);
+	const [showForm, setShowForm] = createSignal(false);
+
+	createEffect(() => {
+		checkCredentials();
+	});
+
+	const checkCredentials = async () => {
+		try {
+			const result = await api.get<{ exists: boolean; clientId: string | null }>(`/credentials/reddit?profile_id=${props.profileId}`);
+			if (result.ok) {
+				setHasCredentials(result.value.exists);
+				setExistingClientId(result.value.clientId);
+			}
+		} catch {
+			setHasCredentials(false);
+		}
+	};
+
 	const handleConnect = () => {
-		// OAuth routes now accept cookie-based auth, just need profile_id
 		window.location.href = `${apiUrls.auth("/reddit")}?profile_id=${encodeURIComponent(props.profileId)}`;
+	};
+
+	const handleCredentialsSaved = () => {
+		setHasCredentials(true);
+		setShowForm(false);
 	};
 
 	return (
 		<div class="oauth-setup">
-			<p class="muted text-sm">Connect your Reddit account to sync your posts and comments.</p>
-			<button type="button" onClick={handleConnect} class="oauth-button">
-				Connect with Reddit
-			</button>
+			<Show when={hasCredentials() === null}>
+				<p class="muted text-sm">Checking credentials...</p>
+			</Show>
+
+			<Show when={hasCredentials() === false || showForm()}>
+				<RedditCredentialsForm profileId={props.profileId} onSuccess={handleCredentialsSaved} existingClientId={existingClientId()} />
+			</Show>
+
+			<Show when={hasCredentials() === true && !showForm()}>
+				<p class="muted text-sm">Connect your Reddit account to sync your posts and comments.</p>
+				<div class="flex-row" style={{ gap: "8px", "margin-top": "8px" }}>
+					<button type="button" onClick={handleConnect} class="oauth-button">
+						Connect with Reddit
+					</button>
+					<button type="button" onClick={() => setShowForm(true)} class="button-reset text-sm muted" style={{ "text-decoration": "underline" }}>
+						Update credentials
+					</button>
+				</div>
+			</Show>
 		</div>
 	);
 }
@@ -145,7 +185,7 @@ export default function PlatformCard(props: Props) {
 
 			<Switch>
 				<Match when={state() === "not_configured" && props.platform === "reddit"}>
-					<RedditOAuthButton profileId={props.profileId} />
+					<RedditSetup profileId={props.profileId} onConnectionChange={props.onConnectionChange} />
 				</Match>
 				<Match when={state() === "not_configured" && props.platform === "twitter"}>
 					<TwitterOAuthButton profileId={props.profileId} />

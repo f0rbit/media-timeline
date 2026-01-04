@@ -15,6 +15,15 @@ export type TwitterProviderLike = {
 	fetch(token: string): Promise<Result<TwitterFetchResult, ProviderError>>;
 };
 
+export type OAuthEnvCredentials = {
+	REDDIT_CLIENT_ID?: string;
+	REDDIT_CLIENT_SECRET?: string;
+	TWITTER_CLIENT_ID?: string;
+	TWITTER_CLIENT_SECRET?: string;
+	GITHUB_CLIENT_ID?: string;
+	GITHUB_CLIENT_SECRET?: string;
+};
+
 export type AppContext = {
 	db: DrizzleDB;
 	backend: Backend;
@@ -22,4 +31,5 @@ export type AppContext = {
 	encryptionKey: string;
 	gitHubProvider?: GitHubProviderLike;
 	twitterProvider?: TwitterProviderLike;
+	env?: OAuthEnvCredentials;
 };
