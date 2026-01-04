@@ -14,7 +14,7 @@ try {
 	const profilesResult = await api.ssr<ProfilesListResponse>("/media/api/v1/profiles", Astro.request, {}, runtime);
 
 	if (profilesResult.ok) {
-		initialProfiles = profilesResult.data.profiles;
+		initialProfiles = profilesResult.value.profiles;
 
 		if (profileSlug) {
 			const currentProfile = initialProfiles.find(p => p.slug === profileSlug);
@@ -22,7 +22,7 @@ try {
 				const connectionsResult = await api.ssr<ConnectionsWithSettingsResponse>(`/media/api/v1/connections?profile_id=${currentProfile.id}&include_settings=true`, Astro.request, {}, runtime);
 
 				if (connectionsResult.ok) {
-					initialConnections = connectionsResult.data.accounts;
+					initialConnections = connectionsResult.value.accounts;
 				}
 			}
 		}

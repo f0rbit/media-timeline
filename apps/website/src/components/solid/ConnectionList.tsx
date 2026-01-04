@@ -1,5 +1,5 @@
-import { type ConnectionWithSettings, type ProfileSummary, connections, initMockAuth, profiles } from "@/utils/api";
-import { For, Show, createEffect, createResource, createSignal, on } from "solid-js";
+import { type ConnectionWithSettings, type ProfileSummary, connections, initMockAuth } from "@/utils/api";
+import { For, Show, createResource, createSignal } from "solid-js";
 import { isServer } from "solid-js/web";
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";
@@ -27,27 +27,9 @@ function NoProfileSelectedError() {
 
 export default function ConnectionList(props: ConnectionListProps) {
 	const profileSlug = () => props.profileSlug ?? null;
-	const [profileId, setProfileId] = createSignal<string | null>(null);
 
-	const [profileFetchTrigger, setProfileFetchTrigger] = createSignal(0);
-	const [profileList] = createResource(
-		() => {
-			const trigger = profileFetchTrigger();
-			// Skip initial fetch if we have SSR data
-			if (trigger === 0 && props.initialProfiles && props.initialProfiles.length > 0) {
-				return null;
-			}
-			return trigger;
-		},
-		async () => {
-			if (isServer) return [];
-			initMockAuth();
-			const result = await profiles.list();
-			if (!result.ok) return [];
-			return result.value.profiles;
-		},
-		{ initialValue: props.initialProfiles ?? [] }
-	);
+	// Use initialProfiles directly - no need to refetch if we have SSR data
+	const profileList = () => props.initialProfiles ?? [];
 
 	const currentProfile = () => {
 		const slug = profileSlug();
@@ -56,28 +38,21 @@ export default function ConnectionList(props: ConnectionListProps) {
 		return list.find(p => p.slug === slug) ?? null;
 	};
 
-	createEffect(
-		on(
-			() => [profileSlug(), profileList()] as const,
-			([slug, list]) => {
-				if (!slug || !list) {
-					setProfileId(null);
-					return;
-				}
-				const profile = list.find(p => p.slug === slug);
-				setProfileId(profile?.id ?? null);
-			}
-		)
-	);
+	const profileId = () => currentProfile()?.id ?? null;
 
-	const [connectionFetchTrigger, setConnectionFetchTrigger] = createSignal(0);
+	// Track whether we've done a client-side fetch yet
+	const [hasFetched, setHasFetched] = createSignal(false);
+
 	const [data, { refetch }] = createResource(
 		() => {
-			const trigger = connectionFetchTrigger();
 			const id = profileId();
+			// Can't fetch without a profile ID
+			if (!id) return null;
 
-			// Skip initial fetch if we have SSR data
-			if (trigger === 0 && props.initialConnections) {
+			// Skip initial fetch if we have SSR data for this profile
+			// (SSR data is valid when initialConnections exists and has items,
+			// meaning the SSR fetched for the same profile)
+			if (!hasFetched() && props.initialConnections && props.initialConnections.length > 0) {
 				return null;
 			}
 
@@ -85,13 +60,15 @@ export default function ConnectionList(props: ConnectionListProps) {
 		},
 		async id => {
 			if (isServer) return [];
-			if (!id) return [];
+			setHasFetched(true);
 			initMockAuth();
 			const result = await connections.listWithSettings(id);
 			if (!result.ok) throw new Error(result.error.message);
 			return result.value.accounts;
 		},
-		{ initialValue: props.initialConnections ?? [] }
+		{
+			initialValue: props.initialConnections ?? [],
+		}
 	);
 
 	const getConnection = (platform: Platform): ConnectionWithSettings | null => {
@@ -126,7 +103,7 @@ export default function ConnectionList(props: ConnectionListProps) {
 				<NoProfileSelectedError />
 			</Show>
 
-			<Show when={profileSlug() && !profileList.loading && !currentProfile()}>
+			<Show when={profileSlug() && !currentProfile()}>
 				<NoProfileSelectedError />
 			</Show>
 
