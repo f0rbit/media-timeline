@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { type AuthContext, authMiddleware, getAuth } from "./auth";
+import { type AuthContext, authMiddleware, getAuth, optionalAuthMiddleware } from "./auth";
 import { type Bindings, createContextFromBindings } from "./bindings";
 import type { AppContext } from "./infrastructure";
 import { defaultProviderFactory } from "./platforms";
@@ -46,9 +46,14 @@ export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 	});
 
 	app.use("/api/*", async (c, next) => {
-		// Skip auth for /api/auth routes (login, callback, logout)
-		if (c.req.path.startsWith("/api/auth")) {
+		// Skip auth completely for login/callback/logout routes
+		if (c.req.path.startsWith("/api/auth/login") || c.req.path.startsWith("/api/auth/callback") || c.req.path.startsWith("/api/auth/logout")) {
 			return next();
+		}
+		// For OAuth platform routes (reddit, twitter, github), use optional auth
+		// These routes handle their own auth validation via API key or cookie
+		if (c.req.path.match(/^\/api\/auth\/(reddit|twitter|github)/)) {
+			return optionalAuthMiddleware(c, next);
 		}
 		return authMiddleware(c, next);
 	});

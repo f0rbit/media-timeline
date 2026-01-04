@@ -1,5 +1,5 @@
 import type { ConnectionWithSettings } from "@/utils/api";
-import { apiUrls, getApiKey } from "@/utils/api";
+import { apiUrls } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
 import { Match, Show, Switch } from "solid-js";
 import ConnectionActions from "./ConnectionActions";
@@ -22,12 +22,8 @@ type Props = {
 
 function RedditOAuthButton(props: { profileId: string }) {
 	const handleConnect = () => {
-		const apiKey = getApiKey();
-		if (!apiKey) {
-			console.error("No API key available for Reddit OAuth");
-			return;
-		}
-		window.location.href = `${apiUrls.auth("/reddit")}?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
+		// OAuth routes now accept cookie-based auth, just need profile_id
+		window.location.href = `${apiUrls.auth("/reddit")}?profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
@@ -42,12 +38,8 @@ function RedditOAuthButton(props: { profileId: string }) {
 
 function TwitterOAuthButton(props: { profileId: string }) {
 	const handleConnect = () => {
-		const apiKey = getApiKey();
-		if (!apiKey) {
-			console.error("No API key available for Twitter OAuth");
-			return;
-		}
-		window.location.href = `${apiUrls.auth("/twitter")}?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
+		// OAuth routes now accept cookie-based auth, just need profile_id
+		window.location.href = `${apiUrls.auth("/twitter")}?profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
@@ -62,12 +54,8 @@ function TwitterOAuthButton(props: { profileId: string }) {
 
 function GitHubOAuthButton(props: { profileId: string }) {
 	const handleConnect = () => {
-		const apiKey = getApiKey();
-		if (!apiKey) {
-			console.error("No API key available for GitHub OAuth");
-			return;
-		}
-		window.location.href = `${apiUrls.auth("/github")}?key=${encodeURIComponent(apiKey)}&profile_id=${encodeURIComponent(props.profileId)}`;
+		// OAuth routes now accept cookie-based auth, just need profile_id
+		window.location.href = `${apiUrls.auth("/github")}?profile_id=${encodeURIComponent(props.profileId)}`;
 	};
 
 	return (
