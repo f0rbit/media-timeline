@@ -16,6 +16,9 @@ type DashboardProps = {
 export default function Dashboard(props: DashboardProps) {
 	initMockAuth();
 
+	// Check if SSR provided data (even if empty - that's valid SSR data)
+	const hasSSRData = props.initialTimeline !== undefined;
+
 	const [fetchTrigger, setFetchTrigger] = createSignal(0);
 
 	const [data] = createResource(
@@ -23,8 +26,8 @@ export default function Dashboard(props: DashboardProps) {
 			const trigger = fetchTrigger();
 			const slug = props.profileSlug;
 
-			// Skip initial fetch if we have SSR data
-			if (trigger === 0 && props.initialTimeline) {
+			// Skip initial fetch if we have SSR data (even empty means SSR succeeded)
+			if (trigger === 0 && hasSSRData) {
 				return null;
 			}
 
@@ -107,8 +110,16 @@ function DashboardContent(props: DashboardContentProps) {
 		<>
 			<Show when={stats().totalEntries === 0}>
 				<div class="empty-state">
-					<p>No activity data yet.</p>
-					<a href="/connections">Connect a platform to get started</a>
+					<h3>No activity data yet</h3>
+					<p class="muted">Your dashboard will show analytics once you connect platforms and run a sync.</p>
+					<div class="empty-state-actions">
+						<a href="/connections" class="btn btn-primary">
+							Connect Platforms
+						</a>
+					</div>
+					<p class="text-sm muted" style={{ "margin-top": "1rem" }}>
+						After connecting, data syncs automatically every 5 minutes, or you can trigger a manual sync from the connections page.
+					</p>
 				</div>
 			</Show>
 

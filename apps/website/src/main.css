@@ -469,8 +469,50 @@ details[open] .down-arrow {
 	color: var(--text-muted);
 }
 
+.empty-state h3 {
+	color: var(--text-secondary);
+	font-size: 1.125rem;
+	font-weight: 500;
+	margin-bottom: 8px;
+}
+
 .empty-state p {
 	margin-bottom: 16px;
+	max-width: 400px;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.empty-state-actions {
+	display: flex;
+	justify-content: center;
+	gap: 12px;
+	margin-top: 20px;
+}
+
+.btn {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	padding: 10px 20px;
+	border-radius: 6px;
+	font-size: 0.875rem;
+	font-weight: 500;
+	text-decoration: none;
+	cursor: pointer;
+	transition: all 0.15s ease;
+	border: 1px solid transparent;
+}
+
+.btn-primary {
+	background: var(--accent-color, #3b82f6);
+	color: white;
+	border-color: var(--accent-color, #3b82f6);
+}
+
+.btn-primary:hover {
+	background: var(--accent-hover, #2563eb);
+	border-color: var(--accent-hover, #2563eb);
 }
 
 /* ==========================================================================

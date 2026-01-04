@@ -32,13 +32,16 @@ type TimelineListProps = {
 export default function TimelineList(props: TimelineListProps) {
 	const [fetchTrigger, setFetchTrigger] = createSignal(0);
 
+	// Check if SSR provided data (even if empty array - that's valid SSR data)
+	const hasSSRData = props.initialGroups !== undefined;
+
 	const [data] = createResource(
 		() => {
 			const trigger = fetchTrigger();
 			const slug = props.profileSlug;
 
-			// Skip initial fetch if we have SSR data
-			if (trigger === 0 && props.initialGroups && props.initialGroups.length > 0) {
+			// Skip initial fetch if we have SSR data (even empty array means SSR succeeded)
+			if (trigger === 0 && hasSSRData) {
 				return null;
 			}
 
@@ -56,7 +59,7 @@ export default function TimelineList(props: TimelineListProps) {
 			};
 		},
 		{
-			initialValue: props.initialGroups ? { groups: props.initialGroups, githubUsernames: [] } : undefined,
+			initialValue: hasSSRData ? { groups: props.initialGroups ?? [], githubUsernames: [] } : undefined,
 		}
 	);
 
@@ -127,8 +130,16 @@ function TimelineGroups(props: TimelineGroupsProps) {
 function EmptyTimeline() {
 	return (
 		<div class="empty-state">
-			<p>No timeline data yet.</p>
-			<a href="/connections">Connect a platform to get started</a>
+			<h3>No timeline data yet</h3>
+			<p class="muted">Your timeline will populate once you connect platforms and run a sync.</p>
+			<div class="empty-state-actions">
+				<a href="/connections" class="btn btn-primary">
+					Connect Platforms
+				</a>
+			</div>
+			<p class="text-sm muted" style={{ "margin-top": "1rem" }}>
+				After connecting, data syncs automatically every 5 minutes, or you can trigger a manual sync from the connections page.
+			</p>
 		</div>
 	);
 }
