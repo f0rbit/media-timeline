@@ -1,5 +1,6 @@
 import { api, apiUrls, initMockAuth } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
+import { isServer } from "solid-js/web";
 
 type ProfileFilter = {
 	id: string;
@@ -29,6 +30,7 @@ type CreateProfileResponse = {
 };
 
 const fetchProfiles = async (): Promise<Profile[]> => {
+	if (isServer) return [];
 	initMockAuth();
 	const result = await api.get<ProfilesResponse>("/profiles");
 	if (!result.ok) {
@@ -57,14 +59,31 @@ const updateProfile = async (id: string, data: { slug?: string; name?: string; d
 
 export type ProfileSummary = Profile;
 
+type ProfileListProps = {
+	initialProfiles?: ProfileSummary[];
+};
+
 // Read profile slug from URL
 const getSlugFromUrl = () => {
-	if (typeof window === "undefined") return null;
+	if (isServer) return null;
 	return new URLSearchParams(window.location.search).get("profile");
 };
 
-export default function ProfileList() {
-	const [profiles, { refetch }] = createResource(fetchProfiles);
+export default function ProfileList(props: ProfileListProps) {
+	const [fetchTrigger, setFetchTrigger] = createSignal(0);
+
+	const [profiles, { refetch }] = createResource(
+		() => {
+			const trigger = fetchTrigger();
+			// Skip initial fetch if we have SSR data
+			if (trigger === 0 && props.initialProfiles && props.initialProfiles.length > 0) {
+				return null;
+			}
+			return trigger;
+		},
+		fetchProfiles,
+		{ initialValue: props.initialProfiles ?? [] }
+	);
 	const currentSlug = () => getSlugFromUrl();
 	const [editingProfile, setEditingProfile] = createSignal<Profile | null>(null);
 	const [showCreateForm, setShowCreateForm] = createSignal(false);

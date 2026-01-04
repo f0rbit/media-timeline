@@ -22,6 +22,9 @@ type VerifyOptions = { baseUrl?: string };
 
 export type AuthContext = {
 	user_id: string;
+	name: string | null;
+	email: string | null;
+	image_url: string | null;
 	jwt_token?: string;
 };
 
@@ -78,7 +81,13 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	if (authToken) {
 		const result = await verifyJWT(authToken, options);
 		if (result.authenticated) {
-			c.set("auth", { user_id: result.user.id, jwt_token: authToken });
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+				jwt_token: authToken,
+			});
 			return next();
 		}
 	}
@@ -90,7 +99,13 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 		if (jwtFromAuth) {
 			const result = await verifyJWT(jwtFromAuth, options);
 			if (result.authenticated) {
-				c.set("auth", { user_id: result.user.id, jwt_token: jwtFromAuth });
+				c.set("auth", {
+					user_id: result.user.id,
+					name: result.user.name,
+					email: result.user.email,
+					image_url: result.user.image_url,
+					jwt_token: jwtFromAuth,
+				});
 				return next();
 			}
 		}
@@ -101,7 +116,13 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	if (jwtCookie) {
 		const result = await verifyJWT(jwtCookie, options);
 		if (result.authenticated) {
-			c.set("auth", { user_id: result.user.id, jwt_token: jwtCookie });
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+				jwt_token: jwtCookie,
+			});
 			return next();
 		}
 	}
@@ -111,7 +132,12 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	if (cookieHeader) {
 		const result = await verifySessionCookie(cookieHeader, options);
 		if (result.authenticated) {
-			c.set("auth", { user_id: result.user.id });
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+			});
 			return next();
 		}
 	}
@@ -122,7 +148,12 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 		if (apiKey) {
 			const result = await verifyApiKey(apiKey, options);
 			if (result.authenticated) {
-				c.set("auth", { user_id: result.user.id });
+				c.set("auth", {
+					user_id: result.user.id,
+					name: result.user.name,
+					email: result.user.email,
+					image_url: result.user.image_url,
+				});
 				return next();
 			}
 		}

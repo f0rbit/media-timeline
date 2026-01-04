@@ -268,7 +268,7 @@ authRoutes.get("/login", c => {
 	const devpadUrl = c.env.DEVPAD_URL || "https://devpad.tools";
 
 	const params = new URLSearchParams({
-		return_to: `${origin}/api/auth/callback`,
+		return_to: `${origin}/media/api/auth/callback`,
 		...(isPreview && { mode: "jwt" }),
 	});
 

@@ -45,7 +45,8 @@ profileRoutes.post("/", async c => {
 		return badRequest(c, "Invalid request body", parseResult.error.flatten());
 	}
 
-	const result = await createProfile(ctx, userId(auth.user_id), parseResult.data);
+	const userInfo = { id: auth.user_id, name: auth.name, email: auth.email };
+	const result = await createProfile(ctx, userId(auth.user_id), userInfo, parseResult.data);
 	return handleResult(c, result, 201);
 });
 

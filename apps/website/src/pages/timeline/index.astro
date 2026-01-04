@@ -1,6 +1,24 @@
 ---
 import TimelineList from "../../components/solid/TimelineList";
 import AppLayout from "../../layouts/AppLayout.astro";
+import { type ProfileTimelineResponse, type TimelineGroup, api } from "../../utils/api";
+
+const profileSlug = Astro.url.searchParams.get("profile");
+
+let initialGroups: TimelineGroup[] = [];
+
+if (profileSlug) {
+	try {
+		const runtime = Astro.locals.runtime;
+		const result = await api.ssr<ProfileTimelineResponse>(`/media/api/v1/profiles/${profileSlug}/timeline`, Astro.request, {}, runtime);
+
+		if (result.ok) {
+			initialGroups = result.data.data.groups;
+		}
+	} catch {
+		// SSR fetch failed, component will fetch client-side
+	}
+}
 ---
 
 <AppLayout 
@@ -13,7 +31,11 @@ import AppLayout from "../../layouts/AppLayout.astro";
     <p class="description">Your aggregated activity across all connected platforms.</p>
   </section>
   <div class="timeline-skeleton">
-    <TimelineList client:only="solid-js" />
+    <TimelineList 
+      client:load
+      profileSlug={profileSlug}
+      initialGroups={initialGroups}
+    />
   </div>
 </AppLayout>
 

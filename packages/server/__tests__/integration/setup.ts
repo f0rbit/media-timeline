@@ -501,7 +501,7 @@ export const createTestContext = (): TestContext => {
 };
 
 type TestVariables = {
-	auth: { user_id: string; jwt_token?: string };
+	auth: { user_id: string; name: string | null; email: string | null; image_url: string | null; jwt_token?: string };
 	appContext: AppContext;
 };
 
@@ -515,10 +515,18 @@ const createTestAuthMiddleware = (ctx: TestContext) => {
 		if (authHeader?.startsWith("Bearer ")) {
 			const token = authHeader.slice(7);
 			const keyHash = await hash_api_key(token);
-			const result = await ctx.d1.prepare("SELECT ak.id, ak.user_id FROM media_api_keys ak JOIN media_users u ON ak.user_id = u.id WHERE ak.key_hash = ?").bind(keyHash).first<{ id: string; user_id: string }>();
+			const result = await ctx.d1
+				.prepare("SELECT ak.id, ak.user_id, u.name, u.email FROM media_api_keys ak JOIN media_users u ON ak.user_id = u.id WHERE ak.key_hash = ?")
+				.bind(keyHash)
+				.first<{ id: string; user_id: string; name: string | null; email: string | null }>();
 
 			if (result) {
-				c.set("auth", { user_id: result.user_id });
+				c.set("auth", {
+					user_id: result.user_id,
+					name: result.name ?? null,
+					email: result.email ?? null,
+					image_url: null,
+				});
 				return next();
 			}
 		}

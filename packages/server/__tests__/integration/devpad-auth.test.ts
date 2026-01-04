@@ -11,7 +11,7 @@ type TestVariables = {
 	appContext: AppContext;
 };
 
-type AuthResponse = { user_id: string };
+type AuthResponse = { id: string; name: string | null; email: string | null; image_url: string | null };
 type ErrorResponse = { error: string; message?: string };
 
 const createAuthTestApp = (ctx: TestContext) => {
@@ -26,7 +26,12 @@ const createAuthTestApp = (ctx: TestContext) => {
 
 	app.get("/media/api/me", c => {
 		const auth = getAuth(c);
-		return c.json({ user_id: auth.user_id });
+		return c.json({
+			id: auth.user_id,
+			name: auth.name,
+			email: auth.email,
+			image_url: auth.image_url,
+		});
 	});
 
 	return app;
@@ -61,7 +66,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.user_id).toBe("devpad-user-123");
+			expect(body.id).toBe("devpad-user-123");
 
 			verifySpy.mockRestore();
 		});
@@ -90,7 +95,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.user_id).toBe(devpadUserId);
+			expect(body.id).toBe(devpadUserId);
 
 			verifySpy.mockRestore();
 		});
@@ -135,7 +140,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.user_id).toBe("devpad-api-user");
+			expect(body.id).toBe("devpad-api-user");
 
 			verifySpy.mockRestore();
 		});
@@ -188,7 +193,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.user_id).toBe("cookie-user");
+			expect(body.id).toBe("cookie-user");
 			expect(apiKeySpy).not.toHaveBeenCalled();
 
 			cookieSpy.mockRestore();
@@ -223,7 +228,7 @@ describe("authMiddleware", () => {
 
 			expect(res.status).toBe(200);
 			const body = (await res.json()) as AuthResponse;
-			expect(body.user_id).toBe("api-key-user");
+			expect(body.id).toBe("api-key-user");
 
 			cookieSpy.mockRestore();
 			apiKeySpy.mockRestore();
