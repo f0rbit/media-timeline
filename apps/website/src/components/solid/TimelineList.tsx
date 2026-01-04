@@ -8,6 +8,7 @@ import GitPullRequest from "lucide-solid/icons/git-pull-request";
 import MessageSquareText from "lucide-solid/icons/message-square-text";
 import Reply from "lucide-solid/icons/reply";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
+import { isServer } from "solid-js/web";
 
 const GithubUsernamesContext = createContext<string[]>([]);
 
@@ -23,19 +24,28 @@ type TimelineData = {
 	githubUsernames: string[];
 };
 
-// Read profile slug from URL
-const getSlugFromUrl = () => {
-	if (typeof window === "undefined") return null;
-	return new URLSearchParams(window.location.search).get("profile");
+type TimelineListProps = {
+	profileSlug?: string | null;
+	initialGroups?: TimelineGroup[];
 };
 
-export default function TimelineList() {
-	const profileSlug = () => getSlugFromUrl();
+export default function TimelineList(props: TimelineListProps) {
+	const [fetchTrigger, setFetchTrigger] = createSignal(0);
 
 	const [data] = createResource(
-		// Source: only fetch when we have a slug
-		() => profileSlug(),
+		() => {
+			const trigger = fetchTrigger();
+			const slug = props.profileSlug;
+
+			// Skip initial fetch if we have SSR data
+			if (trigger === 0 && props.initialGroups && props.initialGroups.length > 0) {
+				return null;
+			}
+
+			return slug;
+		},
 		async (slug): Promise<TimelineData | null> => {
+			if (isServer) return null;
 			if (!slug) return null;
 			initMockAuth();
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
@@ -44,8 +54,13 @@ export default function TimelineList() {
 				groups: result.value.data.groups,
 				githubUsernames: [],
 			};
+		},
+		{
+			initialValue: props.initialGroups ? { groups: props.initialGroups, githubUsernames: [] } : undefined,
 		}
 	);
+
+	const profileSlug = () => props.profileSlug;
 
 	return (
 		<Show when={profileSlug()} fallback={<NoProfileSelected />}>

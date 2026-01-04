@@ -9,19 +9,35 @@ import PlatformDistribution from "./PlatformDistribution";
 import RecentActivity from "./RecentActivity";
 
 type DashboardProps = {
-	profileSlug?: string;
+	profileSlug?: string | null;
+	initialTimeline?: ProfileTimelineResponse | null;
 };
 
 export default function Dashboard(props: DashboardProps) {
 	initMockAuth();
 
+	const [fetchTrigger, setFetchTrigger] = createSignal(0);
+
 	const [data] = createResource(
-		() => props.profileSlug,
-		async slug => {
+		() => {
+			const trigger = fetchTrigger();
+			const slug = props.profileSlug;
+
+			// Skip initial fetch if we have SSR data
+			if (trigger === 0 && props.initialTimeline) {
+				return null;
+			}
+
+			return slug;
+		},
+		async (slug): Promise<ProfileTimelineResponse | null> => {
 			if (!slug) return null;
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
 			if (!result.ok) throw new Error(result.error.message);
 			return result.value;
+		},
+		{
+			initialValue: props.initialTimeline ?? undefined,
 		}
 	);
 

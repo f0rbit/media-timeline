@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
+import { isServer } from "solid-js/web";
 import { type ProfileSummary, initMockAuth, profiles } from "../../utils/api";
 
 type AuthState = { authenticated: true; profiles: ProfileSummary[] } | { authenticated: false };
@@ -15,6 +16,10 @@ const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => 
 		return initial;
 	}
 
+	if (isServer) {
+		return { authenticated: false };
+	}
+
 	initMockAuth();
 
 	const result = await profiles.list();
@@ -29,7 +34,7 @@ const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => 
 };
 
 const getSlugFromUrl = () => {
-	if (typeof window === "undefined") return null;
+	if (isServer) return null;
 	return new URLSearchParams(window.location.search).get("profile");
 };
 

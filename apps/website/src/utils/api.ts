@@ -4,6 +4,17 @@ import { MOCK_API_KEY, MOCK_USER_ID, isDevMode } from "./mock-auth";
 
 export type { CommentPayload, CommitGroup, CommitPayload, DateGroup, GitHubRepo, PRCommit, PlatformSettings, PostPayload, PullRequestPayload, TimelineItem, TimelineType };
 
+/**
+ * Runtime context passed from Astro SSR
+ */
+type SSRRuntime = {
+	env?: {
+		API_HANDLER?: {
+			fetch: (request: Request) => Promise<Response>;
+		};
+	};
+};
+
 export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
 // Use relative URLs in production/preview, localhost in dev
@@ -120,27 +131,43 @@ export const api = {
 
 	/**
 	 * Make an SSR request to the API.
-	 * Forwards the incoming request's cookies to the API for authentication.
-	 * If running in unified worker, could use direct internal call (not implemented yet).
+	 * If running in unified worker, uses direct internal call (no HTTP roundtrip).
+	 * Otherwise falls back to HTTP fetch.
+	 * Returns typed JSON result.
 	 */
-	ssr: async (path: string, incomingRequest: Request, options: RequestInit = {}): Promise<Response> => {
-		const url = new URL(path, incomingRequest.url);
-		const cookie = incomingRequest.headers.get("cookie") ?? "";
-		const origin = new URL(incomingRequest.url).origin;
+	ssr: async <T>(path: string, incomingRequest: Request, options: RequestInit = {}, runtime?: SSRRuntime): Promise<ApiResult<T>> => {
+		try {
+			const url = new URL(path, incomingRequest.url);
+			const cookie = incomingRequest.headers.get("cookie") ?? "";
+			const origin = new URL(incomingRequest.url).origin;
 
-		// Build headers including forwarded cookie and origin for CORS
-		const headers: Record<string, string> = {
-			...(options.headers as Record<string, string>),
-			Origin: origin,
-		};
-		if (cookie) {
-			headers.Cookie = cookie;
+			const headers: Record<string, string> = {
+				...(options.headers as Record<string, string>),
+				Origin: origin,
+			};
+			if (cookie) {
+				headers.Cookie = cookie;
+			}
+
+			const apiHandler = runtime?.env?.API_HANDLER;
+			const response = apiHandler ? await apiHandler.fetch(new Request(url.toString(), { ...options, headers })) : await fetch(url.toString(), { ...options, headers });
+
+			if (!response.ok) {
+				const errorBody = await response.json().catch(() => ({ message: "Unknown error" }));
+				return err({
+					message: (errorBody as { message?: string }).message ?? `HTTP ${response.status}`,
+					status: response.status,
+				});
+			}
+
+			const data = (await response.json()) as T;
+			return ok(data);
+		} catch (e) {
+			return err({
+				message: e instanceof Error ? e.message : "Network error",
+				status: 0,
+			});
 		}
-
-		return fetch(url.toString(), {
-			...options,
-			headers,
-		});
 	},
 };
 

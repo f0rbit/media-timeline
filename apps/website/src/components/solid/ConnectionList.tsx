@@ -1,5 +1,6 @@
-import { type ConnectionWithSettings, connections, initMockAuth, profiles } from "@/utils/api";
+import { type ConnectionWithSettings, type ProfileSummary, connections, initMockAuth, profiles } from "@/utils/api";
 import { For, Show, createEffect, createResource, createSignal, on } from "solid-js";
+import { isServer } from "solid-js/web";
 import PlatformCard from "./PlatformCard";
 import type { Platform } from "./PlatformSetupForm";
 
@@ -7,9 +8,10 @@ const ALL_PLATFORMS: Platform[] = ["github", "bluesky", "youtube", "devpad", "re
 const HIDDEN_PLATFORMS: Platform[] = ["bluesky", "youtube", "devpad"];
 const PLATFORMS = ALL_PLATFORMS.filter(p => !HIDDEN_PLATFORMS.includes(p));
 
-const getSlugFromUrl = () => {
-	if (typeof window === "undefined") return null;
-	return new URLSearchParams(window.location.search).get("profile");
+type ConnectionListProps = {
+	profileSlug?: string | null;
+	initialProfiles?: ProfileSummary[];
+	initialConnections?: ConnectionWithSettings[];
 };
 
 function NoProfileSelectedError() {
@@ -23,16 +25,29 @@ function NoProfileSelectedError() {
 	);
 }
 
-export default function ConnectionList() {
-	const profileSlug = () => getSlugFromUrl();
+export default function ConnectionList(props: ConnectionListProps) {
+	const profileSlug = () => props.profileSlug ?? null;
 	const [profileId, setProfileId] = createSignal<string | null>(null);
 
-	const [profileList] = createResource(async () => {
-		initMockAuth();
-		const result = await profiles.list();
-		if (!result.ok) return [];
-		return result.value.profiles;
-	});
+	const [profileFetchTrigger, setProfileFetchTrigger] = createSignal(0);
+	const [profileList] = createResource(
+		() => {
+			const trigger = profileFetchTrigger();
+			// Skip initial fetch if we have SSR data
+			if (trigger === 0 && props.initialProfiles && props.initialProfiles.length > 0) {
+				return null;
+			}
+			return trigger;
+		},
+		async () => {
+			if (isServer) return [];
+			initMockAuth();
+			const result = await profiles.list();
+			if (!result.ok) return [];
+			return result.value.profiles;
+		},
+		{ initialValue: props.initialProfiles ?? [] }
+	);
 
 	const currentProfile = () => {
 		const slug = profileSlug();
@@ -55,15 +70,28 @@ export default function ConnectionList() {
 		)
 	);
 
+	const [connectionFetchTrigger, setConnectionFetchTrigger] = createSignal(0);
 	const [data, { refetch }] = createResource(
-		() => profileId(),
+		() => {
+			const trigger = connectionFetchTrigger();
+			const id = profileId();
+
+			// Skip initial fetch if we have SSR data
+			if (trigger === 0 && props.initialConnections) {
+				return null;
+			}
+
+			return id;
+		},
 		async id => {
+			if (isServer) return [];
 			if (!id) return [];
 			initMockAuth();
 			const result = await connections.listWithSettings(id);
 			if (!result.ok) throw new Error(result.error.message);
 			return result.value.accounts;
-		}
+		},
+		{ initialValue: props.initialConnections ?? [] }
 	);
 
 	const getConnection = (platform: Platform): ConnectionWithSettings | null => {
