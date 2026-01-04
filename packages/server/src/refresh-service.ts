@@ -5,7 +5,9 @@ import type { RefreshError } from "./errors";
 import type { AppContext } from "./infrastructure";
 import { createLogger } from "./logger";
 import { RedditProvider } from "./platforms/reddit";
-import { type Result, decrypt, err, match, ok, pipe } from "./utils";
+import { refreshRedditToken } from "./routes/auth";
+import { getCredentials } from "./services/credentials";
+import { type Result, decrypt, encrypt, err, match, ok, pipe } from "./utils";
 
 const log = createLogger("refresh");
 
@@ -60,6 +62,7 @@ export const shouldRegenerateTimeline = (succeeded: number): boolean => succeede
 
 type AccountWithUser = {
 	id: string;
+	profile_id: string;
 	platform: string;
 	platform_user_id: string | null;
 	access_token_encrypted: string;
@@ -69,6 +72,72 @@ type AccountWithUser = {
 };
 
 type RefreshSuccess = { status: "processing"; message: string; platform: "github" | "reddit" } | { status: "refreshed"; account_id: string } | { status: "skipped"; message: string };
+
+type RedditCredentials = { clientId: string; clientSecret: string };
+
+const getRedditCredentials = async (ctx: AppContext, profileId: string): Promise<RedditCredentials | null> => {
+	const byoCredentials = await getCredentials(ctx, profileId, "reddit");
+
+	const clientId = byoCredentials?.clientId ?? ctx.env?.REDDIT_CLIENT_ID;
+	const clientSecret = byoCredentials?.clientSecret ?? ctx.env?.REDDIT_CLIENT_SECRET;
+
+	if (!clientId || !clientSecret) {
+		return null;
+	}
+
+	return { clientId, clientSecret };
+};
+
+type RefreshableAccount = {
+	id: string;
+	profile_id: string;
+	refresh_token_encrypted: string | null;
+};
+
+const attemptRedditTokenRefresh = async (ctx: AppContext, account: RefreshableAccount): Promise<Result<string, RefreshError>> => {
+	if (!account.refresh_token_encrypted) {
+		return err({ kind: "no_refresh_token", message: "No refresh token available" });
+	}
+
+	const refreshTokenResult = await decrypt(account.refresh_token_encrypted, ctx.encryptionKey);
+	if (!refreshTokenResult.ok) {
+		return err({ kind: "decryption_failed", message: "Failed to decrypt refresh token" });
+	}
+
+	const credentials = await getRedditCredentials(ctx, account.profile_id);
+	if (!credentials) {
+		log.error("No Reddit credentials available for token refresh", { account_id: account.id });
+		return err({ kind: "no_credentials", message: "No Reddit credentials available" });
+	}
+
+	log.info("Attempting Reddit token refresh", { account_id: account.id });
+
+	const refreshResult = await refreshRedditToken(refreshTokenResult.value, credentials.clientId, credentials.clientSecret);
+	if (!refreshResult.ok) {
+		log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
+		return err({ kind: "refresh_failed", message: "Token refresh failed" });
+	}
+
+	const newAccessToken = refreshResult.value.access_token;
+
+	const encryptResult = await encrypt(newAccessToken, ctx.encryptionKey);
+	if (!encryptResult.ok) {
+		return err({ kind: "encryption_failed", message: "Failed to encrypt new access token" });
+	}
+
+	const now = new Date().toISOString();
+	await ctx.db
+		.update(accounts)
+		.set({
+			access_token_encrypted: encryptResult.value,
+			updated_at: now,
+		})
+		.where(eq(accounts.id, account.id));
+
+	log.info("Reddit token refreshed successfully", { account_id: account.id });
+
+	return ok(newAccessToken);
+};
 
 type RefreshAllSuccess = {
 	status: "processing" | "completed";
@@ -96,6 +165,7 @@ const lookupAccount = async (ctx: AppContext, accountId: string, userId: string)
 	const row = await ctx.db
 		.select({
 			id: accounts.id,
+			profile_id: accounts.profile_id,
 			platform: accounts.platform,
 			platform_user_id: accounts.platform_user_id,
 			access_token_encrypted: accounts.access_token_encrypted,
@@ -118,6 +188,7 @@ const lookupAccount = async (ctx: AppContext, accountId: string, userId: string)
 
 	return ok({
 		id: row.id,
+		profile_id: row.profile_id,
 		platform: row.platform,
 		platform_user_id: row.platform_user_id,
 		access_token_encrypted: row.access_token_encrypted,
@@ -131,6 +202,7 @@ const fetchUserAccounts = async (ctx: AppContext, userId: string) =>
 	ctx.db
 		.select({
 			id: accounts.id,
+			profile_id: accounts.profile_id,
 			platform: accounts.platform,
 			platform_user_id: accounts.platform_user_id,
 			access_token_encrypted: accounts.access_token_encrypted,
@@ -171,14 +243,26 @@ const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, u
 	if (!tokenResult.ok) {
 		return { result: err(tokenResult.error) };
 	}
-	const token = tokenResult.value;
+	let token = tokenResult.value;
 
 	const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	const backgroundTask: BackgroundTask = async () => {
 		try {
 			const provider = new RedditProvider();
-			const result = await processRedditAccount(ctx.backend, account.id, token, provider);
+			let result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+
+			if (!result.ok && result.error.original_kind === "auth_expired") {
+				log.info("Reddit token expired, attempting refresh", { account_id: account.id });
+
+				const refreshResult = await attemptRedditTokenRefresh(ctx, account);
+				if (refreshResult.ok) {
+					token = refreshResult.value;
+					result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+				} else {
+					log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
+				}
+			}
 
 			if (result.ok) {
 				const allUserAccounts = await fetchUserAccounts(ctx, userId);
@@ -243,6 +327,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 	const userAccounts = await ctx.db
 		.select({
 			id: accounts.id,
+			profile_id: accounts.profile_id,
 			platform: accounts.platform,
 			platform_user_id: accounts.platform_user_id,
 			access_token_encrypted: accounts.access_token_encrypted,
@@ -302,10 +387,23 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 						log.error("Reddit token decryption failed", { account_id: account.id });
 						continue;
 					}
-					const token = tokenResult.value;
+					let token = tokenResult.value;
 
 					const provider = new RedditProvider();
-					const result = await processRedditAccount(ctx.backend, account.id, token, provider);
+					let result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+
+					if (!result.ok && result.error.original_kind === "auth_expired") {
+						log.info("Reddit token expired, attempting refresh", { account_id: account.id });
+
+						const refreshResult = await attemptRedditTokenRefresh(ctx, account);
+						if (refreshResult.ok) {
+							token = refreshResult.value;
+							result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+						} else {
+							log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
+						}
+					}
+
 					if (result.ok) bgSucceeded++;
 				} catch (e) {
 					log.error("Reddit account refresh failed", { account_id: account.id, error: String(e) });

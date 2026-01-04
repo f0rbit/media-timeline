@@ -27,7 +27,7 @@ export type StoreConfig<TIncoming, TStored> = {
 	getTotal: (merged: TStored) => number;
 };
 
-export type ProcessError = { kind: "fetch_failed"; message: string };
+export type ProcessError = { kind: "fetch_failed"; message: string; original_kind?: string };
 
 export type PlatformProvider<TFetch> = {
 	fetch(token: string): Promise<Result<TFetch, ProviderError>>;
@@ -42,12 +42,28 @@ const loadExisting = async <T>(store: StoreProcessor<T>["store"]): Promise<T | n
 
 const processStore = async <TIncoming, TStored>(backend: Backend, accountId: string, config: StoreConfig<TIncoming, TStored>, incoming: TIncoming): Promise<StoreStats> => {
 	const storeResult = config.create(backend, accountId);
-	if (!storeResult.ok) return defaultStats;
+	if (!storeResult.ok) {
+		log.error(`Store creation failed for ${config.name}`, { accountId, error: storeResult.error });
+		return defaultStats;
+	}
 
 	const store = storeResult.value.store;
 	const existing = await loadExisting(store);
 	const { merged, newCount } = config.merge(existing, incoming);
+
+	log.debug(`Merging ${config.name}`, {
+		accountId,
+		hasExisting: existing !== null,
+		mergedTotal: config.getTotal(merged),
+		newCount,
+	});
+
 	const putResult = await store.put(merged);
+
+	if (!putResult.ok) {
+		log.error(`Store put failed for ${config.name}`, { accountId, error: putResult.error });
+		return defaultStats;
+	}
 
 	return pipe(putResult)
 		.map(({ version }) => ({ version, newCount, total: config.getTotal(merged) }))
@@ -73,4 +89,5 @@ export const createMerger =
 export const formatFetchError = (platform: string, error: ProviderError): ProcessError => ({
 	kind: "fetch_failed",
 	message: `${platform} fetch failed: ${error.kind}`,
+	original_kind: error.kind,
 });

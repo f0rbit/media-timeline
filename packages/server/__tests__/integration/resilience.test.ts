@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { accounts } from "@media/schema/database";
 import { type RateLimitState, initialState, isCircuitOpen, shouldFetch, updateOnFailure, updateOnSuccess } from "@media/server/storage";
+import { eq } from "drizzle-orm";
 import { ACCOUNTS, PROFILES, USERS } from "./fixtures";
 import { type TestContext, createTestContext, getAccount, getRateLimit, seedAccount, seedProfile, seedRateLimit, seedUser } from "./setup";
 
@@ -266,12 +268,12 @@ describe("resilience", () => {
 
 			const account = await getAccount(ctx, ACCOUNTS.alice_github.id);
 			expect(account).not.toBeNull();
-			expect((account as { is_active: number }).is_active).toBe(1);
+			expect(account?.is_active).toBe(true);
 
-			await ctx.d1.prepare("UPDATE media_accounts SET is_active = 0 WHERE id = ?").bind(ACCOUNTS.alice_github.id).run();
+			await ctx.drizzle.update(accounts).set({ is_active: false }).where(eq(accounts.id, ACCOUNTS.alice_github.id)).run();
 
 			const updatedAccount = await getAccount(ctx, ACCOUNTS.alice_github.id);
-			expect((updatedAccount as { is_active: number }).is_active).toBe(0);
+			expect(updatedAccount?.is_active).toBe(false);
 		});
 
 		it("provider returns data when no simulation flags set", async () => {

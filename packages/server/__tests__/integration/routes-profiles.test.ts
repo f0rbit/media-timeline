@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { profileFilters, profiles } from "@media/schema/database";
+import { eq } from "drizzle-orm";
 import { ACCOUNTS, API_KEYS, PROFILES, USERS } from "./fixtures";
 import { type ProfileFilterSeed, type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedProfile, seedProfileFilter, seedUser } from "./setup";
 
@@ -498,8 +500,8 @@ describe("Profile Routes", () => {
 			expect(data.deleted).toBe(true);
 			expect(data.id).toBe(PROFILES.alice_main.id);
 
-			const profile = await ctx.d1.prepare("SELECT * FROM media_profiles WHERE id = ?").bind(PROFILES.alice_main.id).first();
-			expect(profile).toBeNull();
+			const profile = await ctx.drizzle.select().from(profiles).where(eq(profiles.id, PROFILES.alice_main.id)).get();
+			expect(profile).toBeUndefined();
 		});
 
 		it("deletes profile with associated accounts", async () => {
@@ -516,8 +518,8 @@ describe("Profile Routes", () => {
 
 			expect(res.status).toBe(200);
 
-			const profile = await ctx.d1.prepare("SELECT * FROM media_profiles WHERE id = ?").bind(PROFILES.alice_main.id).first();
-			expect(profile).toBeNull();
+			const profile = await ctx.drizzle.select().from(profiles).where(eq(profiles.id, PROFILES.alice_main.id)).get();
+			expect(profile).toBeUndefined();
 		});
 
 		it("returns 403 when deleting another users profile", async () => {
@@ -811,8 +813,8 @@ describe("Profile Routes", () => {
 
 			expect(res.status).toBe(204);
 
-			const filter = await ctx.d1.prepare("SELECT * FROM media_profile_filters WHERE id = ?").bind(filterId).first();
-			expect(filter).toBeNull();
+			const filter = await ctx.drizzle.select().from(profileFilters).where(eq(profileFilters.id, filterId)).get();
+			expect(filter).toBeUndefined();
 		});
 
 		it("returns 404 for non-existent filter", async () => {

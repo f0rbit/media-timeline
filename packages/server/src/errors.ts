@@ -17,6 +17,10 @@ export type ValidationError = { kind: "validation_error"; message: string };
 export type InactiveError = { kind: "inactive"; message: string };
 export type ProcessFailedError = { kind: "process_failed"; message: string };
 export type NotFoundWithMessageError = { kind: "not_found"; message: string };
+export type NoRefreshTokenError = { kind: "no_refresh_token"; message: string };
+export type NoCredentialsError = { kind: "no_credentials"; message: string };
+export type RefreshFailedError = { kind: "refresh_failed"; message: string };
+export type EncryptionError = { kind: "encryption_failed"; message: string };
 
 // Composite error types for different domains
 export type CronProcessError = DecryptionError | FetchError | StoreError | PutError;
@@ -25,7 +29,7 @@ export type ConnectionError = NotFoundError | ForbiddenError | DatabaseError;
 
 export type ProviderError = AuthError | RateLimitError | FetchError;
 
-export type RefreshError = NotFoundWithMessageError | InactiveError | DecryptionError | ProcessFailedError;
+export type RefreshError = NotFoundWithMessageError | InactiveError | DecryptionError | ProcessFailedError | NoRefreshTokenError | NoCredentialsError | RefreshFailedError | EncryptionError;
 
 // Helper type guards
 export const isRetryable = (error: { kind: string }): boolean => error.kind === "rate_limited" || error.kind === "fetch_failed";

@@ -1,6 +1,8 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { Platform } from "./platforms";
 
+export { corpus_snapshots } from "@f0rbit/corpus/schema";
+
 export const users = sqliteTable("media_users", {
 	id: text("id").primaryKey(),
 	email: text("email").unique(),
@@ -108,37 +110,6 @@ export const accountSettings = sqliteTable(
 	})
 );
 
-export const corpusSnapshots = sqliteTable(
-	"media_corpus_snapshots",
-	{
-		store_id: text("store_id").notNull(),
-		version: text("version").notNull(),
-		content_hash: text("content_hash").notNull(),
-		created_at: text("created_at").notNull(),
-		tags: text("tags"),
-		metadata: text("metadata"),
-	},
-	table => ({
-		pk: uniqueIndex("media_corpus_snapshots_pk").on(table.store_id, table.version),
-		store_idx: index("idx_media_corpus_snapshots_store").on(table.store_id),
-		created_idx: index("idx_media_corpus_snapshots_created").on(table.store_id, table.created_at),
-	})
-);
-
-export const corpusParents = sqliteTable(
-	"media_corpus_parents",
-	{
-		child_store_id: text("child_store_id").notNull(),
-		child_version: text("child_version").notNull(),
-		parent_store_id: text("parent_store_id").notNull(),
-		parent_version: text("parent_version").notNull(),
-		role: text("role"),
-	},
-	table => ({
-		pk: uniqueIndex("media_corpus_parents_pk").on(table.child_store_id, table.child_version, table.parent_store_id, table.parent_version),
-	})
-);
-
 export const profileFilters = sqliteTable(
 	"media_profile_filters",
 	{
@@ -175,3 +146,28 @@ export type Profile = typeof profiles.$inferSelect;
 export type NewProfile = typeof profiles.$inferInsert;
 export type ProfileFilter = typeof profileFilters.$inferSelect;
 export type NewProfileFilter = typeof profileFilters.$inferInsert;
+
+export const platformCredentials = sqliteTable(
+	"media_platform_credentials",
+	{
+		id: text("id").primaryKey(),
+		profile_id: text("profile_id")
+			.notNull()
+			.references(() => profiles.id, { onDelete: "cascade" }),
+		platform: text("platform").notNull().$type<Platform>(),
+		client_id: text("client_id").notNull(),
+		client_secret_encrypted: text("client_secret_encrypted").notNull(),
+		redirect_uri: text("redirect_uri"),
+		metadata: text("metadata"),
+		is_verified: integer("is_verified", { mode: "boolean" }).default(false),
+		created_at: text("created_at").notNull(),
+		updated_at: text("updated_at").notNull(),
+	},
+	table => ({
+		profile_platform_idx: uniqueIndex("idx_platform_credentials_unique").on(table.profile_id, table.platform),
+		profile_idx: index("idx_platform_credentials_profile").on(table.profile_id),
+	})
+);
+
+export type PlatformCredential = typeof platformCredentials.$inferSelect;
+export type NewPlatformCredential = typeof platformCredentials.$inferInsert;

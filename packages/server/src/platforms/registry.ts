@@ -14,6 +14,7 @@ type PlatformProcessResult = {
 
 export type AccountWithUser = {
 	id: string;
+	profile_id: string;
 	platform: string;
 	platform_user_id: string | null;
 	access_token_encrypted: string;
@@ -25,7 +26,7 @@ export type AccountWithUser = {
 export type CronProcessor = {
 	shouldFetch: (account: AccountWithUser, lastFetchedAt: string | null) => boolean;
 	createProvider: (ctx: AppContext) => unknown;
-	processAccount: (backend: Backend, accountId: string, token: string, provider: unknown) => Promise<Result<PlatformProcessResult, { kind: string; message?: string }>>;
+	processAccount: (backend: Backend, accountId: string, token: string, provider: unknown, account?: AccountWithUser) => Promise<Result<PlatformProcessResult, { kind: string; message?: string }>>;
 };
 
 export interface PlatformConfig {

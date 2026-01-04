@@ -24,9 +24,15 @@ export type RedditFetchResult = {
 	comments: RedditCommentsStore;
 };
 
+export type RedditProviderLike = {
+	readonly platform: "reddit";
+	fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>>;
+	fetchForUsername(token: string, username: string): Promise<Result<RedditFetchResult, ProviderError>>;
+};
+
 const mapRedditError = (e: FetchError): ProviderError => (e.type === "http" ? mapHttpError(e.status, e.status_text) : { kind: "network_error", cause: e.cause instanceof Error ? e.cause : new Error(String(e.cause)) });
 
-export class RedditProvider {
+export class RedditProvider implements RedditProviderLike {
 	readonly platform = "reddit";
 	private config: RedditProviderConfig;
 
@@ -78,6 +84,65 @@ export class RedditProvider {
 			})
 			.tap_err(e => log.error("Fetch failed", e))
 			.result();
+	}
+
+	/**
+	 * Fetch Reddit data for a specific username (used for BYO credentials with client_credentials grant).
+	 * This bypasses the /me endpoint since application-only tokens can't access it.
+	 */
+	async fetchForUsername(token: string, username: string): Promise<Result<RedditFetchResult, ProviderError>> {
+		log.debug("Starting fetch for username", { username, maxPosts: this.config.maxPosts, maxComments: this.config.maxComments });
+		log.info("Fetching for user", username);
+
+		const [postsResult, commentsResult] = await Promise.all([this.fetchPosts(token, username), this.fetchComments(token, username)]);
+
+		if (!postsResult.ok) {
+			log.error("Fetch failed", postsResult.error);
+			return postsResult;
+		}
+		if (!commentsResult.ok) {
+			log.error("Fetch failed", commentsResult.error);
+			return commentsResult;
+		}
+
+		const subreddits = new Set<string>();
+		for (const post of postsResult.value) {
+			subreddits.add(post.subreddit);
+		}
+		for (const comment of commentsResult.value) {
+			subreddits.add(comment.subreddit);
+		}
+
+		const result: RedditFetchResult = {
+			meta: {
+				username,
+				user_id: username, // We don't have the real user_id with client_credentials
+				icon_img: undefined,
+				total_karma: 0,
+				link_karma: 0,
+				comment_karma: 0,
+				created_utc: 0,
+				is_gold: false,
+				subreddits_active: Array.from(subreddits),
+				fetched_at: new Date().toISOString(),
+			},
+			posts: {
+				username,
+				posts: postsResult.value,
+				total_posts: postsResult.value.length,
+				fetched_at: new Date().toISOString(),
+			},
+			comments: {
+				username,
+				comments: commentsResult.value,
+				total_comments: commentsResult.value.length,
+				fetched_at: new Date().toISOString(),
+			},
+		};
+
+		log.info("Fetch complete", { posts: result.posts.total_posts, comments: result.comments.total_comments });
+
+		return ok(result);
 	}
 
 	private fetchUser(token: string): Promise<Result<{ username: string; meta: RedditMetaStore }, ProviderError>> {

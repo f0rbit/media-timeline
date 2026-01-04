@@ -11,6 +11,7 @@ import RedditSettings from "./PlatformSettings/RedditSettings";
 import TwitterSettings from "./PlatformSettings/TwitterSettings";
 import YouTubeSettings from "./PlatformSettings/YouTubeSettings";
 import PlatformSetupForm, { type Platform } from "./PlatformSetupForm";
+import RedditCredentialsForm from "./RedditCredentialsForm";
 import StatusBadge, { type ConnectionState } from "./StatusBadge";
 
 type Props = {
@@ -20,18 +21,19 @@ type Props = {
 	onConnectionChange: () => void;
 };
 
-function RedditOAuthButton(props: { profileId: string }) {
-	const handleConnect = () => {
-		// OAuth routes now accept cookie-based auth, just need profile_id
-		window.location.href = `${apiUrls.auth("/reddit")}?profile_id=${encodeURIComponent(props.profileId)}`;
+function RedditSetup(props: { profileId: string; onConnectionChange: () => void }) {
+	// Reddit "script" apps authenticate directly when saving credentials,
+	// so saving credentials = connecting (no OAuth redirect needed)
+
+	const handleCredentialsSaved = () => {
+		// Credentials saved + authenticated = connection created
+		// Refresh the connections list to show the new connection
+		props.onConnectionChange();
 	};
 
 	return (
 		<div class="oauth-setup">
-			<p class="muted text-sm">Connect your Reddit account to sync your posts and comments.</p>
-			<button type="button" onClick={handleConnect} class="oauth-button">
-				Connect with Reddit
-			</button>
+			<RedditCredentialsForm profileId={props.profileId} onSuccess={handleCredentialsSaved} existingClientId={null} />
 		</div>
 	);
 }
@@ -145,7 +147,7 @@ export default function PlatformCard(props: Props) {
 
 			<Switch>
 				<Match when={state() === "not_configured" && props.platform === "reddit"}>
-					<RedditOAuthButton profileId={props.profileId} />
+					<RedditSetup profileId={props.profileId} onConnectionChange={props.onConnectionChange} />
 				</Match>
 				<Match when={state() === "not_configured" && props.platform === "twitter"}>
 					<TwitterOAuthButton profileId={props.profileId} />

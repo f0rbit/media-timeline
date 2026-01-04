@@ -271,6 +271,25 @@ export type ProfileDetailResponse = {
 	profile: ProfileWithRelations;
 };
 
+export type CredentialStatus = {
+	exists: boolean;
+	isVerified: boolean;
+	clientId: string | null;
+};
+
+export type SaveCredentialsRequest = {
+	profile_id: string;
+	client_id: string;
+	client_secret: string;
+	redirect_uri?: string;
+};
+
+export type SaveCredentialsResponse = {
+	success: boolean;
+	id: string;
+	message: string;
+};
+
 export const profiles = {
 	list: () => request<ProfilesListResponse>(apiUrls.profiles()),
 	get: (id: string) => request<ProfileDetailResponse>(apiUrls.profiles(`/${id}`)),
@@ -281,4 +300,25 @@ export const profiles = {
 		const queryString = query.toString();
 		return request<ProfileTimelineResponse>(apiUrls.profiles(`/${slug}/timeline${queryString ? `?${queryString}` : ""}`));
 	},
+};
+
+export const credentials = {
+	/**
+	 * Check if credentials exist for a platform
+	 */
+	get: (platform: string, profileId: string) => request<CredentialStatus>(apiUrls.media(`/v1/credentials/${platform}?profile_id=${profileId}`)),
+
+	/**
+	 * Save credentials for a platform
+	 */
+	save: (platform: string, data: SaveCredentialsRequest) =>
+		request<SaveCredentialsResponse>(apiUrls.media(`/v1/credentials/${platform}`), {
+			method: "POST",
+			body: data,
+		}),
+
+	/**
+	 * Delete credentials for a platform
+	 */
+	delete: (platform: string, profileId: string) => request<{ success: boolean; message: string }>(apiUrls.media(`/v1/credentials/${platform}?profile_id=${profileId}`), { method: "DELETE" }),
 };

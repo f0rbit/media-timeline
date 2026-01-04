@@ -120,13 +120,20 @@ const deleteStoreSnapshots = async (backend: Backend, storeId: string): Promise<
 	const store = storeResult.value.store;
 	let deletedCount = 0;
 
-	for await (const snapshot of store.list()) {
-		const deleteResult = await store.delete(snapshot.version);
-		if (deleteResult.ok) {
-			deletedCount++;
-		} else {
-			log.warn("Failed to delete snapshot", { step: "store", version: snapshot.version, error: deleteResult.error });
+	try {
+		for await (const snapshot of store.list()) {
+			const deleteResult = await store.delete(snapshot.version);
+			if (deleteResult.ok) {
+				deletedCount++;
+			} else {
+				log.warn("Failed to delete snapshot", { step: "store", version: snapshot.version, error: deleteResult.error });
+			}
 		}
+	} catch (error) {
+		// Store listing can fail if there are no snapshots or if the store doesn't exist in corpus
+		// This is expected for newly created accounts that haven't been synced yet
+		log.info("Store listing failed (store may be empty)", { step: "store", storeId, error: String(error) });
+		return false;
 	}
 
 	log.info("Deleted snapshots", { step: "store", deletedCount, storeId });

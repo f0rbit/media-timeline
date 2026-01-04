@@ -52,6 +52,14 @@ export class RedditMemoryProvider extends BaseMemoryProvider<RedditFetchResult> 
 		};
 	}
 
+	/**
+	 * For BYO credentials, fetch using a specific username.
+	 * In the memory provider, this just returns the same data.
+	 */
+	async fetchForUsername(_token: string, _username: string): Promise<import("../utils").Result<RedditFetchResult, import("./types").ProviderError>> {
+		return this.fetch("");
+	}
+
 	setPosts(posts: RedditPost[]): void {
 		this.config.posts = posts;
 	}
