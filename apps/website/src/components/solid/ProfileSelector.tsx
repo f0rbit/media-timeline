@@ -1,4 +1,5 @@
 import { For, Show, createEffect, createResource, createSignal, on, onCleanup, onMount } from "solid-js";
+import { isServer } from "solid-js/web";
 import { type ProfileSummary, initMockAuth, profiles } from "../../utils/api";
 
 type AuthState = { authenticated: true; profiles: ProfileSummary[] } | { authenticated: false };
@@ -10,6 +11,15 @@ export type ProfileSelectorProps = {
 };
 
 const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => {
+	// If we have SSR data, use it directly without fetching
+	if (initial !== undefined) {
+		return initial;
+	}
+
+	if (isServer) {
+		return { authenticated: false };
+	}
+
 	initMockAuth();
 
 	const result = await profiles.list();
@@ -18,13 +28,13 @@ const fetchAuthAndProfiles = async (initial?: AuthState): Promise<AuthState> => 
 			return { authenticated: false };
 		}
 		console.error("[ProfileSelector] Failed to fetch profiles:", result.error);
-		return initial ?? { authenticated: true, profiles: [] };
+		return { authenticated: true, profiles: [] };
 	}
 	return { authenticated: true, profiles: result.value.profiles };
 };
 
 const getSlugFromUrl = () => {
-	if (typeof window === "undefined") return null;
+	if (isServer) return null;
 	return new URLSearchParams(window.location.search).get("profile");
 };
 
@@ -63,11 +73,25 @@ export default function ProfileSelector(props: ProfileSelectorProps) {
 	};
 
 	const isAuthenticated = () => {
-		if (hasInitialData() && !authState()) {
-			return props.isAuthenticated !== false;
-		}
 		const state = authState();
-		return state?.authenticated ?? props.isAuthenticated !== false;
+
+		// If resource has loaded, trust its result
+		if (state !== undefined) {
+			return state.authenticated;
+		}
+
+		// If SSR passed explicit auth data, use it during loading
+		if (props.isAuthenticated !== undefined) {
+			return props.isAuthenticated;
+		}
+
+		// If we have initial profiles from SSR, user is authenticated
+		if (props.initialProfiles !== undefined && props.initialProfiles.length > 0) {
+			return true;
+		}
+
+		// No data yet - default to false (show Login button)
+		return false;
 	};
 
 	const currentProfile = () => {

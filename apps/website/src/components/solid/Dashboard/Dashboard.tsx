@@ -9,19 +9,38 @@ import PlatformDistribution from "./PlatformDistribution";
 import RecentActivity from "./RecentActivity";
 
 type DashboardProps = {
-	profileSlug?: string;
+	profileSlug?: string | null;
+	initialTimeline?: ProfileTimelineResponse | null;
 };
 
 export default function Dashboard(props: DashboardProps) {
 	initMockAuth();
 
+	// Check if SSR provided data (even if empty - that's valid SSR data)
+	const hasSSRData = props.initialTimeline !== undefined;
+
+	const [fetchTrigger, setFetchTrigger] = createSignal(0);
+
 	const [data] = createResource(
-		() => props.profileSlug,
-		async slug => {
+		() => {
+			const trigger = fetchTrigger();
+			const slug = props.profileSlug;
+
+			// Skip initial fetch if we have SSR data (even empty means SSR succeeded)
+			if (trigger === 0 && hasSSRData) {
+				return null;
+			}
+
+			return slug;
+		},
+		async (slug): Promise<ProfileTimelineResponse | null> => {
 			if (!slug) return null;
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
 			if (!result.ok) throw new Error(result.error.message);
 			return result.value;
+		},
+		{
+			initialValue: props.initialTimeline ?? undefined,
 		}
 	);
 
@@ -29,7 +48,11 @@ export default function Dashboard(props: DashboardProps) {
 		<div class="dashboard">
 			<Show when={!props.profileSlug}>
 				<div class="empty-state">
-					<p>Select a profile to view the dashboard.</p>
+					<h3>No profile selected</h3>
+					<p class="muted">Select a profile from the dropdown above to view your dashboard.</p>
+					<a href="/connections" class="oauth-button">
+						Manage Profiles
+					</a>
 				</div>
 			</Show>
 
@@ -91,8 +114,14 @@ function DashboardContent(props: DashboardContentProps) {
 		<>
 			<Show when={stats().totalEntries === 0}>
 				<div class="empty-state">
-					<p>No activity data yet.</p>
-					<a href="/connections">Connect a platform to get started</a>
+					<h3>No activity data yet</h3>
+					<p class="muted">Your dashboard will show analytics once you connect platforms and run a sync.</p>
+					<a href="/connections" class="oauth-button">
+						Connect Platforms
+					</a>
+					<p class="text-sm muted" style={{ "margin-top": "1rem" }}>
+						Data syncs automatically every 5 minutes.
+					</p>
 				</div>
 			</Show>
 

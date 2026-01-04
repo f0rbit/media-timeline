@@ -139,36 +139,58 @@ export const validateOAuthQueryKey = async (c: HonoContext, ctx: AppContext, pla
 export type OAuthKeyAndProfileResult = { user_id: string; profile_id: string };
 
 export const validateOAuthQueryKeyAndProfile = async (c: HonoContext, ctx: AppContext, platform: string): Promise<Result<OAuthKeyAndProfileResult, Response>> => {
-	const apiKey = c.req.query("key");
-	if (!apiKey) {
-		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_auth`));
-	}
-
 	const profileIdOrSlug = c.req.query("profile_id") || c.req.query("profile");
-	if (!profileIdOrSlug) {
-		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_profile`));
+
+	// Try API key auth first (legacy/programmatic access)
+	const apiKey = c.req.query("key");
+	if (apiKey) {
+		// If API key provided, require profile_id
+		if (!profileIdOrSlug) {
+			return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_profile`));
+		}
+
+		const keyHash = await hash_api_key(apiKey);
+		const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
+
+		if (!keyResult) {
+			return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_auth`));
+		}
+
+		const profile = await ctx.db
+			.select({ id: profiles.id, user_id: profiles.user_id })
+			.from(profiles)
+			.where(and(eq(profiles.user_id, keyResult.user_id), or(eq(profiles.id, profileIdOrSlug), eq(profiles.slug, profileIdOrSlug))))
+			.get();
+
+		if (!profile) {
+			return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_profile`));
+		}
+
+		return ok({ user_id: keyResult.user_id, profile_id: profile.id });
 	}
 
-	const keyHash = await hash_api_key(apiKey);
-	const keyResult = await ctx.db.select({ user_id: apiKeys.user_id }).from(apiKeys).where(eq(apiKeys.key_hash, keyHash)).get();
+	// Try cookie-based JWT auth (SSR flow)
+	const auth = c.get("auth");
+	if (auth?.user_id) {
+		if (!profileIdOrSlug) {
+			return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_profile`));
+		}
 
-	if (!keyResult) {
-		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_auth`));
-	}
+		const profile = await ctx.db
+			.select({ id: profiles.id, user_id: profiles.user_id })
+			.from(profiles)
+			.where(and(eq(profiles.user_id, auth.user_id), or(eq(profiles.id, profileIdOrSlug), eq(profiles.slug, profileIdOrSlug))))
+			.get();
 
-	const userId = keyResult.user_id;
+		if (profile) {
+			return ok({ user_id: auth.user_id, profile_id: profile.id });
+		}
 
-	const profile = await ctx.db
-		.select({ id: profiles.id, user_id: profiles.user_id })
-		.from(profiles)
-		.where(and(eq(profiles.user_id, userId), or(eq(profiles.id, profileIdOrSlug), eq(profiles.slug, profileIdOrSlug))))
-		.get();
-
-	if (!profile) {
 		return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_invalid_profile`));
 	}
 
-	return ok({ user_id: userId, profile_id: profile.id });
+	// No authentication method worked
+	return err(c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_no_auth`));
 };
 
 export const redirectWithError = (c: HonoContext, platform: Platform, errorCode: string): Response => c.redirect(`${getFrontendUrl(c)}/connections?error=${platform}_${errorCode}`);

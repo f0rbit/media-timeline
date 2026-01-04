@@ -469,8 +469,22 @@ details[open] .down-arrow {
 	color: var(--text-muted);
 }
 
+.empty-state h3 {
+	color: var(--text-secondary);
+	font-size: 1.125rem;
+	font-weight: 500;
+	margin-bottom: 8px;
+}
+
 .empty-state p {
 	margin-bottom: 16px;
+	max-width: 400px;
+	margin-left: auto;
+	margin-right: auto;
+}
+
+.empty-state .oauth-button {
+	margin-top: 8px;
 }
 
 /* ==========================================================================

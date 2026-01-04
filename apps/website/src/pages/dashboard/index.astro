@@ -1,8 +1,24 @@
 ---
 import Dashboard from "../../components/solid/Dashboard/Dashboard";
 import AppLayout from "../../layouts/AppLayout.astro";
+import { type ProfileTimelineResponse, api } from "../../utils/api";
 
 const profileSlug = Astro.url.searchParams.get("profile");
+
+let initialTimeline: ProfileTimelineResponse | null = null;
+
+if (profileSlug) {
+	try {
+		const runtime = Astro.locals.runtime;
+		const result = await api.ssr<ProfileTimelineResponse>(`/media/api/v1/profiles/${profileSlug}/timeline`, Astro.request, {}, runtime);
+
+		if (result.ok) {
+			initialTimeline = result.data;
+		}
+	} catch {
+		// SSR fetch failed, component will fetch client-side
+	}
+}
 ---
 
 <AppLayout 
@@ -14,5 +30,9 @@ const profileSlug = Astro.url.searchParams.get("profile");
     <h1 class="page-title">Dashboard</h1>
     <p class="description">Your activity overview and insights.</p>
   </section>
-  <Dashboard client:load profileSlug={profileSlug} />
+  <Dashboard 
+    client:load 
+    profileSlug={profileSlug} 
+    initialTimeline={initialTimeline}
+  />
 </AppLayout>

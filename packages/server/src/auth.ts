@@ -22,6 +22,9 @@ type VerifyOptions = { baseUrl?: string };
 
 export type AuthContext = {
 	user_id: string;
+	name: string | null;
+	email: string | null;
+	image_url: string | null;
 	jwt_token?: string;
 };
 
@@ -78,7 +81,13 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	if (authToken) {
 		const result = await verifyJWT(authToken, options);
 		if (result.authenticated) {
-			c.set("auth", { user_id: result.user.id, jwt_token: authToken });
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+				jwt_token: authToken,
+			});
 			return next();
 		}
 	}
@@ -90,7 +99,13 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 		if (jwtFromAuth) {
 			const result = await verifyJWT(jwtFromAuth, options);
 			if (result.authenticated) {
-				c.set("auth", { user_id: result.user.id, jwt_token: jwtFromAuth });
+				c.set("auth", {
+					user_id: result.user.id,
+					name: result.user.name,
+					email: result.user.email,
+					image_url: result.user.image_url,
+					jwt_token: jwtFromAuth,
+				});
 				return next();
 			}
 		}
@@ -101,7 +116,13 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	if (jwtCookie) {
 		const result = await verifyJWT(jwtCookie, options);
 		if (result.authenticated) {
-			c.set("auth", { user_id: result.user.id, jwt_token: jwtCookie });
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+				jwt_token: jwtCookie,
+			});
 			return next();
 		}
 	}
@@ -111,7 +132,12 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 	if (cookieHeader) {
 		const result = await verifySessionCookie(cookieHeader, options);
 		if (result.authenticated) {
-			c.set("auth", { user_id: result.user.id });
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+			});
 			return next();
 		}
 	}
@@ -122,13 +148,77 @@ export const authMiddleware = createMiddleware<{ Bindings: Bindings; Variables: 
 		if (apiKey) {
 			const result = await verifyApiKey(apiKey, options);
 			if (result.authenticated) {
-				c.set("auth", { user_id: result.user.id });
+				c.set("auth", {
+					user_id: result.user.id,
+					name: result.user.name,
+					email: result.user.email,
+					image_url: result.user.image_url,
+				});
 				return next();
 			}
 		}
 	}
 
 	return c.json({ error: "Unauthorized", message: "Authentication required" }, 401);
+});
+
+/**
+ * Optional auth middleware - tries to extract auth but doesn't fail if not found.
+ * Useful for routes that can work with or without authentication.
+ */
+export const optionalAuthMiddleware = createMiddleware<{ Bindings: Bindings; Variables: AuthVariables }>(async (c, next) => {
+	const devpadUrl = getDevpadUrl(c.env as Bindings & { DEVPAD_URL?: string });
+	const options = { baseUrl: devpadUrl };
+
+	// Try Auth-Token header (JWT)
+	const authToken = c.req.header("Auth-Token");
+	if (authToken) {
+		const result = await verifyJWT(authToken, options);
+		if (result.authenticated) {
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+				jwt_token: authToken,
+			});
+			return next();
+		}
+	}
+
+	// Try devpad_jwt cookie
+	const jwtCookie = getCookie(c, "devpad_jwt");
+	if (jwtCookie) {
+		const result = await verifyJWT(jwtCookie, options);
+		if (result.authenticated) {
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+				jwt_token: jwtCookie,
+			});
+			return next();
+		}
+	}
+
+	// Try session cookie
+	const cookieHeader = c.req.header("Cookie");
+	if (cookieHeader) {
+		const result = await verifySessionCookie(cookieHeader, options);
+		if (result.authenticated) {
+			c.set("auth", {
+				user_id: result.user.id,
+				name: result.user.name,
+				email: result.user.email,
+				image_url: result.user.image_url,
+			});
+			return next();
+		}
+	}
+
+	// No auth found, but that's okay - continue without setting auth
+	return next();
 });
 
 export type { DevpadUser, VerifyOptions, VerifyResponse };

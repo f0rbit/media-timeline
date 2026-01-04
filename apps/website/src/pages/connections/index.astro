@@ -2,6 +2,34 @@
 import ConnectionList from "../../components/solid/ConnectionList";
 import ProfileList from "../../components/solid/ProfileList";
 import AppLayout from "../../layouts/AppLayout.astro";
+import { type ConnectionWithSettings, type ConnectionsWithSettingsResponse, type ProfileSummary, type ProfilesListResponse, api } from "../../utils/api";
+
+const profileSlug = Astro.url.searchParams.get("profile");
+const runtime = Astro.locals.runtime;
+
+let initialProfiles: ProfileSummary[] = [];
+let initialConnections: ConnectionWithSettings[] = [];
+
+try {
+	const profilesResult = await api.ssr<ProfilesListResponse>("/media/api/v1/profiles", Astro.request, {}, runtime);
+
+	if (profilesResult.ok) {
+		initialProfiles = profilesResult.value.profiles;
+
+		if (profileSlug) {
+			const currentProfile = initialProfiles.find(p => p.slug === profileSlug);
+			if (currentProfile) {
+				const connectionsResult = await api.ssr<ConnectionsWithSettingsResponse>(`/media/api/v1/connections?profile_id=${currentProfile.id}&include_settings=true`, Astro.request, {}, runtime);
+
+				if (connectionsResult.ok) {
+					initialConnections = connectionsResult.value.accounts;
+				}
+			}
+		}
+	}
+} catch {
+	// SSR fetch failed, components will fetch client-side
+}
 ---
 
 <AppLayout 
@@ -18,7 +46,10 @@ import AppLayout from "../../layouts/AppLayout.astro";
     <h2 class="section-title">Profiles</h2>
     <p class="section-description">Create profiles to share different views of your activity via API.</p>
     <div class="content-skeleton">
-      <ProfileList client:only="solid-js" />
+      <ProfileList 
+        client:load
+        initialProfiles={initialProfiles}
+      />
     </div>
   </section>
   
@@ -26,7 +57,12 @@ import AppLayout from "../../layouts/AppLayout.astro";
     <h2 class="section-title">Connected Platforms</h2>
     <p class="section-description">Connect your accounts to aggregate activity.</p>
     <div class="content-skeleton">
-      <ConnectionList client:only="solid-js" />
+      <ConnectionList 
+        client:load
+        profileSlug={profileSlug}
+        initialProfiles={initialProfiles}
+        initialConnections={initialConnections}
+      />
     </div>
   </section>
 </AppLayout>

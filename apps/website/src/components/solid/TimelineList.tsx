@@ -8,6 +8,7 @@ import GitPullRequest from "lucide-solid/icons/git-pull-request";
 import MessageSquareText from "lucide-solid/icons/message-square-text";
 import Reply from "lucide-solid/icons/reply";
 import { For, Match, Show, Switch, createContext, createResource, createSignal, useContext } from "solid-js";
+import { isServer } from "solid-js/web";
 
 const GithubUsernamesContext = createContext<string[]>([]);
 
@@ -23,19 +24,31 @@ type TimelineData = {
 	githubUsernames: string[];
 };
 
-// Read profile slug from URL
-const getSlugFromUrl = () => {
-	if (typeof window === "undefined") return null;
-	return new URLSearchParams(window.location.search).get("profile");
+type TimelineListProps = {
+	profileSlug?: string | null;
+	initialGroups?: TimelineGroup[];
 };
 
-export default function TimelineList() {
-	const profileSlug = () => getSlugFromUrl();
+export default function TimelineList(props: TimelineListProps) {
+	const [fetchTrigger, setFetchTrigger] = createSignal(0);
+
+	// Check if SSR provided data (even if empty array - that's valid SSR data)
+	const hasSSRData = props.initialGroups !== undefined;
 
 	const [data] = createResource(
-		// Source: only fetch when we have a slug
-		() => profileSlug(),
+		() => {
+			const trigger = fetchTrigger();
+			const slug = props.profileSlug;
+
+			// Skip initial fetch if we have SSR data (even empty array means SSR succeeded)
+			if (trigger === 0 && hasSSRData) {
+				return null;
+			}
+
+			return slug;
+		},
 		async (slug): Promise<TimelineData | null> => {
+			if (isServer) return null;
 			if (!slug) return null;
 			initMockAuth();
 			const result: ApiResult<ProfileTimelineResponse> = await profiles.getTimeline(slug);
@@ -44,8 +57,13 @@ export default function TimelineList() {
 				groups: result.value.data.groups,
 				githubUsernames: [],
 			};
+		},
+		{
+			initialValue: hasSSRData ? { groups: props.initialGroups ?? [], githubUsernames: [] } : undefined,
 		}
 	);
+
+	const profileSlug = () => props.profileSlug;
 
 	return (
 		<Show when={profileSlug()} fallback={<NoProfileSelected />}>
@@ -112,8 +130,14 @@ function TimelineGroups(props: TimelineGroupsProps) {
 function EmptyTimeline() {
 	return (
 		<div class="empty-state">
-			<p>No timeline data yet.</p>
-			<a href="/connections">Connect a platform to get started</a>
+			<h3>No timeline data yet</h3>
+			<p class="muted">Your timeline will populate once you connect platforms and run a sync.</p>
+			<a href="/connections" class="oauth-button">
+				Connect Platforms
+			</a>
+			<p class="text-sm muted" style={{ "margin-top": "1rem" }}>
+				Data syncs automatically every 5 minutes.
+			</p>
 		</div>
 	);
 }

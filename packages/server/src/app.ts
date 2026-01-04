@@ -1,8 +1,6 @@
-import { users } from "@media/schema";
-import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { authMiddleware, getAuth } from "./auth";
+import { type AuthContext, authMiddleware, getAuth, optionalAuthMiddleware } from "./auth";
 import { type Bindings, createContextFromBindings } from "./bindings";
 import type { AppContext } from "./infrastructure";
 import { defaultProviderFactory } from "./platforms";
@@ -10,7 +8,7 @@ import type { ProviderFactory } from "./platforms/types";
 import { authRoutes, connectionRoutes, profileRoutes, timelineRoutes } from "./routes";
 
 type Variables = {
-	auth: { user_id: string; jwt_token?: string };
+	auth: AuthContext;
 	appContext: AppContext;
 };
 
@@ -48,9 +46,14 @@ export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 	});
 
 	app.use("/api/*", async (c, next) => {
-		// Skip auth for /api/auth routes (login, callback, logout)
-		if (c.req.path.startsWith("/api/auth")) {
+		// Skip auth completely for login/callback/logout routes
+		if (c.req.path.startsWith("/api/auth/login") || c.req.path.startsWith("/api/auth/callback") || c.req.path.startsWith("/api/auth/logout")) {
 			return next();
+		}
+		// For OAuth platform routes (reddit, twitter, github), use optional auth
+		// These routes handle their own auth validation via API key or cookie
+		if (c.req.path.match(/^\/api\/auth\/(reddit|twitter|github)/)) {
+			return optionalAuthMiddleware(c, next);
 		}
 		return authMiddleware(c, next);
 	});
@@ -62,20 +65,13 @@ export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 	app.route("/api/v1/connections", connectionRoutes);
 	app.route("/api/v1/profiles", profileRoutes);
 
-	app.get("/api/v1/me", async c => {
+	app.get("/api/v1/me", c => {
 		const auth = getAuth(c);
-		const ctx = c.get("appContext");
-
-		const user = await ctx.db.select().from(users).where(eq(users.id, auth.user_id)).get();
-
-		if (!user) {
-			return c.json({ error: "User not found" }, 404);
-		}
-
 		return c.json({
-			id: user.id,
-			name: user.name,
-			email: user.email,
+			id: auth.user_id,
+			name: auth.name,
+			email: auth.email,
+			image_url: auth.image_url,
 		});
 	});
 

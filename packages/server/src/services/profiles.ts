@@ -1,5 +1,5 @@
 import { type ProfileId, type UserId, accountId, profileId } from "@media/schema";
-import { accounts, profileFilters, profiles } from "@media/schema";
+import { accounts, profileFilters, profiles, users } from "@media/schema";
 import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership } from "../auth-ownership";
 import type { Database } from "../db";
@@ -113,6 +113,26 @@ type ProfileListItem = {
 	updated_at: string;
 };
 
+type UserInfo = {
+	id: string;
+	name: string | null;
+	email: string | null;
+};
+
+const ensureUserExists = async (db: AppContext["db"], user: UserInfo): Promise<void> => {
+	const existing = await db.select({ id: users.id }).from(users).where(eq(users.id, user.id)).get();
+	if (existing) return;
+
+	const now = new Date().toISOString();
+	await db.insert(users).values({
+		id: user.id,
+		name: user.name,
+		email: user.email,
+		created_at: now,
+		updated_at: now,
+	});
+};
+
 export const listProfiles = async (ctx: AppContext, uid: UserId): Promise<Result<{ profiles: ProfileListItem[] }, ServiceError>> => {
 	const userProfiles = await ctx.db
 		.select({
@@ -130,7 +150,9 @@ export const listProfiles = async (ctx: AppContext, uid: UserId): Promise<Result
 	return ok({ profiles: userProfiles });
 };
 
-export const createProfile = async (ctx: AppContext, uid: UserId, input: CreateProfileInput): Promise<Result<{ profile: ProfileWithRelations | null }, ServiceError>> => {
+export const createProfile = async (ctx: AppContext, uid: UserId, user: UserInfo, input: CreateProfileInput): Promise<Result<{ profile: ProfileWithRelations | null }, ServiceError>> => {
+	await ensureUserExists(ctx.db, user);
+
 	const isUnique = await checkSlugUniqueness(ctx.db, uid, input.slug);
 	if (!isUnique) {
 		return err({ kind: "conflict", message: "A profile with this slug already exists" });
