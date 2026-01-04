@@ -250,7 +250,7 @@ const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, u
 	const backgroundTask: BackgroundTask = async () => {
 		try {
 			const provider = new RedditProvider();
-			let result = await processRedditAccount(ctx.backend, account.id, token, provider);
+			let result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
 
 			if (!result.ok && result.error.original_kind === "auth_expired") {
 				log.info("Reddit token expired, attempting refresh", { account_id: account.id });
@@ -258,7 +258,7 @@ const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, u
 				const refreshResult = await attemptRedditTokenRefresh(ctx, account);
 				if (refreshResult.ok) {
 					token = refreshResult.value;
-					result = await processRedditAccount(ctx.backend, account.id, token, provider);
+					result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
 				} else {
 					log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
 				}
@@ -390,7 +390,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 					let token = tokenResult.value;
 
 					const provider = new RedditProvider();
-					let result = await processRedditAccount(ctx.backend, account.id, token, provider);
+					let result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
 
 					if (!result.ok && result.error.original_kind === "auth_expired") {
 						log.info("Reddit token expired, attempting refresh", { account_id: account.id });
@@ -398,7 +398,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 						const refreshResult = await attemptRedditTokenRefresh(ctx, account);
 						if (refreshResult.ok) {
 							token = refreshResult.value;
-							result = await processRedditAccount(ctx.backend, account.id, token, provider);
+							result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
 						} else {
 							log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
 						}

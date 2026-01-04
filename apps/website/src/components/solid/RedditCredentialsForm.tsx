@@ -8,6 +8,7 @@ type RedditCredentialsFormProps = {
 };
 
 export default function RedditCredentialsForm(props: RedditCredentialsFormProps) {
+	const [redditUsername, setRedditUsername] = createSignal("");
 	const [clientId, setClientId] = createSignal(props.existingClientId ?? "");
 	const [clientSecret, setClientSecret] = createSignal("");
 	const [error, setError] = createSignal<string | null>(null);
@@ -17,6 +18,11 @@ export default function RedditCredentialsForm(props: RedditCredentialsFormProps)
 	const handleSubmit = async (e: Event) => {
 		e.preventDefault();
 		setError(null);
+
+		if (!redditUsername().trim()) {
+			setError("Reddit username is required");
+			return;
+		}
 
 		if (!clientId().trim() || !clientSecret().trim()) {
 			setError("Both Client ID and Client Secret are required");
@@ -28,6 +34,7 @@ export default function RedditCredentialsForm(props: RedditCredentialsFormProps)
 		try {
 			const result = await api.post<{ success: boolean; message?: string; error?: string }>("/credentials/reddit", {
 				profile_id: props.profileId,
+				reddit_username: redditUsername().trim(),
 				client_id: clientId().trim(),
 				client_secret: clientSecret().trim(),
 			});
@@ -65,7 +72,7 @@ export default function RedditCredentialsForm(props: RedditCredentialsFormProps)
 						<li>Click "create another app..." at the bottom</li>
 						<li>Choose "script" as the app type</li>
 						<li>
-							Set redirect URI to: <code class="text-xs">https://media.devpad.tools/media/api/auth/reddit/callback</code>
+							For redirect URI, enter: <code class="text-xs">http://localhost</code>
 						</li>
 						<li>Copy the Client ID (under your app name) and Secret</li>
 					</ol>
@@ -73,6 +80,11 @@ export default function RedditCredentialsForm(props: RedditCredentialsFormProps)
 			</Show>
 
 			<form onSubmit={handleSubmit} class="flex-col" style={{ gap: "12px", "margin-top": "12px" }}>
+				<div class="form-row">
+					<label class="text-sm tertiary">Your Reddit Username</label>
+					<input type="text" value={redditUsername()} onInput={e => setRedditUsername(e.currentTarget.value)} placeholder="e.g., spez" disabled={submitting()} />
+				</div>
+
 				<div class="form-row">
 					<label class="text-sm tertiary">Client ID</label>
 					<input type="text" value={clientId()} onInput={e => setClientId(e.currentTarget.value)} placeholder="e.g., AbCdEfGhIjKlMn" disabled={submitting()} />
@@ -88,7 +100,7 @@ export default function RedditCredentialsForm(props: RedditCredentialsFormProps)
 				</Show>
 
 				<button type="submit" class="oauth-button" disabled={submitting()} style={{ "margin-top": "4px" }}>
-					{submitting() ? "Saving..." : "Save Credentials"}
+					{submitting() ? "Connecting..." : "Connect Reddit"}
 				</button>
 			</form>
 		</div>

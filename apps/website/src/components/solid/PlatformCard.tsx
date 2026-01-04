@@ -1,7 +1,7 @@
 import type { ConnectionWithSettings } from "@/utils/api";
-import { api, apiUrls } from "@/utils/api";
+import { apiUrls } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
-import { Match, Show, Switch, createEffect, createSignal } from "solid-js";
+import { Match, Show, Switch } from "solid-js";
 import ConnectionActions from "./ConnectionActions";
 import PlatformIcon from "./PlatformIcon";
 import BlueskySettings from "./PlatformSettings/BlueskySettings";
@@ -22,56 +22,18 @@ type Props = {
 };
 
 function RedditSetup(props: { profileId: string; onConnectionChange: () => void }) {
-	const [hasCredentials, setHasCredentials] = createSignal<boolean | null>(null);
-	const [existingClientId, setExistingClientId] = createSignal<string | null>(null);
-	const [showForm, setShowForm] = createSignal(false);
-
-	createEffect(() => {
-		checkCredentials();
-	});
-
-	const checkCredentials = async () => {
-		try {
-			const result = await api.get<{ exists: boolean; clientId: string | null }>(`/credentials/reddit?profile_id=${props.profileId}`);
-			if (result.ok) {
-				setHasCredentials(result.value.exists);
-				setExistingClientId(result.value.clientId);
-			}
-		} catch {
-			setHasCredentials(false);
-		}
-	};
-
-	const handleConnect = () => {
-		window.location.href = `${apiUrls.auth("/reddit")}?profile_id=${encodeURIComponent(props.profileId)}`;
-	};
+	// Reddit "script" apps authenticate directly when saving credentials,
+	// so saving credentials = connecting (no OAuth redirect needed)
 
 	const handleCredentialsSaved = () => {
-		setHasCredentials(true);
-		setShowForm(false);
+		// Credentials saved + authenticated = connection created
+		// Refresh the connections list to show the new connection
+		props.onConnectionChange();
 	};
 
 	return (
 		<div class="oauth-setup">
-			<Show when={hasCredentials() === null}>
-				<p class="muted text-sm">Checking credentials...</p>
-			</Show>
-
-			<Show when={hasCredentials() === false || showForm()}>
-				<RedditCredentialsForm profileId={props.profileId} onSuccess={handleCredentialsSaved} existingClientId={existingClientId()} />
-			</Show>
-
-			<Show when={hasCredentials() === true && !showForm()}>
-				<p class="muted text-sm">Connect your Reddit account to sync your posts and comments.</p>
-				<div class="flex-row" style={{ gap: "8px", "margin-top": "8px" }}>
-					<button type="button" onClick={handleConnect} class="oauth-button">
-						Connect with Reddit
-					</button>
-					<button type="button" onClick={() => setShowForm(true)} class="button-reset text-sm muted" style={{ "text-decoration": "underline" }}>
-						Update credentials
-					</button>
-				</div>
-			</Show>
+			<RedditCredentialsForm profileId={props.profileId} onSuccess={handleCredentialsSaved} existingClientId={null} />
 		</div>
 	);
 }

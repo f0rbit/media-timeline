@@ -88,7 +88,7 @@ registerCronProcessor("github", {
 registerCronProcessor("reddit", {
 	shouldFetch: () => true,
 	createProvider: () => new RedditProvider(),
-	processAccount: processRedditAccount as CronProcessor["processAccount"],
+	processAccount: (backend, accountId, token, provider, account) => processRedditAccount(backend, accountId, token, provider as RedditProvider, account),
 });
 
 registerCronProcessor("twitter", {
@@ -268,7 +268,7 @@ const processPlatformAccountWithProcessor = async (ctx: AppContext, account: Acc
 		.tap_err(() => log.error("Decryption failed", { platform, account_id: account.id }))
 		.flat_map(async (token): Promise<Result<PlatformProcessResult, ProcessingError>> => {
 			const provider = processor.createProvider(ctx);
-			return processor.processAccount(ctx.backend, account.id, token, provider);
+			return processor.processAccount(ctx.backend, account.id, token, provider, account);
 		})
 		.tap_err(e => {
 			log.error("Processing failed", { platform, account_id: account.id, error: e });
