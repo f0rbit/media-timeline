@@ -1,6 +1,8 @@
 import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 import type { Platform } from "./platforms";
 
+export { corpus_snapshots } from "@f0rbit/corpus/schema";
+
 export const users = sqliteTable("media_users", {
 	id: text("id").primaryKey(),
 	email: text("email").unique(),
@@ -105,37 +107,6 @@ export const accountSettings = sqliteTable(
 	table => ({
 		account_key_idx: uniqueIndex("idx_media_account_settings_unique").on(table.account_id, table.setting_key),
 		account_idx: index("idx_media_account_settings_account").on(table.account_id),
-	})
-);
-
-export const corpusSnapshots = sqliteTable(
-	"media_corpus_snapshots",
-	{
-		store_id: text("store_id").notNull(),
-		version: text("version").notNull(),
-		content_hash: text("content_hash").notNull(),
-		created_at: text("created_at").notNull(),
-		tags: text("tags"),
-		metadata: text("metadata"),
-	},
-	table => ({
-		pk: uniqueIndex("media_corpus_snapshots_pk").on(table.store_id, table.version),
-		store_idx: index("idx_media_corpus_snapshots_store").on(table.store_id),
-		created_idx: index("idx_media_corpus_snapshots_created").on(table.store_id, table.created_at),
-	})
-);
-
-export const corpusParents = sqliteTable(
-	"media_corpus_parents",
-	{
-		child_store_id: text("child_store_id").notNull(),
-		child_version: text("child_version").notNull(),
-		parent_store_id: text("parent_store_id").notNull(),
-		parent_version: text("parent_version").notNull(),
-		role: text("role"),
-	},
-	table => ({
-		pk: uniqueIndex("media_corpus_parents_pk").on(table.child_store_id, table.child_version, table.parent_store_id, table.parent_version),
 	})
 );
 

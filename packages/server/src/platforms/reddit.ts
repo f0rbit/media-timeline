@@ -24,9 +24,15 @@ export type RedditFetchResult = {
 	comments: RedditCommentsStore;
 };
 
+export type RedditProviderLike = {
+	readonly platform: "reddit";
+	fetch(token: string): Promise<Result<RedditFetchResult, ProviderError>>;
+	fetchForUsername(token: string, username: string): Promise<Result<RedditFetchResult, ProviderError>>;
+};
+
 const mapRedditError = (e: FetchError): ProviderError => (e.type === "http" ? mapHttpError(e.status, e.status_text) : { kind: "network_error", cause: e.cause instanceof Error ? e.cause : new Error(String(e.cause)) });
 
-export class RedditProvider {
+export class RedditProvider implements RedditProviderLike {
 	readonly platform = "reddit";
 	private config: RedditProviderConfig;
 

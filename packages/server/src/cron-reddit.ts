@@ -3,8 +3,8 @@ import type { RedditCommentsStore, RedditMetaStore, RedditPostsStore } from "@me
 import { type ProcessError, type StoreStats, formatFetchError, storeMeta as genericStoreMeta, storeWithMerge } from "./cron/platform-processor";
 import { createLogger } from "./logger";
 import { mergeByKey } from "./merge";
+import type { RedditFetchResult, RedditProviderLike } from "./platforms/reddit";
 import type { AccountWithUser } from "./platforms/registry";
-import type { RedditFetchResult, RedditProvider } from "./platforms/reddit";
 import type { ProviderError } from "./platforms/types";
 import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "./storage";
 import { type Result, ok, pipe } from "./utils";
@@ -52,7 +52,7 @@ const storeComments = (backend: Backend, accountId: string, comments: RedditComm
  * Process a Reddit account. For BYO accounts, we use the stored username (platform_username)
  * since client_credentials tokens can't access /api/v1/me.
  */
-export const processRedditAccount = (backend: Backend, accountId: string, token: string, provider: RedditProvider, account?: AccountWithUser): Promise<Result<RedditProcessResult, ProcessError>> => {
+export const processRedditAccount = (backend: Backend, accountId: string, token: string, provider: RedditProviderLike, account?: AccountWithUser): Promise<Result<RedditProcessResult, ProcessError>> => {
 	// For BYO accounts, use fetchForUsername with the stored username
 	// The username is stored in platform_username when setting up BYO credentials
 	const storedUsername = account?.platform_user_id;

@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { accounts } from "@media/schema/database";
+import { eq } from "drizzle-orm";
 import { ACCOUNTS, API_KEYS, GITHUB_FIXTURES, PROFILES, USERS, makeTimelineItem } from "./fixtures";
 import { type TestContext, createTestApp, createTestContext, seedAccount, seedApiKey, seedProfile, seedUser } from "./setup";
 
@@ -281,11 +283,11 @@ describe("API routes", () => {
 			const data = (await res.json()) as CreateConnectionResponse;
 			expect(data.account_id).toBeDefined();
 
-			const accounts = await ctx.d1.prepare("SELECT * FROM media_accounts WHERE id = ?").bind(data.account_id).first<{ platform: string; access_token_encrypted: string; profile_id: string }>();
+			const createdAccount = await ctx.drizzle.select().from(accounts).where(eq(accounts.id, data.account_id)).get();
 
-			expect(accounts?.platform).toBe("github");
-			expect(accounts?.access_token_encrypted).toBeDefined();
-			expect(accounts?.profile_id).toBe(PROFILES.alice_main.id);
+			expect(createdAccount?.platform).toBe("github");
+			expect(createdAccount?.access_token_encrypted).toBeDefined();
+			expect(createdAccount?.profile_id).toBe(PROFILES.alice_main.id);
 		});
 
 		it("returns 400 when platform missing", async () => {
@@ -350,7 +352,7 @@ describe("API routes", () => {
 			expect(res.status).toBe(201);
 			const data = (await res.json()) as CreateConnectionResponse;
 
-			const account = await ctx.d1.prepare("SELECT access_token_encrypted FROM media_accounts WHERE id = ?").bind(data.account_id).first<{ access_token_encrypted: string }>();
+			const account = await ctx.drizzle.select({ access_token_encrypted: accounts.access_token_encrypted }).from(accounts).where(eq(accounts.id, data.account_id)).get();
 
 			expect(account?.access_token_encrypted).not.toBe(plainToken);
 			expect(account?.access_token_encrypted).not.toContain(plainToken);
@@ -376,8 +378,8 @@ describe("API routes", () => {
 			expect(data.account_id).toBe(ACCOUNTS.alice_github.id);
 			expect(data.platform).toBe("github");
 
-			const account = await ctx.d1.prepare("SELECT * FROM media_accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first();
-			expect(account).toBeNull();
+			const account = await ctx.drizzle.select().from(accounts).where(eq(accounts.id, ACCOUNTS.alice_github.id)).get();
+			expect(account).toBeUndefined();
 		});
 
 		it("returns 403 when user tries to delete account they don't own", async () => {

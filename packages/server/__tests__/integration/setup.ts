@@ -1,4 +1,4 @@
-import { Database, type SQLQueryBindings } from "bun:sqlite";
+import { Database } from "bun:sqlite";
 import { type Backend, type Store, create_corpus, create_memory_backend, define_store, json_codec } from "@f0rbit/corpus";
 import type { Platform } from "@media/schema";
 import * as schema from "@media/schema/database";
@@ -6,13 +6,14 @@ import { connectionRoutes, profileRoutes, timelineRoutes } from "@media/server";
 import type { ProviderFactory } from "@media/server/cron";
 import type { AppContext } from "@media/server/infrastructure";
 import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, TwitterMemoryProvider, YouTubeMemoryProvider } from "@media/server/platforms";
+import { credentialRoutes } from "@media/server/routes";
 import { encrypt, err, hash_api_key, ok, unwrap, unwrap_err, uuid } from "@media/server/utils";
+import { sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { Hono } from "hono";
 import { z } from "zod";
 import { ACCOUNTS, PROFILES } from "./fixtures";
-
-// Note: apiKeys used by seedApiKey comes from schema via the drizzle instance
 
 export { hash_api_key };
 export type { Platform };
@@ -63,19 +64,6 @@ export type TestProviders = {
 	twitter: TwitterMemoryProvider;
 };
 
-export type D1PreparedStatement = {
-	bind(...params: unknown[]): D1PreparedStatement;
-	first<T = unknown>(column?: string): Promise<T | null>;
-	all<T = unknown>(): Promise<{ results: T[] }>;
-	run(): Promise<{ success: boolean; changes: number }>;
-};
-
-export type D1Database = {
-	prepare(query: string): D1PreparedStatement;
-	batch<T = unknown>(statements: D1PreparedStatement[]): Promise<T[]>;
-	exec(query: string): Promise<void>;
-};
-
 export type R2Object = {
 	key: string;
 	body: ReadableStream<Uint8Array>;
@@ -91,8 +79,6 @@ export type R2Bucket = {
 };
 
 export type TestEnv = {
-	DB: D1Database;
-	CORPUS_BUCKET: R2Bucket;
 	ENCRYPTION_KEY: string;
 	ENVIRONMENT: string;
 };
@@ -108,9 +94,12 @@ export type TestCorpus = {
 	createTwitterTweetsStore(accountId: string): Store<Record<string, unknown>>;
 };
 
+// Drizzle database type for tests
+type DrizzleDB = ReturnType<typeof drizzle<typeof schema>>;
+
 export type TestContext = {
 	db: Database;
-	d1: D1Database;
+	drizzle: DrizzleDB;
 	r2: R2Bucket;
 	providers: TestProviders;
 	env: TestEnv;
@@ -121,170 +110,8 @@ export type TestContext = {
 
 const ENCRYPTION_KEY = "test-encryption-key-32-bytes-long!";
 
-const SCHEMA = `
-  CREATE TABLE IF NOT EXISTS media_users (
-    id TEXT PRIMARY KEY,
-    email TEXT UNIQUE,
-    name TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS media_profiles (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES media_users(id),
-    slug TEXT NOT NULL,
-    name TEXT NOT NULL,
-    description TEXT,
-    theme TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_media_profiles_user ON media_profiles(user_id);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_media_profiles_user_slug ON media_profiles(user_id, slug);
-
-  CREATE TABLE IF NOT EXISTS media_accounts (
-    id TEXT PRIMARY KEY,
-    profile_id TEXT NOT NULL REFERENCES media_profiles(id) ON DELETE CASCADE,
-    platform TEXT NOT NULL,
-    platform_user_id TEXT,
-    platform_username TEXT,
-    access_token_encrypted TEXT NOT NULL,
-    refresh_token_encrypted TEXT,
-    token_expires_at TEXT,
-    is_active INTEGER DEFAULT 1,
-    last_fetched_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_media_accounts_profile ON media_accounts(profile_id);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_media_accounts_profile_platform_user ON media_accounts(profile_id, platform, platform_user_id);
-
-  CREATE TABLE IF NOT EXISTS media_api_keys (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL REFERENCES media_users(id),
-    key_hash TEXT NOT NULL UNIQUE,
-    name TEXT,
-    last_used_at TEXT,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_media_api_keys_user ON media_api_keys(user_id);
-
-  CREATE TABLE IF NOT EXISTS media_rate_limits (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL REFERENCES media_accounts(id),
-    remaining INTEGER,
-    limit_total INTEGER,
-    reset_at TEXT,
-    consecutive_failures INTEGER DEFAULT 0,
-    last_failure_at TEXT,
-    circuit_open_until TEXT,
-    updated_at TEXT NOT NULL,
-    UNIQUE(account_id)
-  );
-
-  CREATE TABLE IF NOT EXISTS media_account_settings (
-    id TEXT PRIMARY KEY,
-    account_id TEXT NOT NULL REFERENCES media_accounts(id) ON DELETE CASCADE,
-    setting_key TEXT NOT NULL,
-    setting_value TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_media_account_settings_unique ON media_account_settings(account_id, setting_key);
-  CREATE INDEX IF NOT EXISTS idx_media_account_settings_account ON media_account_settings(account_id);
-
-  CREATE TABLE IF NOT EXISTS media_corpus_snapshots (
-    store_id TEXT NOT NULL,
-    version TEXT NOT NULL,
-    content_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    tags TEXT,
-    metadata TEXT,
-    PRIMARY KEY (store_id, version)
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_media_corpus_snapshots_store ON media_corpus_snapshots(store_id);
-  CREATE INDEX IF NOT EXISTS idx_media_corpus_snapshots_created ON media_corpus_snapshots(store_id, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS media_corpus_parents (
-    child_store_id TEXT NOT NULL,
-    child_version TEXT NOT NULL,
-    parent_store_id TEXT NOT NULL,
-    parent_version TEXT NOT NULL,
-    role TEXT,
-    PRIMARY KEY (child_store_id, child_version, parent_store_id, parent_version),
-    FOREIGN KEY (child_store_id, child_version) REFERENCES media_corpus_snapshots(store_id, version),
-    FOREIGN KEY (parent_store_id, parent_version) REFERENCES media_corpus_snapshots(store_id, version)
-  );
-
-  CREATE TABLE IF NOT EXISTS media_profile_filters (
-    id TEXT PRIMARY KEY,
-    profile_id TEXT NOT NULL REFERENCES media_profiles(id) ON DELETE CASCADE,
-    account_id TEXT NOT NULL REFERENCES media_accounts(id) ON DELETE CASCADE,
-    filter_type TEXT NOT NULL,
-    filter_key TEXT NOT NULL,
-    filter_value TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_media_profile_filters_profile ON media_profile_filters(profile_id);
-  CREATE INDEX IF NOT EXISTS idx_media_profile_filters_account ON media_profile_filters(account_id);
-`;
-
 export const encryptToken = async (plaintext: string, key: string = ENCRYPTION_KEY): Promise<string> => {
 	return unwrap(await encrypt(plaintext, key));
-};
-
-const createD1FromSqlite = (db: Database): D1Database => {
-	const createPreparedStatement = (query: string): D1PreparedStatement => {
-		let boundParams: SQLQueryBindings[] = [];
-
-		const statement: D1PreparedStatement = {
-			bind(...params: unknown[]): D1PreparedStatement {
-				boundParams = params as SQLQueryBindings[];
-				return statement;
-			},
-			async first<T>(column?: string): Promise<T | null> {
-				const stmt = db.prepare(query);
-				const row = stmt.get(...boundParams) as Record<string, unknown> | null;
-				if (!row) return null;
-				if (column) return row[column] as T;
-				return row as T;
-			},
-			async all<T>(): Promise<{ results: T[] }> {
-				const stmt = db.prepare(query);
-				const rows = stmt.all(...boundParams) as T[];
-				return { results: rows };
-			},
-			async run(): Promise<{ success: boolean; changes: number }> {
-				const stmt = db.prepare(query);
-				const result = stmt.run(...boundParams);
-				return { success: true, changes: result.changes };
-			},
-		};
-		return statement;
-	};
-
-	return {
-		prepare: createPreparedStatement,
-		async batch<T>(statements: D1PreparedStatement[]): Promise<T[]> {
-			const results: T[] = [];
-			for (const stmt of statements) {
-				const result = await stmt.run();
-				results.push(result as T);
-			}
-			return results;
-		},
-		async exec(query: string): Promise<void> {
-			db.exec(query);
-		},
-	};
 };
 
 const createMemoryR2 = (): R2Bucket => {
@@ -454,21 +281,19 @@ const defaultTestProviderFactory: ProviderFactory = {
 
 export const createTestContext = (): TestContext => {
 	const db = new Database(":memory:");
-	db.exec(SCHEMA);
+	const drizzleDb = drizzle(db, { schema });
 
-	const d1 = createD1FromSqlite(db);
+	// Run migrations programmatically
+	migrate(drizzleDb, { migrationsFolder: "./migrations" });
+
 	const r2 = createMemoryR2();
 	const providers = createTestProviders();
 	const corpus = createTestCorpus();
 
 	const env: TestEnv = {
-		DB: d1,
-		CORPUS_BUCKET: r2,
 		ENCRYPTION_KEY: ENCRYPTION_KEY,
 		ENVIRONMENT: "test",
 	};
-
-	const drizzleDb = drizzle(db, { schema });
 
 	const dbWithBatch = Object.assign(drizzleDb, {
 		batch: async <T extends readonly unknown[]>(queries: T): Promise<T> => {
@@ -497,7 +322,7 @@ export const createTestContext = (): TestContext => {
 		providers.twitter.reset();
 	};
 
-	return { db, d1, r2, providers, env, corpus, appContext, cleanup };
+	return { db, drizzle: drizzleDb, r2, providers, env, corpus, appContext, cleanup };
 };
 
 type TestVariables = {
@@ -507,7 +332,6 @@ type TestVariables = {
 
 /**
  * Test auth middleware that validates API keys from local database.
- * This is a test-only middleware that simulates auth without calling DevPad.
  */
 const createTestAuthMiddleware = (ctx: TestContext) => {
 	return async (c: { req: { header: (name: string) => string | undefined }; set: (key: string, value: unknown) => void; json: (body: unknown, status?: number) => Response }, next: () => Promise<void>) => {
@@ -515,10 +339,18 @@ const createTestAuthMiddleware = (ctx: TestContext) => {
 		if (authHeader?.startsWith("Bearer ")) {
 			const token = authHeader.slice(7);
 			const keyHash = await hash_api_key(token);
-			const result = await ctx.d1
-				.prepare("SELECT ak.id, ak.user_id, u.name, u.email FROM media_api_keys ak JOIN media_users u ON ak.user_id = u.id WHERE ak.key_hash = ?")
-				.bind(keyHash)
-				.first<{ id: string; user_id: string; name: string | null; email: string | null }>();
+
+			const result = await ctx.drizzle
+				.select({
+					id: schema.apiKeys.id,
+					user_id: schema.apiKeys.user_id,
+					name: schema.users.name,
+					email: schema.users.email,
+				})
+				.from(schema.apiKeys)
+				.innerJoin(schema.users, sql`${schema.apiKeys.user_id} = ${schema.users.id}`)
+				.where(sql`${schema.apiKeys.key_hash} = ${keyHash}`)
+				.get();
 
 			if (result) {
 				c.set("auth", {
@@ -546,12 +378,12 @@ export const createTestApp = (ctx: TestContext) => {
 		await next();
 	});
 
-	// Use test auth middleware that validates local API keys
 	mediaApp.use("/api/*", createTestAuthMiddleware(ctx));
 
 	mediaApp.route("/api/v1/timeline", timelineRoutes);
 	mediaApp.route("/api/v1/connections", connectionRoutes);
 	mediaApp.route("/api/v1/profiles", profileRoutes);
+	mediaApp.route("/api/v1/credentials", credentialRoutes);
 
 	app.route("/media", mediaApp);
 
@@ -664,12 +496,16 @@ export const createGitHubProviderFromLegacyAccounts = (dataByAccountId: LegacyGi
 
 const now = () => new Date().toISOString();
 
+// Seed functions using drizzle
 export const seedUser = async (ctx: TestContext, user: UserSeed): Promise<void> => {
 	const timestamp = now();
-	await ctx.d1
-		.prepare("INSERT INTO media_users (id, email, name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)")
-		.bind(user.id, user.email ?? null, user.name ?? null, timestamp, timestamp)
-		.run();
+	await ctx.drizzle.insert(schema.users).values({
+		id: user.id,
+		email: user.email ?? null,
+		name: user.name ?? null,
+		created_at: timestamp,
+		updated_at: timestamp,
+	});
 };
 
 export const seedAccount = async (ctx: TestContext, profileId: string, account: AccountSeed): Promise<void> => {
@@ -677,39 +513,33 @@ export const seedAccount = async (ctx: TestContext, profileId: string, account: 
 	const encryptedAccessToken = await encryptToken(account.access_token, ctx.env.ENCRYPTION_KEY);
 	const encryptedRefreshToken = account.refresh_token ? await encryptToken(account.refresh_token, ctx.env.ENCRYPTION_KEY) : null;
 
-	await ctx.d1
-		.prepare(`
-      INSERT INTO media_accounts (
-        id, profile_id, platform, platform_user_id, platform_username,
-        access_token_encrypted, refresh_token_encrypted,
-        is_active, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-		.bind(account.id, profileId, account.platform, account.platform_user_id ?? null, account.platform_username ?? null, encryptedAccessToken, encryptedRefreshToken, (account.is_active ?? true) ? 1 : 0, timestamp, timestamp)
-		.run();
+	await ctx.drizzle.insert(schema.accounts).values({
+		id: account.id,
+		profile_id: profileId,
+		platform: account.platform,
+		platform_user_id: account.platform_user_id ?? null,
+		platform_username: account.platform_username ?? null,
+		access_token_encrypted: encryptedAccessToken,
+		refresh_token_encrypted: encryptedRefreshToken,
+		is_active: account.is_active ?? true,
+		created_at: timestamp,
+		updated_at: timestamp,
+	});
 };
 
 export const seedRateLimit = async (ctx: TestContext, accountId: string, state: RateLimitSeed): Promise<void> => {
 	const timestamp = now();
-	await ctx.d1
-		.prepare(`
-      INSERT INTO media_rate_limits (
-        id, account_id, remaining, limit_total, reset_at,
-        consecutive_failures, last_failure_at, circuit_open_until, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-		.bind(
-			uuid(),
-			accountId,
-			state.remaining ?? null,
-			state.limit_total ?? null,
-			state.reset_at?.toISOString() ?? null,
-			state.consecutive_failures ?? 0,
-			state.last_failure_at?.toISOString() ?? null,
-			state.circuit_open_until?.toISOString() ?? null,
-			timestamp
-		)
-		.run();
+	await ctx.drizzle.insert(schema.rateLimits).values({
+		id: uuid(),
+		account_id: accountId,
+		remaining: state.remaining ?? null,
+		limit_total: state.limit_total ?? null,
+		reset_at: state.reset_at?.toISOString() ?? null,
+		consecutive_failures: state.consecutive_failures ?? 0,
+		last_failure_at: state.last_failure_at?.toISOString() ?? null,
+		circuit_open_until: state.circuit_open_until?.toISOString() ?? null,
+		updated_at: timestamp,
+	});
 };
 
 export const seedApiKey = async (ctx: TestContext, userId: string, keyValue: string, name?: string): Promise<string> => {
@@ -717,23 +547,29 @@ export const seedApiKey = async (ctx: TestContext, userId: string, keyValue: str
 	const keyHash = await hash_api_key(keyValue);
 	const timestamp = now();
 
-	await ctx.d1
-		.prepare("INSERT INTO media_api_keys (id, user_id, key_hash, name, created_at) VALUES (?, ?, ?, ?, ?)")
-		.bind(keyId, userId, keyHash, name ?? null, timestamp)
-		.run();
+	await ctx.drizzle.insert(schema.apiKeys).values({
+		id: keyId,
+		user_id: userId,
+		key_hash: keyHash,
+		name: name ?? null,
+		created_at: timestamp,
+	});
 
 	return keyId;
 };
 
 export const seedProfile = async (ctx: TestContext, userId: string, profile: ProfileSeed): Promise<void> => {
 	const timestamp = now();
-	await ctx.d1
-		.prepare(`
-      INSERT INTO media_profiles (id, user_id, slug, name, description, theme, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-		.bind(profile.id, userId, profile.slug, profile.name, profile.description ?? null, profile.theme ?? null, timestamp, timestamp)
-		.run();
+	await ctx.drizzle.insert(schema.profiles).values({
+		id: profile.id,
+		user_id: userId,
+		slug: profile.slug,
+		name: profile.name,
+		description: profile.description ?? null,
+		theme: profile.theme ?? null,
+		created_at: timestamp,
+		updated_at: timestamp,
+	});
 };
 
 export type ProfileFilterSeed = {
@@ -746,23 +582,29 @@ export type ProfileFilterSeed = {
 export const seedProfileFilter = async (ctx: TestContext, profileId: string, filter: ProfileFilterSeed): Promise<string> => {
 	const timestamp = now();
 	const filterId = uuid();
-	await ctx.d1
-		.prepare(`
-      INSERT INTO media_profile_filters (id, profile_id, account_id, filter_type, filter_key, filter_value, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `)
-		.bind(filterId, profileId, filter.account_id, filter.filter_type, filter.filter_key, filter.filter_value, timestamp, timestamp)
-		.run();
+	await ctx.drizzle.insert(schema.profileFilters).values({
+		id: filterId,
+		profile_id: profileId,
+		account_id: filter.account_id,
+		filter_type: filter.filter_type,
+		filter_key: filter.filter_key,
+		filter_value: filter.filter_value,
+		created_at: timestamp,
+		updated_at: timestamp,
+	});
 	return filterId;
 };
 
-export const getUser = async (ctx: TestContext, userId: string) => ctx.d1.prepare("SELECT * FROM media_users WHERE id = ?").bind(userId).first();
+export const getUser = async (ctx: TestContext, userId: string) => {
+	return ctx.drizzle.select().from(schema.users).where(sql`${schema.users.id} = ${userId}`).get();
+};
 
-export const getAccount = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM media_accounts WHERE id = ?").bind(accountId).first();
+export const getAccount = async (ctx: TestContext, accountId: string) => {
+	return ctx.drizzle.select().from(schema.accounts).where(sql`${schema.accounts.id} = ${accountId}`).get();
+};
 
 // Helper to setup GitHub memory provider with data from legacy fixtures
 export const setupGitHubProvider = (ctx: TestContext, data: LegacyGitHubRaw): void => {
-	// Convert legacy GitHubRaw format to new GitHubFetchResult format
 	const repoCommits = new Map<string, Array<{ sha?: string; message?: string; date?: string }>>();
 
 	for (const commit of data.commits) {
@@ -774,7 +616,6 @@ export const setupGitHubProvider = (ctx: TestContext, data: LegacyGitHubRaw): vo
 	const repos = Array.from(repoCommits.entries()).map(([repo, commits]) => ({ repo, commits }));
 	const fetchResult = repos.length > 0 ? makeGitHubFetchResult(repos) : makeGitHubFetchResult([]);
 
-	// Set up the memory provider
 	ctx.providers.github.setUsername(fetchResult.meta.username);
 	ctx.providers.github.setRepositories(fetchResult.meta.repositories);
 	for (const [fullName, data] of fetchResult.repos) {
@@ -782,20 +623,17 @@ export const setupGitHubProvider = (ctx: TestContext, data: LegacyGitHubRaw): vo
 	}
 };
 
-export const getRateLimit = async (ctx: TestContext, accountId: string) => ctx.d1.prepare("SELECT * FROM media_rate_limits WHERE account_id = ?").bind(accountId).first();
+export const getRateLimit = async (ctx: TestContext, accountId: string) => {
+	return ctx.drizzle.select().from(schema.rateLimits).where(sql`${schema.rateLimits.account_id} = ${accountId}`).get();
+};
 
-export const getUserAccounts = async (ctx: TestContext, userId: string) =>
-	ctx.d1
-		.prepare(`
-      SELECT a.*, p.user_id
-      FROM media_accounts a
-      INNER JOIN media_profiles p ON a.profile_id = p.id
-      WHERE p.user_id = ?
-    `)
-		.bind(userId)
-		.all();
+export const getUserAccounts = async (ctx: TestContext, userId: string) => {
+	return ctx.drizzle.select().from(schema.accounts).innerJoin(schema.profiles, sql`${schema.accounts.profile_id} = ${schema.profiles.id}`).where(sql`${schema.profiles.user_id} = ${userId}`).all();
+};
 
-export const getProfileAccounts = async (ctx: TestContext, profileId: string) => ctx.d1.prepare("SELECT * FROM media_accounts WHERE profile_id = ?").bind(profileId).all();
+export const getProfileAccounts = async (ctx: TestContext, profileId: string) => {
+	return ctx.drizzle.select().from(schema.accounts).where(sql`${schema.accounts.profile_id} = ${profileId}`).all();
+};
 
 export const seedUserWithProfile = async (ctx: TestContext, user: UserSeed, profile: ProfileSeed): Promise<void> => {
 	await seedUser(ctx, user);

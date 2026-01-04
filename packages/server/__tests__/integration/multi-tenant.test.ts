@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
+import { accounts } from "@media/schema/database";
 import { handleCron } from "@media/server/cron";
 import type { TimelineEntry } from "@media/server/timeline";
+import { eq } from "drizzle-orm";
 import { ACCOUNTS, BLUESKY_FIXTURES, GITHUB_FIXTURES, PROFILES, USERS, makeGitHubExtendedCommit, makeGitHubRaw } from "./fixtures";
 import { type TestContext, createGitHubProviderFromLegacyAccounts, createProviderFactoryFromAccounts, createTestContext, getUserAccounts, seedAccount, seedProfile, seedUser, setupGitHubProvider } from "./setup";
 
@@ -69,8 +71,8 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 			await seedAccount(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_bluesky);
 
-			const accounts = await getUserAccounts(ctx, USERS.alice.id);
-			expect(accounts.results).toHaveLength(2);
+			const userAccounts = await getUserAccounts(ctx, USERS.alice.id);
+			expect(userAccounts).toHaveLength(2);
 		});
 	});
 
@@ -134,7 +136,7 @@ describe("multi-tenant", () => {
 			await seedProfile(ctx, USERS.alice.id, PROFILES.alice_main);
 			await seedAccount(ctx, PROFILES.alice_main.id, ACCOUNTS.alice_github);
 
-			const account = await ctx.d1.prepare("SELECT profile_id FROM media_accounts WHERE id = ?").bind(ACCOUNTS.alice_github.id).first<{ profile_id: string }>();
+			const account = await ctx.drizzle.select({ profile_id: accounts.profile_id }).from(accounts).where(eq(accounts.id, ACCOUNTS.alice_github.id)).get();
 			expect(account?.profile_id).toBe(PROFILES.alice_main.id);
 		});
 
@@ -146,10 +148,9 @@ describe("multi-tenant", () => {
 			await seedAccount(ctx, PROFILES.alice_work.id, ACCOUNTS.alice_bluesky);
 
 			const aliceAccounts = await getUserAccounts(ctx, USERS.alice.id);
-			expect(aliceAccounts.results).toHaveLength(2);
+			expect(aliceAccounts).toHaveLength(2);
 
-			const typedAliceAccounts = aliceAccounts.results as Array<{ id: string }>;
-			const accountIds = typedAliceAccounts.map(a => a.id).sort();
+			const accountIds = aliceAccounts.map(a => a.media_accounts.id).sort();
 			expect(accountIds).toEqual([ACCOUNTS.alice_bluesky.id, ACCOUNTS.alice_github.id].sort());
 		});
 	});
