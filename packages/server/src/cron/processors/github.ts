@@ -1,12 +1,12 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { GitHubMetaStore, GitHubRepoCommitsStore, GitHubRepoPRsStore } from "@media/schema";
-import { type ProcessError, formatFetchError, storeMeta as genericStoreMeta } from "./cron/platform-processor";
-import { createLogger } from "./logger";
-import { mergeByKey } from "./merge";
-import type { GitHubFetchResult } from "./platforms/github";
-import type { ProviderError } from "./platforms/types";
-import { createGitHubCommitsStore, createGitHubMetaStore, createGitHubPRsStore } from "./storage";
-import { type Result, err, ok, pipe, to_nullable } from "./utils";
+import { createLogger } from "../../logger";
+import { mergeByKey } from "../../merge";
+import type { GitHubFetchResult } from "../../platforms/github";
+import type { ProviderError } from "../../platforms/types";
+import { createGitHubCommitsStore, createGitHubMetaStore, createGitHubPRsStore } from "../../storage";
+import { type Result, err, ok, pipe, to_nullable } from "../../utils";
+import { type ProcessError, formatFetchError, storeMeta as genericStoreMeta } from "../platform-processor";
 
 const log = createLogger("cron:github");
 

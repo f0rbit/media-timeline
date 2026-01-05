@@ -1,13 +1,12 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { RedditCommentsStore, RedditMetaStore, RedditPostsStore } from "@media/schema";
-import { type ProcessError, type StoreStats, formatFetchError, storeMeta as genericStoreMeta, storeWithMerge } from "./cron/platform-processor";
-import { createLogger } from "./logger";
-import { mergeByKey } from "./merge";
-import type { RedditFetchResult, RedditProviderLike } from "./platforms/reddit";
-import type { AccountWithUser } from "./platforms/registry";
-import type { ProviderError } from "./platforms/types";
-import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "./storage";
-import { type Result, ok, pipe } from "./utils";
+import { createLogger } from "../../logger";
+import { mergeByKey } from "../../merge";
+import type { RedditFetchResult, RedditProviderLike } from "../../platforms/reddit";
+import type { AccountWithUser } from "../../platforms/registry";
+import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "../../storage";
+import { type Result, ok, pipe } from "../../utils";
+import { type ProcessError, type StoreStats, formatFetchError, storeMeta as genericStoreMeta, storeWithMerge } from "../platform-processor";
 
 const log = createLogger("cron:reddit");
 
@@ -48,13 +47,7 @@ const storePosts = (backend: Backend, accountId: string, posts: RedditPostsStore
 const storeComments = (backend: Backend, accountId: string, comments: RedditCommentsStore): Promise<StoreStats> =>
 	storeWithMerge(backend, accountId, { name: "comments", create: createRedditCommentsStore, merge: mergeComments, getKey: () => "", getTotal: m => m.total_comments }, comments);
 
-/**
- * Process a Reddit account. For BYO accounts, we use the stored username (platform_username)
- * since client_credentials tokens can't access /api/v1/me.
- */
 export const processRedditAccount = (backend: Backend, accountId: string, token: string, provider: RedditProviderLike, account?: AccountWithUser): Promise<Result<RedditProcessResult, ProcessError>> => {
-	// For BYO accounts, use fetchForUsername with the stored username
-	// The username is stored in platform_username when setting up BYO credentials
 	const storedUsername = account?.platform_user_id;
 
 	const fetchPromise = storedUsername ? provider.fetchForUsername(token, storedUsername) : provider.fetch(token);

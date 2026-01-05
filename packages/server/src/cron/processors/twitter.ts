@@ -1,12 +1,12 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { TwitterMetaStore, TwitterTweetsStore } from "@media/schema";
-import { type ProcessError, type StoreStats, defaultStats, formatFetchError, storeMeta as genericStoreMeta } from "./cron/platform-processor";
-import { createLogger } from "./logger";
-import { mergeByKey } from "./merge";
-import type { TwitterFetchResult } from "./platforms/twitter";
-import type { ProviderError } from "./platforms/types";
-import { createTwitterMetaStore, createTwitterTweetsStore } from "./storage";
-import { type Result, ok, pipe, to_nullable } from "./utils";
+import { createLogger } from "../../logger";
+import { mergeByKey } from "../../merge";
+import type { TwitterFetchResult } from "../../platforms/twitter";
+import type { ProviderError } from "../../platforms/types";
+import { createTwitterMetaStore, createTwitterTweetsStore } from "../../storage";
+import { type Result, ok, pipe } from "../../utils";
+import { type ProcessError, type StoreStats, formatFetchError, storeMeta as genericStoreMeta, storeWithMerge } from "../platform-processor";
 
 const log = createLogger("cron:twitter");
 
@@ -19,9 +19,6 @@ export type TwitterProcessResult = {
 		new_tweets: number;
 	};
 };
-
-type TwitterStoreStats = StoreStats & { totalTweets: number };
-const defaultTwitterStats: TwitterStoreStats = { ...defaultStats, totalTweets: 0 };
 
 const mergeTweets = (existing: TwitterTweetsStore | null, incoming: TwitterTweetsStore): { merged: TwitterTweetsStore; newCount: number } => {
 	const { merged: tweets, newCount } = mergeByKey(existing?.tweets, incoming.tweets, t => t.id);
@@ -48,20 +45,8 @@ type TwitterProvider = {
 
 const storeMeta = (backend: Backend, accountId: string, meta: TwitterMetaStore): Promise<string> => genericStoreMeta(backend, accountId, createTwitterMetaStore, meta);
 
-const storeTweets = async (backend: Backend, accountId: string, tweets: TwitterTweetsStore): Promise<TwitterStoreStats> => {
-	const storeResult = createTwitterTweetsStore(backend, accountId);
-	if (!storeResult.ok) return defaultTwitterStats;
-
-	const store = storeResult.value.store;
-	const existing = to_nullable(await store.get_latest())?.data ?? null;
-	const { merged, newCount } = mergeTweets(existing, tweets);
-	const putResult = await store.put(merged);
-
-	if (!putResult.ok) return defaultTwitterStats;
-
-	log.debug("Stored tweets", { new: newCount, total: merged.total_tweets });
-	return { version: putResult.value.version, newCount, total: merged.total_tweets, totalTweets: merged.total_tweets };
-};
+const storeTweets = (backend: Backend, accountId: string, tweets: TwitterTweetsStore): Promise<StoreStats> =>
+	storeWithMerge(backend, accountId, { name: "tweets", create: createTwitterTweetsStore, merge: mergeTweets, getKey: () => "", getTotal: m => m.total_tweets }, tweets);
 
 export const processTwitterAccount = (backend: Backend, accountId: string, token: string, provider: TwitterProvider): Promise<Result<TwitterProcessResult, ProcessError>> =>
 	pipe(provider.fetch(token))
@@ -72,7 +57,7 @@ export const processTwitterAccount = (backend: Backend, accountId: string, token
 
 			log.info("Processing complete", {
 				account_id: accountId,
-				total_tweets: tweetsResult.totalTweets,
+				total_tweets: tweetsResult.total,
 				new_tweets: tweetsResult.newCount,
 			});
 
@@ -81,7 +66,7 @@ export const processTwitterAccount = (backend: Backend, accountId: string, token
 				meta_version: metaVersion,
 				tweets_version: tweetsResult.version,
 				stats: {
-					total_tweets: tweetsResult.totalTweets,
+					total_tweets: tweetsResult.total,
 					new_tweets: tweetsResult.newCount,
 				},
 			});
