@@ -1,9 +1,8 @@
 import type { Backend } from "@f0rbit/corpus";
-import type { AccountId, Platform, UserId } from "@media/schema";
+import type { AccountId, DatabaseError, ForbiddenError, NotFoundError, Platform, UserId } from "@media/schema";
 import { accountSettings, accounts, errors, profiles, rateLimits } from "@media/schema";
 import { eq } from "drizzle-orm";
 import type { Database } from "./db";
-import type { ConnectionError } from "./errors";
 import { createLogger } from "./logger";
 import {
 	createGitHubCommitsStore,
@@ -35,7 +34,7 @@ export type DeleteConnectionResult = {
 	affected_users: string[];
 };
 
-export type DeleteConnectionError = ConnectionError;
+export type DeleteConnectionError = NotFoundError | ForbiddenError | DatabaseError;
 
 export type DeletionAttempt = {
 	success: boolean;
@@ -230,7 +229,7 @@ const deleteTable = async (deletion: TableDeletion, accountId: string): Promise<
 		},
 		(e): DeleteConnectionError => {
 			log.error("Failed to delete table", { step: "db", table: deletion.name, error: String(e) });
-			return { kind: "database_error", message: `Failed to delete ${deletion.name}: ${String(e)}` };
+			return { kind: "db_error", message: `Failed to delete ${deletion.name}: ${String(e)}` };
 		}
 	);
 };

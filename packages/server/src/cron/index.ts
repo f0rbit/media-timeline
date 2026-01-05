@@ -1,8 +1,7 @@
 import type { Backend } from "@f0rbit/corpus";
-import { BlueskyRawSchema, type CommitGroup, DevpadRawSchema, type Platform, type TimelineItem, YouTubeRawSchema, accounts, profiles, rateLimits } from "@media/schema";
+import { BlueskyRawSchema, type CommitGroup, type CronError, DevpadRawSchema, type Platform, type TimelineItem, YouTubeRawSchema, accounts, profiles, rateLimits } from "@media/schema";
 import { eq, sql } from "drizzle-orm";
 import type { Database } from "../db";
-import type { CronProcessError } from "../errors";
 import type { AppContext } from "../infrastructure";
 import { createLogger } from "../logger";
 import {
@@ -233,28 +232,27 @@ const recordSuccess = async (db: Database, accountId: string): Promise<void> => 
 };
 
 const logProcessError =
-	(accountId: string): ((e: CronProcessError) => void) =>
-	(e: CronProcessError): void => {
+	(accountId: string): ((e: CronError) => void) =>
+	(e: CronError): void => {
 		switch (e.kind) {
-			case "decryption_failed":
-				log.error("Decryption failed", { account_id: accountId, message: e.message });
+			case "encryption_error":
+				log.error("Encryption error", { account_id: accountId, operation: e.operation, message: e.message });
 				break;
-			case "fetch_failed":
-				log.error("Fetch failed", { account_id: accountId, message: e.message });
+			case "network_error":
+				log.error("Network error", { account_id: accountId, message: e.message });
 				break;
-			case "store_failed":
-				log.error("Store creation failed", { account_id: accountId, store_id: e.store_id });
+			case "store_error":
+				log.error("Store error", { account_id: accountId, operation: e.operation, message: e.message });
 				break;
-			case "put_failed":
-				log.error("Store put failed", { account_id: accountId, message: e.message });
+			case "auth_expired":
+				log.error("Auth expired", { account_id: accountId, message: e.message });
 				break;
 		}
 	};
 
-const toProcessError = (e: ProviderError): CronProcessError => ({
-	kind: "fetch_failed",
+const toProcessError = (e: ProviderError): CronError => ({
+	kind: "network_error",
 	message: formatProviderError(e),
-	status: e.kind === "api_error" ? e.status : undefined,
 });
 
 const processPlatformAccountWithProcessor = async (ctx: AppContext, account: AccountWithUser, processor: CronProcessor, platform: Platform): Promise<RawSnapshot | null> => {
@@ -287,7 +285,7 @@ const processPlatformAccountWithProcessor = async (ctx: AppContext, account: Acc
 
 const processGenericAccount = async (ctx: AppContext, account: AccountWithUser): Promise<RawSnapshot | null> => {
 	return pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-		.map_err((e): CronProcessError => ({ kind: "decryption_failed", message: e.message }))
+		.map_err((e): CronError => ({ kind: "encryption_error", operation: "decrypt", message: e.message }))
 		.flat_map(token => {
 			const result = ctx.providerFactory.create(account.platform, account.platform_user_id, token);
 			return pipe(result)
@@ -297,13 +295,13 @@ const processGenericAccount = async (ctx: AppContext, account: AccountWithUser):
 		})
 		.flat_map(raw_data => {
 			return pipe(createRawStore(ctx.backend, account.platform, account.id))
-				.map_err((e): CronProcessError => ({ kind: "store_failed", store_id: e.message ?? "unknown" }))
+				.map_err((e): CronError => ({ kind: "store_error", operation: "create", message: e.message ?? "unknown" }))
 				.map(({ store }) => ({ raw_data, store }))
 				.result();
 		})
 		.flat_map(({ raw_data, store }) => {
 			return pipe(store.put(raw_data as RawData, { tags: [`platform:${account.platform}`, `account:${account.id}`] }))
-				.map_err((e): CronProcessError => ({ kind: "put_failed", message: String(e) }))
+				.map_err((e): CronError => ({ kind: "store_error", operation: "put", message: String(e) }))
 				.map((result: { version: string }) => ({ raw_data, version: result.version }))
 				.result();
 		})
