@@ -1,10 +1,9 @@
 import type { Backend } from "@f0rbit/corpus";
-import type { CommitGroup, DateGroup, Platform, TimelineItem } from "@media/schema";
-import { type Profile, type ProfileFilter, accounts, profileFilters, profiles } from "@media/schema";
+import { accounts, type CommitGroup, type DateGroup, type Platform, type Profile, type ProfileFilter, profileFilters, profiles, type TimelineItem, errors, type NotFoundError, type StoreError } from "@media/schema";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Database } from "../db";
 import { createLogger } from "../logger";
-import { type Result, err, ok } from "../utils";
+import { type Result, ok } from "../utils";
 import { groupByDate, groupCommits } from "./grouping";
 import { loadGitHubData, loadRedditData, loadTwitterData } from "./loaders";
 import { normalizeGitHub, normalizeReddit, normalizeTwitter } from "./normalizers";
@@ -39,7 +38,7 @@ type ProfileSettings = {
 	filters: ProfileFilter[];
 };
 
-type ProfileTimelineError = { kind: "profile_not_found" } | { kind: "no_accounts" } | { kind: "timeline_generation_failed"; message: string };
+type ProfileTimelineError = NotFoundError | StoreError;
 
 type AccountInfo = {
 	id: string;
@@ -346,7 +345,7 @@ export async function generateProfileTimeline(options: ProfileTimelineOptions): 
 	const settings = await loadProfileSettings(db, profileId);
 	if (!settings) {
 		log.warn("Profile not found", { profile_id: profileId });
-		return err({ kind: "profile_not_found" });
+		return errors.notFound("profile", profileId);
 	}
 
 	const { profile, accountIds, filters } = settings;

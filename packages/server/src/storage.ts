@@ -2,6 +2,7 @@ import { type Backend, type Parser, type Store, create_corpus, define_store, jso
 import {
 	BlueskyRawSchema,
 	DevpadRawSchema,
+	errors,
 	type GitHubMetaStore,
 	GitHubMetaStoreSchema,
 	GitHubRawSchema,
@@ -9,12 +10,14 @@ import {
 	GitHubRepoCommitsStoreSchema,
 	type GitHubRepoPRsStore,
 	GitHubRepoPRsStoreSchema,
+	type ParseError,
 	type RedditCommentsStore,
 	RedditCommentsStoreSchema,
 	type RedditMetaStore,
 	RedditMetaStoreSchema,
 	type RedditPostsStore,
 	RedditPostsStoreSchema,
+	type StoreError,
 	TimelineSchema,
 	type TwitterMetaStore,
 	TwitterMetaStoreSchema,
@@ -23,11 +26,11 @@ import {
 	YouTubeRawSchema,
 } from "@media/schema";
 import { z } from "zod";
-import { type Result, err, ok } from "./utils";
+import { type Result, ok } from "./utils";
 
 const STORAGE_PREFIX = "media";
 
-export type CorpusError = { kind: "store_not_found"; store_id: string };
+export type CorpusError = StoreError | ParseError;
 
 const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, schema: Parser<TData>): Result<{ store: Store<TData>; id: TId }, CorpusError> => {
 	const corpus = create_corpus()
@@ -35,7 +38,7 @@ const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, 
 		.with_store(define_store(id, json_codec(schema)))
 		.build();
 	const store = corpus.stores[id];
-	if (!store) return err({ kind: "store_not_found", store_id: id });
+	if (!store) return errors.storeError("get", `Store not found: ${id}`);
 	return ok({ store, id });
 };
 
@@ -76,9 +79,9 @@ export type ParsedStoreId =
 	| { type: "twitter_tweets"; accountId: string }
 	| { type: "raw"; platform: string; accountId: string };
 
-export const parseStoreId = (storeId: string): Result<ParsedStoreId, { kind: "invalid_store_id"; storeId: string }> => {
+export const parseStoreId = (storeId: string): Result<ParsedStoreId, ParseError> => {
 	const parts = storeId.split("/");
-	if (parts[0] !== STORAGE_PREFIX) return err({ kind: "invalid_store_id", storeId });
+	if (parts[0] !== STORAGE_PREFIX) return errors.parseError(`Invalid store ID prefix: ${storeId}`);
 
 	const [, type, id, subtype, ...rest] = parts;
 
@@ -92,7 +95,7 @@ export const parseStoreId = (storeId: string): Result<ParsedStoreId, { kind: "in
 	if (type === "twitter" && id && subtype === "tweets") return ok({ type: "twitter_tweets", accountId: id });
 	if (type === "raw" && id && subtype) return ok({ type: "raw", platform: id, accountId: subtype });
 
-	return err({ kind: "invalid_store_id", storeId });
+	return errors.parseError(`Invalid store ID format: ${storeId}`);
 };
 
 export const rawStoreId = STORE_PATTERNS.raw;

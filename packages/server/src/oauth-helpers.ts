@@ -1,10 +1,11 @@
-import { type Platform, accounts, apiKeys, profiles } from "@media/schema";
+import { accounts, apiKeys, errors, type BadRequestError, type ParseError, type Platform, profiles } from "@media/schema";
 import { and, eq, or } from "drizzle-orm";
 import type { Context } from "hono";
 import type { AuthContext } from "./auth";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
+import { createLogger } from "./logger";
 import { type FetchError, type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async, uuid } from "./utils";
 
 type Variables = {
@@ -25,10 +26,9 @@ export type TokenResponse = {
 	scope: string;
 };
 
-// Pure function error types
-export type DecodeStateError = { kind: "no_state" } | { kind: "invalid_base64" } | { kind: "invalid_json" } | { kind: "missing_user_id" } | { kind: "missing_profile_id" } | { kind: "missing_required_key"; key: string };
-
-export type TokenValidationError = { kind: "missing_access_token" } | { kind: "invalid_token_type"; got: string };
+// Pure function error types - using schema unified types
+export type DecodeStateError = BadRequestError | ParseError;
+export type TokenValidationError = BadRequestError;
 
 export type ValidatedTokens = {
 	access_token: string;
@@ -40,27 +40,27 @@ export type ValidatedTokens = {
 
 // Pure function: decode OAuth state data without Response/HonoContext dependency
 export const decodeOAuthStateData = <T extends Record<string, unknown>>(state: string | undefined, requiredKeys: (keyof T)[] = []): Result<OAuthState<T>, DecodeStateError> => {
-	if (!state) return err({ kind: "no_state" });
+	if (!state) return errors.badRequest("Missing state parameter");
 
 	const base64Result = try_catch(
 		() => atob(state),
-		(): DecodeStateError => ({ kind: "invalid_base64" })
+		(): ParseError => ({ kind: "parse_error", message: "Invalid base64 in OAuth state" })
 	);
 	if (!base64Result.ok) return base64Result;
 
 	const jsonResult = try_catch(
 		() => JSON.parse(base64Result.value) as OAuthState<T>,
-		(): DecodeStateError => ({ kind: "invalid_json" })
+		(): ParseError => ({ kind: "parse_error", message: "Invalid JSON in OAuth state" })
 	);
 	if (!jsonResult.ok) return jsonResult;
 
 	const stateData = jsonResult.value;
 
-	if (!stateData.user_id) return err({ kind: "missing_user_id" });
-	if (!stateData.profile_id) return err({ kind: "missing_profile_id" });
+	if (!stateData.user_id) return errors.badRequest("Missing user_id in OAuth state");
+	if (!stateData.profile_id) return errors.badRequest("Missing profile_id in OAuth state");
 
 	for (const key of requiredKeys) {
-		if (!stateData[key]) return err({ kind: "missing_required_key", key: String(key) });
+		if (!stateData[key]) return errors.badRequest(`Missing required OAuth key: ${String(key)}`);
 	}
 
 	return ok(stateData);
@@ -72,23 +72,23 @@ export const calculateTokenExpiry = (expiresIn: number | undefined, now: Date = 
 // Pure function: validate token response structure
 export const validateTokenResponse = (response: unknown): Result<ValidatedTokens, TokenValidationError> => {
 	if (typeof response !== "object" || response === null) {
-		return err({ kind: "missing_access_token" });
+		return errors.badRequest("Missing access_token in OAuth response");
 	}
 
 	const obj = response as Record<string, unknown>;
 
 	if (typeof obj.access_token !== "string" || obj.access_token === "") {
-		return err({ kind: "missing_access_token" });
+		return errors.badRequest("Missing access_token in OAuth response");
 	}
 
 	if (obj.token_type !== undefined && typeof obj.token_type !== "string") {
-		return err({ kind: "invalid_token_type", got: String(obj.token_type) });
+		return errors.badRequest(`Invalid token_type: expected Bearer, got ${String(obj.token_type)}`);
 	}
 
 	const tokenType = (obj.token_type as string) || "Bearer";
 	const normalizedTokenType = tokenType.toLowerCase();
 	if (normalizedTokenType !== "bearer" && normalizedTokenType !== "mac") {
-		return err({ kind: "invalid_token_type", got: tokenType });
+		return errors.badRequest(`Invalid token_type: expected Bearer, got ${tokenType}`);
 	}
 
 	return ok({
@@ -107,15 +107,19 @@ export type OAuthUser = {
 
 export type OAuthError = { kind: "token_exchange_failed"; message: string } | { kind: "user_fetch_failed"; message: string } | { kind: "encryption_failed"; message: string } | { kind: "database_failed"; message: string };
 
+export type OAuthSecrets = { clientId: string | undefined; clientSecret: string | undefined };
+
 export type OAuthCallbackConfig<TState extends Record<string, unknown> = Record<string, never>> = {
 	platform: Platform;
 	tokenUrl: string;
 	tokenAuthHeader: (clientId: string, clientSecret: string) => string;
 	tokenHeaders?: Record<string, string>;
-	tokenBody: (code: string, redirectUri: string, state: OAuthState<TState>) => URLSearchParams;
+	tokenBody: (code: string, redirectUri: string, state: OAuthState<TState>, secrets: { clientId: string; clientSecret: string }) => URLSearchParams;
 	fetchUser: (accessToken: string) => Promise<OAuthUser>;
-	getSecrets: (env: Bindings) => { clientId: string | undefined; clientSecret: string | undefined };
+	getSecrets: (env: Bindings) => OAuthSecrets;
 	stateKeys?: (keyof TState)[];
+	resolveSecrets?: (ctx: AppContext, state: OAuthState<TState>, envSecrets: OAuthSecrets) => Promise<OAuthSecrets>;
+	onSuccess?: (ctx: AppContext, state: OAuthState<TState>) => Promise<void>;
 };
 
 export const getFrontendUrl = (c: HonoContext): string => c.env.FRONTEND_URL || "http://localhost:4321";
@@ -211,9 +215,11 @@ export const decodeOAuthState = <T extends Record<string, unknown> = Record<stri
 	const result = decodeOAuthStateData<T>(state, requiredKeys);
 
 	if (!result.ok) {
-		const errorCode = result.error.kind === "no_state" ? "no_state" : "invalid_state";
-		if (errorCode === "invalid_state") {
-			console.error(`[${platform}-oauth] Invalid state parameter`);
+		const isNoState = result.error.kind === "bad_request" && result.error.message === "Missing state parameter";
+		const errorCode = isNoState ? "no_state" : "invalid_state";
+		if (!isNoState) {
+			const log = createLogger(`oauth:${platform}`);
+			log.error("Invalid state parameter");
 		}
 		return err(redirectWithError(c, platform, errorCode));
 	}
@@ -221,15 +227,21 @@ export const decodeOAuthState = <T extends Record<string, unknown> = Record<stri
 	return ok(result.value);
 };
 
-export const validateOAuthRequest = <TState extends Record<string, unknown>>(
-	c: HonoContext,
-	config: OAuthCallbackConfig<TState>
-): Result<{ code: string; stateData: OAuthState<TState>; redirectUri: string; clientId: string; clientSecret: string }, Response> => {
+export type ValidatedOAuthRequest<TState extends Record<string, unknown>> = {
+	code: string;
+	stateData: OAuthState<TState>;
+	redirectUri: string;
+	clientId: string;
+	clientSecret: string;
+};
+
+export const validateOAuthRequest = async <TState extends Record<string, unknown>>(c: HonoContext, ctx: AppContext, config: OAuthCallbackConfig<TState>): Promise<Result<ValidatedOAuthRequest<TState>, Response>> => {
+	const log = createLogger(`oauth:${config.platform}`);
 	const code = c.req.query("code");
 	const error = c.req.query("error");
 
 	if (error) {
-		console.error(`[${config.platform}-oauth] Authorization denied:`, error);
+		log.error("Authorization denied:", error);
 		return err(redirectWithError(c, config.platform, "auth_denied"));
 	}
 
@@ -240,7 +252,9 @@ export const validateOAuthRequest = <TState extends Record<string, unknown>>(
 	const stateResult = decodeOAuthState<TState>(c, c.req.query("state"), config.platform, config.stateKeys);
 	if (!stateResult.ok) return err(stateResult.error);
 
-	const { clientId, clientSecret } = config.getSecrets(c.env);
+	const envSecrets = config.getSecrets(c.env);
+	const { clientId, clientSecret } = config.resolveSecrets ? await config.resolveSecrets(ctx, stateResult.value, envSecrets) : envSecrets;
+
 	const redirectUri = `${c.env.API_URL || "http://localhost:8787"}/media/api/auth/${config.platform}/callback`;
 
 	if (!clientId || !clientSecret) {
@@ -273,7 +287,7 @@ export const exchangeCodeForTokens = <TState extends Record<string, unknown>>(
 					Authorization: config.tokenAuthHeader(clientId, clientSecret),
 					...config.tokenHeaders,
 				},
-				body: config.tokenBody(code, redirectUri, stateData),
+				body: config.tokenBody(code, redirectUri, stateData, { clientId, clientSecret }),
 			},
 			mapTokenExchangeError
 		)
@@ -373,29 +387,38 @@ export const createOAuthCallback = <TState extends Record<string, unknown> = Rec
 		const ctx = c.get("appContext");
 		if (!ctx) throw new Error("AppContext not set");
 
-		const validation = validateOAuthRequest(c, config);
+		const log = createLogger(`oauth:${config.platform}`);
+		const validation = await validateOAuthRequest(c, ctx, config);
 		if (!validation.ok) return validation.error;
 
 		const { code, stateData, redirectUri, clientId, clientSecret } = validation.value;
 
 		const result = await pipe(exchangeCodeForTokens(code, redirectUri, clientId, clientSecret, config, stateData))
 			.map_err(e => toCallbackError(e, "token_failed"))
-			.tap_err(e => console.error(`[${config.platform}-oauth] Token exchange failed:`, e.message))
+			.tap_err(e => log.error("Token exchange failed:", e.message))
 			.flat_map(tokens =>
 				pipe(fetchOAuthUserProfile(tokens.access_token, config))
 					.map_err(e => toCallbackError(e, "user_failed"))
 					.map(user => ({ tokens, user }))
 					.result()
 			)
-			.tap_err(e => console.error(`[${config.platform}-oauth] Failed to get user info:`, e.message))
+			.tap_err(e => log.error("Failed to get user info:", e.message))
 			.flat_map(({ tokens, user }) =>
 				pipe(upsertOAuthAccount(ctx.db, ctx.encryptionKey, stateData.profile_id, config.platform, user, tokens))
 					.map_err(e => toCallbackError(e, "save_failed"))
 					.result()
 			)
-			.tap_err(e => console.error(`[${config.platform}-oauth] Failed to save account:`, e.message))
+			.tap_err(e => log.error("Failed to save account:", e.message))
 			.result();
 
-		return result.ok ? redirectWithSuccess(c, config.platform) : redirectWithError(c, config.platform, result.error.errorCode);
+		if (!result.ok) {
+			return redirectWithError(c, config.platform, result.error.errorCode);
+		}
+
+		if (config.onSuccess) {
+			await config.onSuccess(ctx, stateData);
+		}
+
+		return redirectWithSuccess(c, config.platform);
 	};
 };

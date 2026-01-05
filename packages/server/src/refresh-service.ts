@@ -1,13 +1,14 @@
-import { accounts, profiles } from "@media/schema";
+import { accounts, errors, profiles, type ApiError, type BadRequestError, type EncryptionError, type NotFoundError } from "@media/schema";
 import { and, eq } from "drizzle-orm";
-import { processRedditAccount } from "./cron-reddit";
-import type { RefreshError } from "./errors";
+import { processRedditAccount } from "./cron";
 import type { AppContext } from "./infrastructure";
 import { createLogger } from "./logger";
 import { RedditProvider } from "./platforms/reddit";
 import { refreshRedditToken } from "./routes/auth";
 import { getCredentials } from "./services/credentials";
-import { type Result, decrypt, encrypt, err, match, ok, pipe } from "./utils";
+import { type Result, decrypt, encrypt, match, ok, pipe } from "./utils";
+
+export type RefreshError = BadRequestError | EncryptionError | ApiError | NotFoundError;
 
 const log = createLogger("refresh");
 
@@ -96,18 +97,18 @@ type RefreshableAccount = {
 
 const attemptRedditTokenRefresh = async (ctx: AppContext, account: RefreshableAccount): Promise<Result<string, RefreshError>> => {
 	if (!account.refresh_token_encrypted) {
-		return err({ kind: "no_refresh_token", message: "No refresh token available" });
+		return errors.badRequest("No refresh token available");
 	}
 
 	const refreshTokenResult = await decrypt(account.refresh_token_encrypted, ctx.encryptionKey);
 	if (!refreshTokenResult.ok) {
-		return err({ kind: "decryption_failed", message: "Failed to decrypt refresh token" });
+		return errors.encryptionError("decrypt", "Failed to decrypt refresh token");
 	}
 
 	const credentials = await getRedditCredentials(ctx, account.profile_id);
 	if (!credentials) {
 		log.error("No Reddit credentials available for token refresh", { account_id: account.id });
-		return err({ kind: "no_credentials", message: "No Reddit credentials available" });
+		return errors.badRequest("No Reddit credentials available");
 	}
 
 	log.info("Attempting Reddit token refresh", { account_id: account.id });
@@ -115,14 +116,14 @@ const attemptRedditTokenRefresh = async (ctx: AppContext, account: RefreshableAc
 	const refreshResult = await refreshRedditToken(refreshTokenResult.value, credentials.clientId, credentials.clientSecret);
 	if (!refreshResult.ok) {
 		log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
-		return err({ kind: "refresh_failed", message: "Token refresh failed" });
+		return errors.apiError(401, "Token refresh failed");
 	}
 
 	const newAccessToken = refreshResult.value.access_token;
 
 	const encryptResult = await encrypt(newAccessToken, ctx.encryptionKey);
 	if (!encryptResult.ok) {
-		return err({ kind: "encryption_failed", message: "Failed to encrypt new access token" });
+		return errors.encryptionError("encrypt", "Failed to encrypt new access token");
 	}
 
 	const now = new Date().toISOString();
@@ -179,11 +180,11 @@ const lookupAccount = async (ctx: AppContext, accountId: string, userId: string)
 		.get();
 
 	if (!row) {
-		return err({ kind: "not_found", message: "Account not found" });
+		return errors.notFound("account", accountId);
 	}
 
 	if (!row.is_active) {
-		return err({ kind: "inactive", message: "Account is not active" });
+		return errors.badRequest("Account is not active");
 	}
 
 	return ok({
@@ -237,11 +238,11 @@ const processGitHubRefresh = async (ctx: AppContext, account: AccountWithUser, u
 
 const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
 	const tokenResult = await pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-		.map_err((): RefreshError => ({ kind: "decryption_failed", message: "Failed to decrypt Reddit token" }))
+		.map_err((): RefreshError => ({ kind: "encryption_error", operation: "decrypt", message: "Failed to decrypt Reddit token" }))
 		.result();
 
 	if (!tokenResult.ok) {
-		return { result: err(tokenResult.error) };
+		return { result: { ok: false, error: tokenResult.error } };
 	}
 	let token = tokenResult.value;
 
@@ -317,7 +318,7 @@ export const refreshSingleAccount = async (ctx: AppContext, accountId: string, u
 					return processGenericRefresh(ctx, account, userId);
 			}
 		},
-		error => Promise.resolve({ result: err(error) })
+		error => Promise.resolve({ result: { ok: false as const, error } })
 	);
 };
 
@@ -380,7 +381,7 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 			for (const account of redditAccounts) {
 				try {
 					const tokenResult = await pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
-						.map_err((): RefreshError => ({ kind: "decryption_failed", message: "Failed to decrypt Reddit token" }))
+						.map_err((): RefreshError => ({ kind: "encryption_error", operation: "decrypt", message: "Failed to decrypt Reddit token" }))
 						.result();
 
 					if (!tokenResult.ok) {
