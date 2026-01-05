@@ -2,7 +2,7 @@ import { type AccountId, type Platform, type ProfileId, type UserId, accountSett
 import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership, requireProfileOwnership } from "../auth-ownership";
 import { deleteConnection } from "../connection-delete";
-import { combineUserTimeline, gatherLatestSnapshots } from "../cron";
+import { combineUserTimeline, gatherLatestSnapshots } from "../sync";
 import type { AppContext } from "../infrastructure";
 import { refreshAllAccounts, refreshSingleAccount } from "../refresh-service";
 import { createGitHubMetaStore, createRedditMetaStore } from "../storage";

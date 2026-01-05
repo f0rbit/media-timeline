@@ -26,6 +26,14 @@
 			"types": "./src/platforms/github.ts",
 			"import": "./src/platforms/github.ts"
 		},
+		"./platforms/reddit-memory": {
+			"types": "./src/platforms/reddit-memory.ts",
+			"import": "./src/platforms/reddit-memory.ts"
+		},
+		"./platforms/twitter-memory": {
+			"types": "./src/platforms/twitter-memory.ts",
+			"import": "./src/platforms/twitter-memory.ts"
+		},
 		"./timeline": {
 			"types": "./src/timeline/index.ts",
 			"import": "./src/timeline/index.ts"
@@ -77,6 +85,10 @@
 		"./routes": {
 			"types": "./src/routes/index.ts",
 			"import": "./src/routes/index.ts"
+		},
+		"./sync": {
+			"types": "./src/sync/index.ts",
+			"import": "./src/sync/index.ts"
 		}
 	},
 	"dependencies": {

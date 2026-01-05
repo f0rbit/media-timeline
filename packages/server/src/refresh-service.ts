@@ -1,18 +1,18 @@
 import { accounts, errors, profiles, type ApiError, type BadRequestError, type EncryptionError, type NotFoundError } from "@media/schema";
 import { and, eq } from "drizzle-orm";
-import { processRedditAccount } from "./cron";
+import { processRedditAccount } from "./cron/processors/reddit";
 import type { AppContext } from "./infrastructure";
 import { createLogger } from "./logger";
 import { RedditProvider } from "./platforms/reddit";
 import { refreshRedditToken } from "./routes/auth";
 import { getCredentials } from "./services/credentials";
+import { type AccountWithUser, combineUserTimeline, gatherLatestSnapshots, processAccount } from "./sync";
 import { type Result, decrypt, encrypt, match, ok, pipe } from "./utils";
 
 export type RefreshError = BadRequestError | EncryptionError | ApiError | NotFoundError;
 
 const log = createLogger("refresh");
 
-// Pure function types
 export type CategorizedAccounts<T> = {
 	github: T[];
 	reddit: T[];
@@ -28,7 +28,6 @@ export type RefreshAttempt = {
 	error?: string;
 };
 
-// Pure functions for testability
 export const categorizeAccountsByPlatform = <T extends { platform: string }>(accounts: T[]): CategorizedAccounts<T> => ({
 	github: accounts.filter(a => a.platform === "github"),
 	reddit: accounts.filter(a => a.platform === "reddit"),
@@ -61,16 +60,7 @@ export const aggregateRefreshResults = (attempts: RefreshAttempt[]): { succeeded
 
 export const shouldRegenerateTimeline = (succeeded: number): boolean => succeeded > 0;
 
-type AccountWithUser = {
-	id: string;
-	profile_id: string;
-	platform: string;
-	platform_user_id: string | null;
-	access_token_encrypted: string;
-	refresh_token_encrypted: string | null;
-	is_active: boolean;
-	user_id: string;
-};
+type RefreshableAccountWithUser = AccountWithUser & { is_active: boolean };
 
 type RefreshSuccess = { status: "processing"; message: string; platform: "github" | "reddit" } | { status: "refreshed"; account_id: string } | { status: "skipped"; message: string };
 
@@ -162,7 +152,7 @@ type RefreshAllResult = {
 	backgroundTasks: BackgroundTask[];
 };
 
-const lookupAccount = async (ctx: AppContext, accountId: string, userId: string): Promise<Result<AccountWithUser, RefreshError>> => {
+const lookupAccount = async (ctx: AppContext, accountId: string, userId: string): Promise<Result<RefreshableAccountWithUser, RefreshError>> => {
 	const row = await ctx.db
 		.select({
 			id: accounts.id,
@@ -215,8 +205,6 @@ const fetchUserAccounts = async (ctx: AppContext, userId: string) =>
 		.where(and(eq(profiles.user_id, userId), eq(accounts.is_active, true)));
 
 const processGitHubRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
-	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
-
 	const backgroundTask: BackgroundTask = async () => {
 		try {
 			const snapshot = await processAccount(ctx, account);
@@ -245,8 +233,6 @@ const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, u
 		return { result: { ok: false, error: tokenResult.error } };
 	}
 	let token = tokenResult.value;
-
-	const { gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	const backgroundTask: BackgroundTask = async () => {
 		try {
@@ -284,8 +270,6 @@ const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, u
 };
 
 const processGenericRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
-	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
-
 	const snapshot = await processAccount(ctx, account);
 
 	if (snapshot) {
@@ -345,8 +329,6 @@ export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promi
 			backgroundTasks: [],
 		};
 	}
-
-	const { processAccount, gatherLatestSnapshots, combineUserTimeline } = await import("./cron");
 
 	const categorized = categorizeAccountsByPlatform(userAccounts);
 	const { github: githubAccounts, reddit: redditAccounts, other: otherAccounts } = categorized;
