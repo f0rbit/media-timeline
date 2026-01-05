@@ -1,13 +1,16 @@
-import { accounts, errors, profiles, type ApiError, type BadRequestError, type EncryptionError, type NotFoundError } from "@media/schema";
-import { and, eq } from "drizzle-orm";
+import { accounts, errors, type ApiError, type BadRequestError, type EncryptionError, type NotFoundError } from "@media/schema";
+import { eq } from "drizzle-orm";
 import { processRedditAccount } from "./cron/processors/reddit";
 import type { AppContext } from "./infrastructure";
 import { createLogger } from "./logger";
 import { RedditProvider } from "./platforms/reddit";
 import { refreshRedditToken } from "./routes/auth";
+import { type AccountWithUser, fetchAccountByIdWithStatus, fetchActiveAccountsForUser } from "./services/connections";
 import { getCredentials } from "./services/credentials";
-import { type AccountWithUser, combineUserTimeline, gatherLatestSnapshots, processAccount } from "./sync";
+import { combineUserTimeline, gatherLatestSnapshots, processAccount } from "./sync";
 import { type Result, decrypt, encrypt, match, ok, pipe } from "./utils";
+
+export type { AccountWithUser };
 
 export type RefreshError = BadRequestError | EncryptionError | ApiError | NotFoundError;
 
@@ -153,21 +156,7 @@ type RefreshAllResult = {
 };
 
 const lookupAccount = async (ctx: AppContext, accountId: string, userId: string): Promise<Result<RefreshableAccountWithUser, RefreshError>> => {
-	const row = await ctx.db
-		.select({
-			id: accounts.id,
-			profile_id: accounts.profile_id,
-			platform: accounts.platform,
-			platform_user_id: accounts.platform_user_id,
-			access_token_encrypted: accounts.access_token_encrypted,
-			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			is_active: accounts.is_active,
-			user_id: profiles.user_id,
-		})
-		.from(accounts)
-		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-		.where(and(eq(profiles.user_id, userId), eq(accounts.id, accountId)))
-		.get();
+	const row = await fetchAccountByIdWithStatus(ctx.db, accountId, userId);
 
 	if (!row) {
 		return errors.notFound("account", accountId);
@@ -177,39 +166,15 @@ const lookupAccount = async (ctx: AppContext, accountId: string, userId: string)
 		return errors.badRequest("Account is not active");
 	}
 
-	return ok({
-		id: row.id,
-		profile_id: row.profile_id,
-		platform: row.platform,
-		platform_user_id: row.platform_user_id,
-		access_token_encrypted: row.access_token_encrypted,
-		refresh_token_encrypted: row.refresh_token_encrypted,
-		is_active: true,
-		user_id: row.user_id,
-	});
+	return ok({ ...row, is_active: true });
 };
-
-const fetchUserAccounts = async (ctx: AppContext, userId: string) =>
-	ctx.db
-		.select({
-			id: accounts.id,
-			profile_id: accounts.profile_id,
-			platform: accounts.platform,
-			platform_user_id: accounts.platform_user_id,
-			access_token_encrypted: accounts.access_token_encrypted,
-			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			user_id: profiles.user_id,
-		})
-		.from(accounts)
-		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-		.where(and(eq(profiles.user_id, userId), eq(accounts.is_active, true)));
 
 const processGitHubRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
 	const backgroundTask: BackgroundTask = async () => {
 		try {
 			const snapshot = await processAccount(ctx, account);
 			if (snapshot) {
-				const allUserAccounts = await fetchUserAccounts(ctx, userId);
+				const allUserAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
 				const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
 				await combineUserTimeline(ctx.backend, userId, snapshots);
 			}
@@ -252,7 +217,7 @@ const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, u
 			}
 
 			if (result.ok) {
-				const allUserAccounts = await fetchUserAccounts(ctx, userId);
+				const allUserAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
 				const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
 				await combineUserTimeline(ctx.backend, userId, snapshots);
 			} else {
@@ -273,7 +238,7 @@ const processGenericRefresh = async (ctx: AppContext, account: AccountWithUser, 
 	const snapshot = await processAccount(ctx, account);
 
 	if (snapshot) {
-		const allUserAccounts = await fetchUserAccounts(ctx, userId);
+		const allUserAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
 		const snapshots = await gatherLatestSnapshots(ctx.backend, allUserAccounts);
 		await combineUserTimeline(ctx.backend, userId, snapshots);
 
@@ -309,19 +274,7 @@ export const refreshSingleAccount = async (ctx: AppContext, accountId: string, u
 export const refreshAllAccounts = async (ctx: AppContext, userId: string): Promise<RefreshAllResult> => {
 	log.info("Refreshing all accounts", { user_id: userId });
 
-	const userAccounts = await ctx.db
-		.select({
-			id: accounts.id,
-			profile_id: accounts.profile_id,
-			platform: accounts.platform,
-			platform_user_id: accounts.platform_user_id,
-			access_token_encrypted: accounts.access_token_encrypted,
-			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			user_id: profiles.user_id,
-		})
-		.from(accounts)
-		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-		.where(and(eq(profiles.user_id, userId), eq(accounts.is_active, true)));
+	const userAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
 
 	if (userAccounts.length === 0) {
 		return {

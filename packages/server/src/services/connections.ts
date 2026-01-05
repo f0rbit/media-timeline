@@ -2,12 +2,51 @@ import { type AccountId, type Platform, type ProfileId, type UserId, accountSett
 import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership, requireProfileOwnership } from "../auth-ownership";
 import { deleteConnection } from "../connection-delete";
-import { combineUserTimeline, gatherLatestSnapshots } from "../sync";
+import type { Database } from "../db";
 import type { AppContext } from "../infrastructure";
+import type { AccountWithUser } from "../platforms/registry";
 import { refreshAllAccounts, refreshSingleAccount } from "../refresh-service";
 import { createGitHubMetaStore, createRedditMetaStore } from "../storage";
+import { combineUserTimeline, gatherLatestSnapshots } from "../sync";
 import { type Result, encrypt, ok, parseSettingsMap, uuid } from "../utils";
 import type { ServiceError } from "../utils/route-helpers";
+
+export type { AccountWithUser };
+
+const accountWithUserFields = {
+	id: accounts.id,
+	profile_id: accounts.profile_id,
+	platform: accounts.platform,
+	platform_user_id: accounts.platform_user_id,
+	access_token_encrypted: accounts.access_token_encrypted,
+	refresh_token_encrypted: accounts.refresh_token_encrypted,
+	user_id: profiles.user_id,
+} as const;
+
+const accountWithUserFieldsWithFetchedAt = {
+	...accountWithUserFields,
+	last_fetched_at: accounts.last_fetched_at,
+} as const;
+
+export const fetchActiveAccountsForUser = async (db: Database, userId: string): Promise<AccountWithUser[]> =>
+	db
+		.select(accountWithUserFields)
+		.from(accounts)
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(and(eq(profiles.user_id, userId), eq(accounts.is_active, true)));
+
+export type AccountWithUserAndStatus = AccountWithUser & { is_active: boolean | null };
+
+export const fetchAccountByIdWithStatus = async (db: Database, accountId: string, userId: string): Promise<AccountWithUserAndStatus | undefined> =>
+	db
+		.select({ ...accountWithUserFields, is_active: accounts.is_active })
+		.from(accounts)
+		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
+		.where(and(eq(profiles.user_id, userId), eq(accounts.id, accountId)))
+		.get();
+
+export const fetchAllActiveAccounts = async (db: Database): Promise<AccountWithUser[]> =>
+	db.select(accountWithUserFieldsWithFetchedAt).from(accounts).innerJoin(profiles, eq(accounts.profile_id, profiles.id)).where(eq(accounts.is_active, true));
 
 type ConnectionInput = {
 	profile_id: string;
@@ -145,31 +184,9 @@ type DeleteWithRegenResult = {
 
 const createTimelineRegenTask = (ctx: AppContext, uid: UserId): (() => Promise<void>) => {
 	return async () => {
-		const affectedUsers = await ctx.db
-			.select({ user_id: profiles.user_id })
-			.from(accounts)
-			.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-			.where(eq(profiles.user_id, uid))
-			.then(rows => [...new Set(rows.map(r => r.user_id))]);
-
-		for (const affectedUserId of affectedUsers) {
-			const userAccounts = await ctx.db
-				.select({
-					id: accounts.id,
-					profile_id: accounts.profile_id,
-					platform: accounts.platform,
-					platform_user_id: accounts.platform_user_id,
-					access_token_encrypted: accounts.access_token_encrypted,
-					refresh_token_encrypted: accounts.refresh_token_encrypted,
-					user_id: profiles.user_id,
-				})
-				.from(accounts)
-				.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-				.where(and(eq(profiles.user_id, affectedUserId), eq(accounts.is_active, true)));
-
-			const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
-			await combineUserTimeline(ctx.backend, affectedUserId, snapshots);
-		}
+		const userAccounts = await fetchActiveAccountsForUser(ctx.db, uid);
+		const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+		await combineUserTimeline(ctx.backend, uid, snapshots);
 	};
 };
 

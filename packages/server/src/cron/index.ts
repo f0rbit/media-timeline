@@ -1,14 +1,11 @@
-import { accounts, profiles } from "@media/schema";
-import { eq } from "drizzle-orm";
-import type { Database } from "../db";
 import type { AppContext } from "../infrastructure";
 import { createLogger } from "../logger";
 import { type CronProcessor, GitHubProvider, registerCronProcessor } from "../platforms";
 import { RedditProvider } from "../platforms/reddit";
 import { TwitterProvider } from "../platforms/twitter";
 import type { ProviderFactory } from "../platforms/types";
+import { type AccountWithUser, fetchAllActiveAccounts } from "../services/connections";
 import {
-	type AccountWithUser,
 	type PlatformGroups,
 	type RawSnapshot,
 	combineUserTimeline,
@@ -56,22 +53,6 @@ registerCronProcessor("twitter", {
 	processAccount: processTwitterAccount as CronProcessor["processAccount"],
 });
 
-const fetchActiveAccounts = async (db: Database) =>
-	db
-		.select({
-			id: accounts.id,
-			profile_id: accounts.profile_id,
-			platform: accounts.platform,
-			platform_user_id: accounts.platform_user_id,
-			access_token_encrypted: accounts.access_token_encrypted,
-			refresh_token_encrypted: accounts.refresh_token_encrypted,
-			user_id: profiles.user_id,
-			last_fetched_at: accounts.last_fetched_at,
-		})
-		.from(accounts)
-		.innerJoin(profiles, eq(accounts.profile_id, profiles.id))
-		.where(eq(accounts.is_active, true));
-
 const groupAccountsByUser = (accountsWithUsers: AccountWithUser[]): Map<string, AccountWithUser[]> => {
 	const userAccounts = new Map<string, AccountWithUser[]>();
 	for (const account of accountsWithUsers) {
@@ -113,7 +94,7 @@ export async function handleCron(ctx: AppContext): Promise<CronResult> {
 		timelines_generated: 0,
 	};
 
-	const accountsWithUsers = await fetchActiveAccounts(ctx.db);
+	const accountsWithUsers = await fetchAllActiveAccounts(ctx.db);
 	const userAccounts = groupAccountsByUser(accountsWithUsers);
 
 	log.info("Processing accounts", { total: accountsWithUsers.length, users: userAccounts.size });
