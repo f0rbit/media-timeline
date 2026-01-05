@@ -1,17 +1,107 @@
 import { type AccountId, type Platform, type ProfileId, type UserId, accountSettings, accounts, errors, profileId, profiles } from "@media/schema";
+import type { ApiError, BadRequestError, EncryptionError, NotFoundError } from "@media/schema";
 import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership, requireProfileOwnership } from "../auth-ownership";
 import { deleteConnection } from "../connection-delete";
+import { processRedditAccount } from "../cron/processors/reddit";
 import type { Database } from "../db";
 import type { AppContext } from "../infrastructure";
+import { createLogger } from "../logger";
 import type { AccountWithUser } from "../platforms/registry";
-import { refreshAllAccounts, refreshSingleAccount } from "../refresh-service";
+import { RedditProvider } from "../platforms/reddit";
+import { refreshRedditToken } from "../routes/auth";
 import { createGitHubMetaStore, createRedditMetaStore } from "../storage";
-import { combineUserTimeline, gatherLatestSnapshots } from "../sync";
-import { type Result, encrypt, ok, parseSettingsMap, uuid } from "../utils";
+import { combineUserTimeline, gatherLatestSnapshots, processAccount } from "../sync";
+import { type Result, decrypt, encrypt, match, ok, parseSettingsMap, pipe, uuid } from "../utils";
 import type { ServiceError } from "../utils/route-helpers";
+import { getCredentials } from "./credentials";
 
 export type { AccountWithUser };
+
+export type RefreshError = BadRequestError | EncryptionError | ApiError | NotFoundError;
+
+export type CategorizedAccounts<T> = {
+	github: T[];
+	reddit: T[];
+	twitter: T[];
+	other: T[];
+};
+
+export type RefreshStrategy = "github" | "reddit" | "twitter" | "generic";
+
+export type RefreshAttempt = {
+	accountId: string;
+	success: boolean;
+	error?: string;
+};
+
+type RefreshSuccess = { status: "processing"; message: string; platform: "github" | "reddit" } | { status: "refreshed"; account_id: string } | { status: "skipped"; message: string };
+
+type RefreshAllSuccess = {
+	status: "processing" | "completed";
+	message?: string;
+	succeeded: number;
+	failed: number;
+	total: number;
+	github_accounts: number;
+	reddit_accounts: number;
+};
+
+type BackgroundTask = () => Promise<void>;
+
+type RefreshSingleResult = {
+	result: Result<RefreshSuccess, RefreshError>;
+	backgroundTask?: BackgroundTask;
+};
+
+type RefreshAllResult = {
+	result: Result<RefreshAllSuccess, RefreshError>;
+	backgroundTasks: BackgroundTask[];
+};
+
+type RefreshableAccountWithUser = AccountWithUser & { is_active: boolean };
+
+type RefreshableAccount = {
+	id: string;
+	profile_id: string;
+	refresh_token_encrypted: string | null;
+};
+
+type RedditCredentials = { clientId: string; clientSecret: string };
+
+const log = createLogger("refresh");
+
+export const categorizeAccountsByPlatform = <T extends { platform: string }>(accts: T[]): CategorizedAccounts<T> => ({
+	github: accts.filter(a => a.platform === "github"),
+	reddit: accts.filter(a => a.platform === "reddit"),
+	twitter: accts.filter(a => a.platform === "twitter"),
+	other: accts.filter(a => !["github", "reddit", "twitter"].includes(a.platform)),
+});
+
+export const determineRefreshStrategy = (platform: string): RefreshStrategy => {
+	switch (platform) {
+		case "github":
+			return "github";
+		case "reddit":
+			return "reddit";
+		case "twitter":
+			return "twitter";
+		default:
+			return "generic";
+	}
+};
+
+export const aggregateRefreshResults = (attempts: RefreshAttempt[]): { succeeded: number; failed: number; errors: string[] } =>
+	attempts.reduce(
+		(acc, a) => ({
+			succeeded: acc.succeeded + (a.success ? 1 : 0),
+			failed: acc.failed + (a.success ? 0 : 1),
+			errors: a.error ? [...acc.errors, a.error] : acc.errors,
+		}),
+		{ succeeded: 0, failed: 0, errors: [] as string[] }
+	);
+
+export const shouldRegenerateTimeline = (succeeded: number): boolean => succeeded > 0;
 
 const accountWithUserFields = {
 	id: accounts.id,
@@ -353,6 +443,298 @@ export const getRedditSubreddits = async (ctx: AppContext, uid: UserId, accId: A
 		subreddits: latest.value.data.subreddits_active,
 		username: latest.value.data.username,
 	});
+};
+
+const getRedditCredentials = async (ctx: AppContext, profileIdStr: string): Promise<RedditCredentials | null> => {
+	const byoCredentials = await getCredentials(ctx, profileIdStr, "reddit");
+
+	const clientId = byoCredentials?.clientId ?? ctx.env?.REDDIT_CLIENT_ID;
+	const clientSecret = byoCredentials?.clientSecret ?? ctx.env?.REDDIT_CLIENT_SECRET;
+
+	if (!clientId || !clientSecret) {
+		return null;
+	}
+
+	return { clientId, clientSecret };
+};
+
+const attemptRedditTokenRefresh = async (ctx: AppContext, account: RefreshableAccount): Promise<Result<string, RefreshError>> => {
+	if (!account.refresh_token_encrypted) {
+		return errors.badRequest("No refresh token available");
+	}
+
+	const refreshTokenResult = await decrypt(account.refresh_token_encrypted, ctx.encryptionKey);
+	if (!refreshTokenResult.ok) {
+		return errors.encryptionError("decrypt", "Failed to decrypt refresh token");
+	}
+
+	const credentials = await getRedditCredentials(ctx, account.profile_id);
+	if (!credentials) {
+		log.error("No Reddit credentials available for token refresh", { account_id: account.id });
+		return errors.badRequest("No Reddit credentials available");
+	}
+
+	log.info("Attempting Reddit token refresh", { account_id: account.id });
+
+	const refreshResult = await refreshRedditToken(refreshTokenResult.value, credentials.clientId, credentials.clientSecret);
+	if (!refreshResult.ok) {
+		log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
+		return errors.apiError(401, "Token refresh failed");
+	}
+
+	const newAccessToken = refreshResult.value.access_token;
+
+	const encryptResult = await encrypt(newAccessToken, ctx.encryptionKey);
+	if (!encryptResult.ok) {
+		return errors.encryptionError("encrypt", "Failed to encrypt new access token");
+	}
+
+	const now = new Date().toISOString();
+	await ctx.db
+		.update(accounts)
+		.set({
+			access_token_encrypted: encryptResult.value,
+			updated_at: now,
+		})
+		.where(eq(accounts.id, account.id));
+
+	log.info("Reddit token refreshed successfully", { account_id: account.id });
+
+	return ok(newAccessToken);
+};
+
+const lookupAccount = async (ctx: AppContext, accountId: string, userId: string): Promise<Result<RefreshableAccountWithUser, RefreshError>> => {
+	const row = await fetchAccountByIdWithStatus(ctx.db, accountId, userId);
+
+	if (!row) {
+		return errors.notFound("account", accountId);
+	}
+
+	if (!row.is_active) {
+		return errors.badRequest("Account is not active");
+	}
+
+	return ok({ ...row, is_active: true });
+};
+
+const regenerateTimeline = async (ctx: AppContext, userId: string, userAccounts: AccountWithUser[]): Promise<void> => {
+	const snapshots = await gatherLatestSnapshots(ctx.backend, userAccounts);
+	await combineUserTimeline(ctx.backend, userId, snapshots);
+};
+
+const processGitHubRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
+	const backgroundTask: BackgroundTask = async () => {
+		try {
+			const snapshot = await processAccount(ctx, account);
+			if (snapshot) {
+				const allUserAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
+				await regenerateTimeline(ctx, userId, allUserAccounts);
+			}
+		} catch (error) {
+			log.error("GitHub background task failed", { account_id: account.id, user_id: userId, error: String(error) });
+		}
+	};
+
+	return {
+		result: ok({ status: "processing", message: "GitHub sync started in background", platform: "github" }),
+		backgroundTask,
+	};
+};
+
+const processRedditRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
+	const tokenResult = await pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
+		.map_err((): RefreshError => ({ kind: "encryption_error", operation: "decrypt", message: "Failed to decrypt Reddit token" }))
+		.result();
+
+	if (!tokenResult.ok) {
+		return { result: { ok: false, error: tokenResult.error } };
+	}
+	let token = tokenResult.value;
+
+	const backgroundTask: BackgroundTask = async () => {
+		try {
+			const provider = new RedditProvider();
+			let result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+
+			if (!result.ok && result.error.original_kind === "auth_expired") {
+				log.info("Reddit token expired, attempting refresh", { account_id: account.id });
+
+				const refreshResult = await attemptRedditTokenRefresh(ctx, account);
+				if (refreshResult.ok) {
+					token = refreshResult.value;
+					result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+				} else {
+					log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
+				}
+			}
+
+			if (result.ok) {
+				const allUserAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
+				await regenerateTimeline(ctx, userId, allUserAccounts);
+			} else {
+				log.error("Reddit refresh failed", { account_id: account.id, error: result.error });
+			}
+		} catch (error) {
+			log.error("Reddit background task failed", { account_id: account.id, user_id: userId, error: String(error) });
+		}
+	};
+
+	return {
+		result: ok({ status: "processing", message: "Reddit sync started in background", platform: "reddit" }),
+		backgroundTask,
+	};
+};
+
+const processGenericRefresh = async (ctx: AppContext, account: AccountWithUser, userId: string): Promise<RefreshSingleResult> => {
+	const snapshot = await processAccount(ctx, account);
+
+	if (snapshot) {
+		const allUserAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
+		await regenerateTimeline(ctx, userId, allUserAccounts);
+
+		return { result: ok({ status: "refreshed", account_id: account.id }) };
+	}
+
+	return { result: ok({ status: "skipped", message: "Rate limited or no changes" }) };
+};
+
+const refreshSingleAccount = async (ctx: AppContext, accountId: string, userId: string): Promise<RefreshSingleResult> => {
+	log.info("Refreshing account", { account_id: accountId, user_id: userId });
+
+	const accountResult = await pipe(lookupAccount(ctx, accountId, userId)).result();
+
+	return match(
+		accountResult,
+		account => {
+			const strategy = determineRefreshStrategy(account.platform);
+			switch (strategy) {
+				case "github":
+					return processGitHubRefresh(ctx, account, userId);
+				case "reddit":
+					return processRedditRefresh(ctx, account, userId);
+				case "twitter":
+				case "generic":
+					return processGenericRefresh(ctx, account, userId);
+			}
+		},
+		error => Promise.resolve({ result: { ok: false as const, error } })
+	);
+};
+
+const refreshAllAccounts = async (ctx: AppContext, userId: string): Promise<RefreshAllResult> => {
+	log.info("Refreshing all accounts", { user_id: userId });
+
+	const userAccounts = await fetchActiveAccountsForUser(ctx.db, userId);
+
+	if (userAccounts.length === 0) {
+		return {
+			result: ok({ status: "completed", succeeded: 0, failed: 0, total: 0, github_accounts: 0, reddit_accounts: 0 }),
+			backgroundTasks: [],
+		};
+	}
+
+	const categorized = categorizeAccountsByPlatform(userAccounts);
+	const { github: githubAccounts, reddit: redditAccounts, other: otherAccounts } = categorized;
+
+	const backgroundTasks: BackgroundTask[] = [];
+
+	if (githubAccounts.length > 0) {
+		const githubTask: BackgroundTask = async () => {
+			let bgSucceeded = 0;
+
+			for (const account of githubAccounts) {
+				try {
+					const snapshot = await processAccount(ctx, account);
+					if (snapshot) bgSucceeded++;
+				} catch (e) {
+					log.error("GitHub account refresh failed", { account_id: account.id, error: String(e) });
+				}
+			}
+
+			if (shouldRegenerateTimeline(bgSucceeded)) {
+				await regenerateTimeline(ctx, userId, userAccounts);
+			}
+		};
+		backgroundTasks.push(githubTask);
+	}
+
+	if (redditAccounts.length > 0) {
+		const redditTask: BackgroundTask = async () => {
+			let bgSucceeded = 0;
+
+			for (const account of redditAccounts) {
+				try {
+					const tokenResult = await pipe(decrypt(account.access_token_encrypted, ctx.encryptionKey))
+						.map_err((): RefreshError => ({ kind: "encryption_error", operation: "decrypt", message: "Failed to decrypt Reddit token" }))
+						.result();
+
+					if (!tokenResult.ok) {
+						log.error("Reddit token decryption failed", { account_id: account.id });
+						continue;
+					}
+					let token = tokenResult.value;
+
+					const provider = new RedditProvider();
+					let result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+
+					if (!result.ok && result.error.original_kind === "auth_expired") {
+						log.info("Reddit token expired, attempting refresh", { account_id: account.id });
+
+						const refreshResult = await attemptRedditTokenRefresh(ctx, account);
+						if (refreshResult.ok) {
+							token = refreshResult.value;
+							result = await processRedditAccount(ctx.backend, account.id, token, provider, account);
+						} else {
+							log.error("Reddit token refresh failed", { account_id: account.id, error: refreshResult.error });
+						}
+					}
+
+					if (result.ok) bgSucceeded++;
+				} catch (e) {
+					log.error("Reddit account refresh failed", { account_id: account.id, error: String(e) });
+				}
+			}
+
+			if (shouldRegenerateTimeline(bgSucceeded)) {
+				await regenerateTimeline(ctx, userId, userAccounts);
+			}
+		};
+		backgroundTasks.push(redditTask);
+	}
+
+	let succeeded = 0;
+	let failed = 0;
+
+	for (const account of otherAccounts) {
+		try {
+			const snapshot = await processAccount(ctx, account);
+			if (snapshot) {
+				succeeded++;
+			}
+		} catch (e) {
+			log.error("Account refresh failed", { account_id: account.id, error: String(e) });
+			failed++;
+		}
+	}
+
+	if (shouldRegenerateTimeline(succeeded)) {
+		await regenerateTimeline(ctx, userId, otherAccounts);
+	}
+
+	const hasBackgroundTasks = backgroundTasks.length > 0;
+
+	return {
+		result: ok({
+			status: hasBackgroundTasks ? "processing" : "completed",
+			message: hasBackgroundTasks ? "GitHub/Reddit accounts syncing in background" : undefined,
+			succeeded,
+			failed,
+			total: userAccounts.length,
+			github_accounts: githubAccounts.length,
+			reddit_accounts: redditAccounts.length,
+		}),
+		backgroundTasks,
+	};
 };
 
 export const refreshConnection = async (ctx: AppContext, accountIdStr: string, uid: string) => refreshSingleAccount(ctx, accountIdStr, uid);

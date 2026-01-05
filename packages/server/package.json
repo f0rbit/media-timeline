@@ -70,10 +70,6 @@
 			"types": "./src/oauth-helpers.ts",
 			"import": "./src/oauth-helpers.ts"
 		},
-		"./refresh-service": {
-			"types": "./src/refresh-service.ts",
-			"import": "./src/refresh-service.ts"
-		},
 		"./auth": {
 			"types": "./src/auth.ts",
 			"import": "./src/auth.ts"
@@ -89,6 +85,10 @@
 		"./sync": {
 			"types": "./src/sync.ts",
 			"import": "./src/sync.ts"
+		},
+		"./services/connections": {
+			"types": "./src/services/connections.ts",
+			"import": "./src/services/connections.ts"
 		}
 	},
 	"dependencies": {
