@@ -1,6 +1,6 @@
-import { type TimelineItem, type VideoPayload, type YouTubeRaw, YouTubeRawSchema, type YouTubeVideo } from "@media/schema";
+import { errors, type TimelineItem, type VideoPayload, type YouTubeRaw, type YouTubeVideo, YouTubeRawSchema } from "@media/schema";
 import { z } from "zod";
-import { type FetchError, err, ok, pipe } from "../utils";
+import { type FetchError, ok, pipe } from "../utils";
 import { BaseMemoryProvider } from "./memory-base";
 import type { FetchResult, Provider, ProviderError } from "./types";
 import { mapHttpError } from "./types";
@@ -114,12 +114,12 @@ export class YouTubeProvider implements Provider<YouTubeRaw> {
 			.flat_map(json => {
 				const parsed = YouTubePlaylistResponseSchema.safeParse(json);
 				if (!parsed.success) {
-					return err({ kind: "api_error", status: 200, message: `Invalid YouTube API response: ${parsed.error.message}` } as ProviderError);
+					return errors.apiError(200, `Invalid YouTube API response: ${parsed.error.message}`);
 				}
 
 				const transformed = transformPlaylistToRaw(parsed.data);
 				const validated = YouTubeRawSchema.safeParse(transformed);
-				return validated.success ? ok(validated.data) : err({ kind: "api_error", status: 200, message: `Failed to transform YouTube response: ${validated.error.message}` } as ProviderError);
+				return validated.success ? ok(validated.data) : errors.apiError(200, `Failed to transform YouTube response: ${validated.error.message}`);
 			})
 			.result();
 	}

@@ -1,4 +1,4 @@
-import type { TweetMedia, TwitterMetaStore, TwitterTweet, TwitterTweetsStore } from "@media/schema";
+import { errors, type TweetMedia, type TwitterMetaStore, type TwitterTweet, type TwitterTweetsStore } from "@media/schema";
 import { Client, type ClientConfig } from "@xdevplatform/xdk";
 import { createLogger } from "../logger";
 import { type Result, err, ok } from "../utils";
@@ -275,7 +275,7 @@ export class TwitterProvider {
 			const user = response.data as XDKUser | undefined;
 			if (!user) {
 				log.error("No user data in response");
-				return err({ kind: "api_error", status: 404, message: "User not found" });
+				return errors.apiError(404, "User not found");
 			}
 
 			log.debug("User found", { id: user.id, username: user.username });

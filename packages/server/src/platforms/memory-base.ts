@@ -1,4 +1,5 @@
-import { err, ok } from "../utils";
+import { errors } from "@media/schema";
+import { ok } from "../utils";
 import type { FetchResult } from "./types";
 
 export type MemoryProviderState = {
@@ -21,10 +22,10 @@ export const simulateErrors = <T>(state: MemoryProviderState, getData: () => T, 
 	state.call_count++;
 
 	if (state.simulate_rate_limit) {
-		return err({ kind: "rate_limited", retry_after: config.rate_limit_retry_after ?? 60 });
+		return errors.rateLimited(config.rate_limit_retry_after ?? 60);
 	}
 	if (state.simulate_auth_expired) {
-		return err({ kind: "auth_expired", message: "Simulated auth expiry" });
+		return errors.authExpired("Simulated auth expiry");
 	}
 
 	return ok(getData());
