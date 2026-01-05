@@ -4,8 +4,13 @@ import { eq, sql } from "drizzle-orm";
 import { accounts, rateLimits } from "@media/schema";
 import type { Database } from "./db";
 import type { AppContext } from "./infrastructure";
+import { processGitHubAccount } from "./cron/processors/github";
+import { processRedditAccount } from "./cron/processors/reddit";
+import { processTwitterAccount } from "./cron/processors/twitter";
 import { createLogger } from "./logger";
-import { type CronProcessor, getCronProcessor, getPlatformCapabilities, getPlatformsWithMultiStore, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
+import { type CronProcessor, getPlatformCapabilities, getPlatformsWithMultiStore, GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
+import { RedditProvider } from "./platforms/reddit";
+import { TwitterProvider } from "./platforms/twitter";
 import type { AccountWithUser } from "./platforms/registry";
 import type { ProviderError, ProviderFactory } from "./platforms/types";
 import { type RateLimitState, type RawData, createRawStore, createTimelineStore, rawStoreId, shouldFetch } from "./storage";
@@ -244,17 +249,41 @@ export const processAccount = async (ctx: AppContext, account: AccountWithUser):
 	}
 
 	const platform = account.platform as Platform;
-	const processor = getCronProcessor(platform);
 
-	if (!processor) {
-		return processGenericAccount(ctx, account);
+	switch (platform) {
+		case "github": {
+			const provider = ctx.gitHubProvider ?? new GitHubProvider();
+			const processor: CronProcessor = {
+				shouldFetch: () => true,
+				createProvider: () => provider,
+				processAccount: processGitHubAccount as CronProcessor["processAccount"],
+			};
+			return processPlatformAccountWithProcessor(ctx, account, processor, platform);
+		}
+		case "reddit": {
+			const provider = new RedditProvider();
+			const processor: CronProcessor = {
+				shouldFetch: () => true,
+				createProvider: () => provider,
+				processAccount: (backend, accountId, token, p, acc) => processRedditAccount(backend, accountId, token, p as RedditProvider, acc),
+			};
+			return processPlatformAccountWithProcessor(ctx, account, processor, platform);
+		}
+		case "twitter": {
+			if (!shouldFetchForPlatform("twitter", account.last_fetched_at ?? null)) {
+				return null;
+			}
+			const provider = ctx.twitterProvider ?? new TwitterProvider();
+			const processor: CronProcessor = {
+				shouldFetch: () => true,
+				createProvider: () => provider,
+				processAccount: processTwitterAccount as CronProcessor["processAccount"],
+			};
+			return processPlatformAccountWithProcessor(ctx, account, processor, platform);
+		}
+		default:
+			return processGenericAccount(ctx, account);
 	}
-
-	if (!processor.shouldFetch(account, account.last_fetched_at ?? null)) {
-		return null;
-	}
-
-	return processPlatformAccountWithProcessor(ctx, account, processor, platform);
 };
 
 export const regenerateTimelinesForUsers = async (backend: Backend, updatedUsers: Set<string>, userAccounts: Map<string, AccountWithUser[]>): Promise<number> => {

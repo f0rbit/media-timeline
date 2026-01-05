@@ -37,7 +37,6 @@ export interface PlatformConfig {
 	hasOAuth: boolean;
 	loader?: LoadFunction;
 	normalizer?: NormalizeFunction;
-	cronProcessor?: CronProcessor;
 }
 
 export const PLATFORM_REGISTRY: Record<Platform, PlatformConfig> = {
@@ -92,16 +91,10 @@ export const getNormalizer = (platform: Platform): NormalizeFunction | undefined
 
 export const getLoader = (platform: Platform): LoadFunction | undefined => PLATFORM_REGISTRY[platform]?.loader;
 
-export const getCronProcessor = (platform: Platform): CronProcessor | undefined => PLATFORM_REGISTRY[platform]?.cronProcessor;
-
 export const registerLoader = (platform: Platform, loader: LoadFunction): void => {
 	PLATFORM_REGISTRY[platform].loader = loader;
 };
 
 export const registerNormalizer = (platform: Platform, normalizer: NormalizeFunction): void => {
 	PLATFORM_REGISTRY[platform].normalizer = normalizer;
-};
-
-export const registerCronProcessor = (platform: Platform, processor: CronProcessor): void => {
-	PLATFORM_REGISTRY[platform].cronProcessor = processor;
 };

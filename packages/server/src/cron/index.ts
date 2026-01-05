@@ -1,6 +1,6 @@
 import type { AppContext } from "../infrastructure";
 import { createLogger } from "../logger";
-import { type CronProcessor, GitHubProvider, registerCronProcessor } from "../platforms";
+import { GitHubProvider } from "../platforms";
 import { RedditProvider } from "../platforms/reddit";
 import { TwitterProvider } from "../platforms/twitter";
 import type { ProviderFactory } from "../platforms/types";
@@ -34,24 +34,6 @@ export type { ProviderFactory };
 export { combineUserTimeline, gatherLatestSnapshots, generateTimeline, groupSnapshotsByPlatform, loadPlatformItems, normalizeOtherSnapshots, processAccount, storeTimeline };
 
 const log = createLogger("cron");
-
-registerCronProcessor("github", {
-	shouldFetch: () => true,
-	createProvider: (ctx: AppContext) => ctx.gitHubProvider ?? new GitHubProvider(),
-	processAccount: processGitHubAccount as CronProcessor["processAccount"],
-});
-
-registerCronProcessor("reddit", {
-	shouldFetch: () => true,
-	createProvider: () => new RedditProvider(),
-	processAccount: (backend, accountId, token, provider, account) => processRedditAccount(backend, accountId, token, provider as RedditProvider, account),
-});
-
-registerCronProcessor("twitter", {
-	shouldFetch: (_account, lastFetched) => shouldFetchForPlatform("twitter", lastFetched),
-	createProvider: (ctx: AppContext) => ctx.twitterProvider ?? new TwitterProvider(),
-	processAccount: processTwitterAccount as CronProcessor["processAccount"],
-});
 
 const groupAccountsByUser = (accountsWithUsers: AccountWithUser[]): Map<string, AccountWithUser[]> => {
 	const userAccounts = new Map<string, AccountWithUser[]>();
