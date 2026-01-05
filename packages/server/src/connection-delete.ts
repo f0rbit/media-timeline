@@ -1,6 +1,6 @@
 import type { Backend } from "@f0rbit/corpus";
 import type { AccountId, Platform, UserId } from "@media/schema";
-import { accountSettings, accounts, profiles, rateLimits } from "@media/schema";
+import { accountSettings, accounts, errors, profiles, rateLimits } from "@media/schema";
 import { eq } from "drizzle-orm";
 import type { Database } from "./db";
 import type { ConnectionError } from "./errors";
@@ -24,7 +24,7 @@ import {
 	redditMetaStoreId,
 	redditPostsStoreId,
 } from "./storage";
-import { type Result, err, ok, pipe, try_catch_async } from "./utils";
+import { type Result, ok, pipe, try_catch_async } from "./utils";
 
 const log = createLogger("connection:delete");
 
@@ -50,9 +50,9 @@ const VALID_STORE_TYPES: StoreType[] = ["github_meta", "github_commits", "github
 export const isValidStoreType = (type: string): type is StoreType => VALID_STORE_TYPES.includes(type as StoreType);
 
 export const validateAccountOwnership = <T extends { user_id: string }>(account: T | null, requestingUserId: string): Result<T, DeleteConnectionError> => {
-	if (!account) return err({ kind: "not_found" });
+	if (!account) return errors.notFound("account");
 	if (account.user_id !== requestingUserId) {
-		return err({ kind: "forbidden", message: "You do not own this account" });
+		return errors.forbidden("You do not own this account");
 	}
 	return ok(account);
 };

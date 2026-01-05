@@ -3,6 +3,8 @@
  * Use discriminated unions with 'kind' field for type-safe error handling.
  */
 
+import type { ForbiddenError as SchemaForbiddenError, NotFoundError as SchemaNotFoundError } from "@media/schema";
+
 // Base error kinds
 export type DecryptionError = { kind: "decryption_failed"; message: string };
 export type FetchError = { kind: "fetch_failed"; message: string; status?: number };
@@ -25,7 +27,7 @@ export type EncryptionError = { kind: "encryption_failed"; message: string };
 // Composite error types for different domains
 export type CronProcessError = DecryptionError | FetchError | StoreError | PutError;
 
-export type ConnectionError = NotFoundError | ForbiddenError | DatabaseError;
+export type ConnectionError = SchemaNotFoundError | SchemaForbiddenError | DatabaseError;
 
 export type ProviderError = AuthError | RateLimitError | FetchError;
 

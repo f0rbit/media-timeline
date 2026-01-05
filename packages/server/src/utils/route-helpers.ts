@@ -1,3 +1,4 @@
+import type { BadRequestError, ConflictError, DatabaseError, EncryptionError, ForbiddenError, NotFoundError, ParseError, StoreError } from "@media/schema";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AuthContext } from "../auth";
@@ -9,20 +10,14 @@ export type Variables = {
 	appContext: AppContext;
 };
 
-export type ServiceError =
-	| { kind: "not_found"; resource: string }
-	| { kind: "forbidden"; message: string }
-	| { kind: "bad_request"; message: string; details?: unknown }
-	| { kind: "conflict"; message: string }
-	| { kind: "inactive"; message: string }
-	| { kind: "decryption_failed"; message: string }
-	| { kind: "encryption_failed"; message: string }
-	| { kind: "store_error"; message?: string }
-	| { kind: "parse_error"; message?: string }
-	| { kind: "db_error"; message: string }
-	| { kind: "profile_not_found" }
-	| { kind: "no_accounts" }
-	| { kind: "timeline_generation_failed"; message: string };
+// Legacy error types for backward compatibility
+type InactiveError = { kind: "inactive"; message: string };
+type ProfileNotFoundError = { kind: "profile_not_found" };
+type NoAccountsError = { kind: "no_accounts" };
+type TimelineGenerationError = { kind: "timeline_generation_failed"; message: string };
+
+// Re-export unified errors from schema with local extensions for legacy support
+export type ServiceError = NotFoundError | ForbiddenError | BadRequestError | ConflictError | InactiveError | EncryptionError | StoreError | ParseError | DatabaseError | ProfileNotFoundError | NoAccountsError | TimelineGenerationError;
 
 type ErrorMapping = {
 	status: 400 | 403 | 404 | 409 | 500;
@@ -36,8 +31,7 @@ const ERROR_MAPPINGS: Record<ServiceError["kind"], ErrorMapping> = {
 	bad_request: { status: 400, code: "BAD_REQUEST", defaultMessage: "Invalid request" },
 	conflict: { status: 409, code: "CONFLICT", defaultMessage: "Resource conflict" },
 	inactive: { status: 400, code: "INACTIVE", defaultMessage: "Resource is inactive" },
-	decryption_failed: { status: 500, code: "DECRYPTION_ERROR", defaultMessage: "Failed to decrypt" },
-	encryption_failed: { status: 500, code: "ENCRYPTION_ERROR", defaultMessage: "Failed to encrypt" },
+	encryption_error: { status: 500, code: "ENCRYPTION_ERROR", defaultMessage: "Failed to process encryption" },
 	store_error: { status: 500, code: "STORE_ERROR", defaultMessage: "Storage operation failed" },
 	parse_error: { status: 500, code: "PARSE_ERROR", defaultMessage: "Failed to parse data" },
 	db_error: { status: 500, code: "DB_ERROR", defaultMessage: "Database operation failed" },

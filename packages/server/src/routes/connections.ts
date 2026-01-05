@@ -102,12 +102,12 @@ connectionRoutes.post("/:account_id/refresh", async c => {
 	if (!result.ok) {
 		const error = result.error;
 		if (error.kind === "not_found") {
-			return notFound(c, error.message);
+			return notFound(c, error.message ?? "Account not found");
 		}
-		if (error.kind === "inactive") {
-			return badRequest(c, error.message);
+		if (error.kind === "bad_request") {
+			return badRequest(c, error.message ?? "Bad request");
 		}
-		return serverError(c, error.message);
+		return serverError(c, error.message ?? "Server error");
 	}
 
 	if (backgroundTask) {

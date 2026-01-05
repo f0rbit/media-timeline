@@ -1,13 +1,9 @@
-import { type AccountId, type ProfileId, type UserId, accountId, accounts, profileId, profiles, userId } from "@media/schema";
+import { type AccountId, type ProfileId, type UserId, accountId, accounts, errors, type ForbiddenError, type NotFoundError, profileId, profiles, userId } from "@media/schema";
 import { eq } from "drizzle-orm";
 import type { Database } from "./db";
-import { type Result, err, ok } from "./utils";
+import { type Result, ok } from "./utils";
 
-export type OwnershipError = {
-	status: 404 | 403;
-	error: string;
-	message: string;
-};
+export type OwnershipError = NotFoundError | ForbiddenError;
 
 export type AccountOwnership = {
 	account_id: AccountId;
@@ -28,11 +24,11 @@ export const requireAccountOwnership = async (db: Database, uid: UserId, accId: 
 		.get();
 
 	if (!result) {
-		return err({ status: 404, error: "Not found", message: "Account not found" });
+		return errors.notFound("account", accId);
 	}
 
 	if (result.user_id !== uid) {
-		return err({ status: 403, error: "Forbidden", message: "You do not own this account" });
+		return errors.forbidden("You do not own this account");
 	}
 
 	return ok({
