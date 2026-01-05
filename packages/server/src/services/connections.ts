@@ -1,4 +1,4 @@
-import { type AccountId, type Platform, type UserId, accountSettings, accounts, profiles } from "@media/schema";
+import { type AccountId, type Platform, type UserId, accountSettings, accounts, errors, profiles } from "@media/schema";
 import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership } from "../auth-ownership";
 import { deleteConnection } from "../connection-delete";
@@ -6,7 +6,7 @@ import { combineUserTimeline, gatherLatestSnapshots } from "../cron";
 import type { AppContext } from "../infrastructure";
 import { refreshAllAccounts, refreshSingleAccount } from "../refresh-service";
 import { createGitHubMetaStore, createRedditMetaStore } from "../storage";
-import { type Result, encrypt, err, ok, parseSettingsMap, uuid } from "../utils";
+import { type Result, encrypt, ok, parseSettingsMap, uuid } from "../utils";
 import type { ServiceError } from "../utils/route-helpers";
 
 type ConnectionInput = {
@@ -37,11 +37,11 @@ export const listConnections = async (ctx: AppContext, uid: UserId, profileId: s
 	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profileId)).get();
 
 	if (!profile) {
-		return err({ kind: "not_found", resource: "profile" });
+		return errors.notFound("profile");
 	}
 
 	if (profile.user_id !== uid) {
-		return err({ kind: "forbidden", message: "You do not own this profile" });
+		return errors.forbidden("You do not own this profile");
 	}
 
 	const results = await ctx.db
@@ -76,11 +76,11 @@ export const createConnection = async (ctx: AppContext, uid: UserId, input: Conn
 	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, input.profile_id)).get();
 
 	if (!profile) {
-		return err({ kind: "not_found", resource: "profile" });
+		return errors.notFound("profile");
 	}
 
 	if (profile.user_id !== uid) {
-		return err({ kind: "forbidden", message: "You do not own this profile" });
+		return errors.forbidden("You do not own this profile");
 	}
 
 	const now = new Date().toISOString();
@@ -88,14 +88,14 @@ export const createConnection = async (ctx: AppContext, uid: UserId, input: Conn
 
 	const encryptedAccessToken = await encrypt(input.access_token, ctx.encryptionKey);
 	if (!encryptedAccessToken.ok) {
-		return err({ kind: "encryption_failed", message: "Failed to encrypt access token" });
+		return errors.encryptionError("encrypt", "Failed to encrypt access token");
 	}
 
 	let encryptedRefreshToken: string | null = null;
 	if (input.refresh_token) {
 		const refreshResult = await encrypt(input.refresh_token, ctx.encryptionKey);
 		if (!refreshResult.ok) {
-			return err({ kind: "encryption_failed", message: "Failed to encrypt refresh token" });
+			return errors.encryptionError("encrypt", "Failed to encrypt refresh token");
 		}
 		encryptedRefreshToken = refreshResult.value;
 	}
@@ -128,18 +128,18 @@ type DeleteResult = {
 export const removeConnection = async (ctx: AppContext, uid: UserId, accId: AccountId): Promise<Result<DeleteResult, ServiceError>> => {
 	const ownershipResult = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!ownershipResult.ok) {
-		const { status, error, message } = ownershipResult.error;
-		if (status === 404) return err({ kind: "not_found", resource: "account" });
-		return err({ kind: "forbidden", message });
+		const { kind, message } = ownershipResult.error;
+		if (kind === "not_found") return errors.notFound("account");
+		return errors.forbidden(message);
 	}
 
 	const result = await deleteConnection({ db: ctx.db, backend: ctx.backend }, accId, uid);
 
 	if (!result.ok) {
 		const error = result.error;
-		if (error.kind === "not_found") return err({ kind: "not_found", resource: "account" });
-		if (error.kind === "forbidden") return err({ kind: "forbidden", message: "message" in error ? error.message : "Access denied" });
-		return err({ kind: "db_error", message: "message" in error ? error.message : "Failed to delete connection" });
+		if (error.kind === "not_found") return errors.notFound("account");
+		if (error.kind === "forbidden") return errors.forbidden("message" in error ? error.message : "Access denied");
+		return errors.dbError("message" in error ? error.message : "Failed to delete connection", { operation: "delete_connection" });
 	}
 
 	return ok({
@@ -199,9 +199,9 @@ export const deleteConnectionWithTimelineRegen = async (ctx: AppContext, uid: Us
 export const updateConnectionStatus = async (ctx: AppContext, uid: UserId, accId: AccountId, isActive: boolean): Promise<Result<{ success: boolean; connection: unknown }, ServiceError>> => {
 	const ownershipResult = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!ownershipResult.ok) {
-		const { status } = ownershipResult.error;
-		if (status === 404) return err({ kind: "not_found", resource: "account" });
-		return err({ kind: "forbidden", message: "You do not own this account" });
+		const { kind } = ownershipResult.error;
+		if (kind === "not_found") return errors.notFound("account");
+		return errors.forbidden("You do not own this account");
 	}
 
 	const now = new Date().toISOString();
@@ -215,9 +215,9 @@ export const updateConnectionStatus = async (ctx: AppContext, uid: UserId, accId
 export const getConnectionSettings = async (ctx: AppContext, uid: UserId, accId: AccountId): Promise<Result<{ settings: Record<string, unknown> }, ServiceError>> => {
 	const ownershipResult = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!ownershipResult.ok) {
-		const { status } = ownershipResult.error;
-		if (status === 404) return err({ kind: "not_found", resource: "account" });
-		return err({ kind: "forbidden", message: "You do not own this account" });
+		const { kind } = ownershipResult.error;
+		if (kind === "not_found") return errors.notFound("account");
+		return errors.forbidden("You do not own this account");
 	}
 
 	const settings = await ctx.db.select().from(accountSettings).where(eq(accountSettings.account_id, accId));
@@ -229,9 +229,9 @@ export const getConnectionSettings = async (ctx: AppContext, uid: UserId, accId:
 export const updateConnectionSettings = async (ctx: AppContext, uid: UserId, accId: AccountId, newSettings: Record<string, unknown>): Promise<Result<{ updated: boolean }, ServiceError>> => {
 	const ownershipResult = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!ownershipResult.ok) {
-		const { status } = ownershipResult.error;
-		if (status === 404) return err({ kind: "not_found", resource: "account" });
-		return err({ kind: "forbidden", message: "You do not own this account" });
+		const { kind } = ownershipResult.error;
+		if (kind === "not_found") return errors.notFound("account");
+		return errors.forbidden("You do not own this account");
 	}
 
 	const now = new Date().toISOString();
@@ -275,19 +275,19 @@ type GitHubRepoInfo = {
 export const getGitHubRepos = async (ctx: AppContext, uid: UserId, accId: AccountId): Promise<Result<{ repos: GitHubRepoInfo[] }, ServiceError>> => {
 	const ownershipResult = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!ownershipResult.ok) {
-		const { status } = ownershipResult.error;
-		if (status === 404) return err({ kind: "not_found", resource: "account" });
-		return err({ kind: "forbidden", message: "You do not own this account" });
+		const { kind } = ownershipResult.error;
+		if (kind === "not_found") return errors.notFound("account");
+		return errors.forbidden("You do not own this account");
 	}
 
 	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accId)).get();
 
 	if (!account) {
-		return err({ kind: "not_found", resource: "account" });
+		return errors.notFound("account");
 	}
 
 	if (account.platform !== "github") {
-		return err({ kind: "bad_request", message: "Not a GitHub account" });
+		return errors.badRequest("Not a GitHub account");
 	}
 
 	const metaStoreResult = createGitHubMetaStore(ctx.backend, accId);
@@ -320,19 +320,19 @@ type SubredditResult = {
 export const getRedditSubreddits = async (ctx: AppContext, uid: UserId, accId: AccountId): Promise<Result<SubredditResult, ServiceError>> => {
 	const ownershipResult = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!ownershipResult.ok) {
-		const { status } = ownershipResult.error;
-		if (status === 404) return err({ kind: "not_found", resource: "account" });
-		return err({ kind: "forbidden", message: "You do not own this account" });
+		const { kind } = ownershipResult.error;
+		if (kind === "not_found") return errors.notFound("account");
+		return errors.forbidden("You do not own this account");
 	}
 
 	const account = await ctx.db.select({ id: accounts.id, platform: accounts.platform }).from(accounts).where(eq(accounts.id, accId)).get();
 
 	if (!account) {
-		return err({ kind: "not_found", resource: "account" });
+		return errors.notFound("account");
 	}
 
 	if (account.platform !== "reddit") {
-		return err({ kind: "bad_request", message: "Not a Reddit account" });
+		return errors.badRequest("Not a Reddit account");
 	}
 
 	const metaStoreResult = createRedditMetaStore(ctx.backend, accId);

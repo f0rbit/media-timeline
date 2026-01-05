@@ -1,5 +1,5 @@
 import type { CorpusError as LibCorpusError } from "@f0rbit/corpus";
-import { DateGroupSchema, accounts, profiles } from "@media/schema";
+import { DateGroupSchema, accounts, errors, profiles } from "@media/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { AppContext } from "../infrastructure";
@@ -84,12 +84,12 @@ export const getTimeline = async (ctx: AppContext, userId: string, options: Time
 		.result();
 
 	if (!result.ok) {
-		const errorMap: Record<TimelineGetError["kind"], ServiceError> = {
-			store_error: { kind: "store_error", message: "Failed to create timeline store" },
-			not_found: { kind: "not_found", resource: "timeline" },
-			parse_error: { kind: "parse_error", message: "Invalid timeline data format" },
+		const errorMap: Record<TimelineGetError["kind"], () => Result<never, ServiceError>> = {
+			store_error: () => errors.storeError("get_timeline", "Failed to create timeline store"),
+			not_found: () => errors.notFound("timeline"),
+			parse_error: () => errors.parseError("Invalid timeline data format"),
 		};
-		return err(errorMap[result.error.kind]);
+		return errorMap[result.error.kind]();
 	}
 
 	return ok(result.value);
@@ -118,16 +118,16 @@ export const getRawPlatformData = async (ctx: AppContext, userId: string, platfo
 
 	if (!result.ok) {
 		const error = result.error;
-		if (error.kind === "store_not_found") {
-			return err({ kind: "store_error", message: "Failed to create raw store" });
+		if (error.kind === "store_error") {
+			return errors.storeError("create_raw_store", "Failed to create raw store");
 		}
 		if (error.kind === "validation_error") {
-			return err({ kind: "parse_error", message: "Invalid raw data format" });
+			return errors.parseError("Invalid raw data format");
 		}
 		if (error.kind === "not_found") {
-			return err({ kind: "not_found", resource: "raw_data" });
+			return errors.notFound("raw_data");
 		}
-		return err({ kind: "store_error", message: "Unexpected error" });
+		return errors.storeError("get_raw", "Unexpected error");
 	}
 
 	return ok(result.value);
