@@ -2,6 +2,7 @@ import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
 import type { z } from "zod";
 
 export * from "./branded";
+export * from "./errors";
 export {
 	accountSettings,
 	accounts,
