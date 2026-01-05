@@ -7,16 +7,11 @@ import type { AppContext } from "../infrastructure";
 import { type OAuthCallbackConfig, type OAuthSecrets, type OAuthState, createOAuthCallback, encodeOAuthState, getFrontendUrl, validateOAuthQueryKeyAndProfile } from "../oauth-helpers";
 import { getCredentials, markCredentialsVerified } from "../services/credentials";
 import { pipe } from "../utils";
+import { getContext } from "../utils/route-helpers";
 
 type Variables = {
 	auth: AuthContext;
 	appContext: AppContext;
-};
-
-const getContext = (c: { get: (k: "appContext") => AppContext }): AppContext => {
-	const ctx = c.get("appContext");
-	if (!ctx) throw new Error("AppContext not set");
-	return ctx;
 };
 
 type OAuthTokenResponse = { access_token: string; refresh_token?: string; expires_in: number };

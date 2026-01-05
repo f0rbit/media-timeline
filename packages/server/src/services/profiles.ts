@@ -1,7 +1,7 @@
 import { type ProfileId, type UserId, accountId, errors, profileId } from "@media/schema";
 import { accounts, profileFilters, profiles, users } from "@media/schema";
 import { and, eq } from "drizzle-orm";
-import { requireAccountOwnership } from "../auth-ownership";
+import { requireAccountOwnership, requireProfileOwnership } from "../auth-ownership";
 import type { Database } from "../db";
 import type { AppContext } from "../infrastructure";
 import { type ProfileTimelineOptions, type ProfileTimelineResult, generateProfileTimeline } from "../timeline";
@@ -49,20 +49,6 @@ type FilterWithPlatform = {
 	filter_key: string;
 	filter_value: string;
 	created_at: string;
-};
-
-const requireProfileOwnership = async (db: Database, uid: UserId, profId: ProfileId): Promise<Result<{ profile_id: ProfileId }, ServiceError>> => {
-	const profile = await db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profId)).get();
-
-	if (!profile) {
-		return errors.notFound("profile");
-	}
-
-	if (profile.user_id !== uid) {
-		return errors.forbidden("You do not own this profile");
-	}
-
-	return ok({ profile_id: profileId(profile.id) });
 };
 
 const checkSlugUniqueness = async (db: Database, uid: string, slug: string, excludeProfileId?: string): Promise<boolean> => {

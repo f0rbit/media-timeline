@@ -11,6 +11,28 @@ export type AccountOwnership = {
 	user_id: UserId;
 };
 
+export type ProfileOwnership = {
+	profile_id: ProfileId;
+	user_id: UserId;
+};
+
+export const requireProfileOwnership = async (db: Database, uid: UserId, profId: ProfileId): Promise<Result<ProfileOwnership, OwnershipError>> => {
+	const profile = await db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profId)).get();
+
+	if (!profile) {
+		return errors.notFound("profile", profId);
+	}
+
+	if (profile.user_id !== uid) {
+		return errors.forbidden("You do not own this profile");
+	}
+
+	return ok({
+		profile_id: profileId(profile.id),
+		user_id: userId(profile.user_id),
+	});
+};
+
 export const requireAccountOwnership = async (db: Database, uid: UserId, accId: AccountId): Promise<Result<AccountOwnership, OwnershipError>> => {
 	const result = await db
 		.select({

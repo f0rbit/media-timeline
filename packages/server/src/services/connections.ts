@@ -1,6 +1,6 @@
-import { type AccountId, type Platform, type UserId, accountSettings, accounts, errors, profiles } from "@media/schema";
+import { type AccountId, type Platform, type ProfileId, type UserId, accountSettings, accounts, errors, profileId, profiles } from "@media/schema";
 import { and, eq } from "drizzle-orm";
-import { requireAccountOwnership } from "../auth-ownership";
+import { requireAccountOwnership, requireProfileOwnership } from "../auth-ownership";
 import { deleteConnection } from "../connection-delete";
 import { combineUserTimeline, gatherLatestSnapshots } from "../cron";
 import type { AppContext } from "../infrastructure";
@@ -33,16 +33,9 @@ type ConnectionWithSettings = ConnectionRow & {
 	settings: Record<string, unknown>;
 };
 
-export const listConnections = async (ctx: AppContext, uid: UserId, profileId: string, includeSettings: boolean): Promise<Result<{ accounts: ConnectionRow[] | ConnectionWithSettings[] }, ServiceError>> => {
-	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profileId)).get();
-
-	if (!profile) {
-		return errors.notFound("profile");
-	}
-
-	if (profile.user_id !== uid) {
-		return errors.forbidden("You do not own this profile");
-	}
+export const listConnections = async (ctx: AppContext, uid: UserId, profId: ProfileId, includeSettings: boolean): Promise<Result<{ accounts: ConnectionRow[] | ConnectionWithSettings[] }, ServiceError>> => {
+	const ownershipResult = await requireProfileOwnership(ctx.db, uid, profId);
+	if (!ownershipResult.ok) return ownershipResult;
 
 	const results = await ctx.db
 		.select({
@@ -55,7 +48,7 @@ export const listConnections = async (ctx: AppContext, uid: UserId, profileId: s
 			created_at: accounts.created_at,
 		})
 		.from(accounts)
-		.where(eq(accounts.profile_id, profileId));
+		.where(eq(accounts.profile_id, profId));
 
 	if (!includeSettings) {
 		return ok({ accounts: results });
@@ -73,15 +66,9 @@ export const listConnections = async (ctx: AppContext, uid: UserId, profileId: s
 };
 
 export const createConnection = async (ctx: AppContext, uid: UserId, input: ConnectionInput): Promise<Result<{ account_id: string; profile_id: string }, ServiceError>> => {
-	const profile = await ctx.db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, input.profile_id)).get();
-
-	if (!profile) {
-		return errors.notFound("profile");
-	}
-
-	if (profile.user_id !== uid) {
-		return errors.forbidden("You do not own this profile");
-	}
+	const profId = profileId(input.profile_id);
+	const ownershipResult = await requireProfileOwnership(ctx.db, uid, profId);
+	if (!ownershipResult.ok) return ownershipResult;
 
 	const now = new Date().toISOString();
 	const newAccountId = uuid();

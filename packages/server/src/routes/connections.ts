@@ -1,4 +1,4 @@
-import { PlatformSchema, accountId, userId } from "@media/schema";
+import { PlatformSchema, accountId, profileId, userId } from "@media/schema";
 import { Hono } from "hono";
 import { z } from "zod";
 import { type AuthContext, getAuth } from "../auth";
@@ -18,17 +18,11 @@ import {
 	updateConnectionStatus,
 } from "../services/connections";
 import { safeWaitUntil } from "../utils";
-import { handleResult } from "../utils/route-helpers";
+import { getContext, handleResult } from "../utils/route-helpers";
 
 type Variables = {
 	auth: AuthContext;
 	appContext: AppContext;
-};
-
-const getContext = (c: { get: (k: "appContext") => AppContext }): AppContext => {
-	const ctx = c.get("appContext");
-	if (!ctx) throw new Error("AppContext not set");
-	return ctx;
 };
 
 const CreateConnectionBodySchema = z.object({
@@ -55,13 +49,13 @@ connectionRoutes.get("/", async c => {
 	const auth = getAuth(c);
 	const ctx = getContext(c);
 	const includeSettings = c.req.query("include_settings") === "true";
-	const profileId = c.req.query("profile_id");
+	const profIdParam = c.req.query("profile_id");
 
-	if (!profileId) {
+	if (!profIdParam) {
 		return badRequest(c, "profile_id query parameter required");
 	}
 
-	const result = await listConnections(ctx, userId(auth.user_id), profileId, includeSettings);
+	const result = await listConnections(ctx, userId(auth.user_id), profileId(profIdParam), includeSettings);
 	return handleResult(c, result);
 });
 

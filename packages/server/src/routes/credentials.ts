@@ -9,18 +9,13 @@ import type { AppContext } from "../infrastructure";
 import { createLogger } from "../logger";
 import { deleteCredentials, getCredentials, hasCredentials, markCredentialsVerified, saveCredentials } from "../services/credentials";
 import { encrypt, uuid } from "../utils";
+import { getContext } from "../utils/route-helpers";
 
 const log = createLogger("credentials");
 
 type Variables = {
 	auth: AuthContext;
 	appContext: AppContext;
-};
-
-const getContext = (c: { get: (k: "appContext") => AppContext }): AppContext => {
-	const ctx = c.get("appContext");
-	if (!ctx) throw new Error("AppContext not set");
-	return ctx;
 };
 
 const verifyProfileOwnership = async (ctx: AppContext, profileId: string, userId: string): Promise<boolean> => {

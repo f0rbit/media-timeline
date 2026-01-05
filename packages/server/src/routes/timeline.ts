@@ -4,17 +4,11 @@ import type { Bindings } from "../bindings";
 import { badRequest, forbidden } from "../http-errors";
 import type { AppContext } from "../infrastructure";
 import { getRawPlatformData, getTimeline } from "../services/timeline";
-import { handleResult } from "../utils/route-helpers";
+import { getContext, handleResult } from "../utils/route-helpers";
 
 type Variables = {
 	auth: AuthContext;
 	appContext: AppContext;
-};
-
-const getContext = (c: { get: (k: "appContext") => AppContext }): AppContext => {
-	const ctx = c.get("appContext");
-	if (!ctx) throw new Error("AppContext not set");
-	return ctx;
 };
 
 export const timelineRoutes = new Hono<{ Bindings: Bindings; Variables: Variables }>();
