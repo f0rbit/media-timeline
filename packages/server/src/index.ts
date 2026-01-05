@@ -67,5 +67,10 @@ export {
 } from "./rate-limits";
 
 // Request context
-export { getRequestContext, runWithRequestContext, generateRequestId } from "./request-context";
-export { requestContextMiddleware, setRequestUserId } from "./middleware/request-context";
+export {
+	getRequestContext,
+	runWithRequestContext,
+	generateRequestId,
+	requestContextMiddleware,
+	setRequestUserId,
+} from "./request-context";
