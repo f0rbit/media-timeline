@@ -3,9 +3,10 @@ import { cors } from "hono/cors";
 import { type AuthContext, authMiddleware, getAuth, optionalAuthMiddleware } from "./auth";
 import { type Bindings, createContextFromBindings } from "./bindings";
 import type { AppContext } from "./infrastructure";
+import { requestContextMiddleware } from "./middleware/request-context";
 import { defaultProviderFactory } from "./platforms";
 import type { ProviderFactory } from "./platforms/types";
-import { authRoutes, connectionRoutes, credentialRoutes, profileRoutes, timelineRoutes } from "./routes";
+import { authRoutes, connectionRoutes, credentialRoutes, profileRoutes, timelineRoutes } from "./routes/index";
 
 type Variables = {
 	auth: AuthContext;
@@ -22,6 +23,8 @@ export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 	const { basePath = "/media", corsOrigins, providerFactory = defaultProviderFactory } = config;
 
 	const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+	app.use("*", requestContextMiddleware());
 
 	app.use(
 		"*",

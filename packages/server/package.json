@@ -51,20 +51,8 @@
 			"import": "./src/storage.ts"
 		},
 		"./cron": {
-			"types": "./src/cron.ts",
-			"import": "./src/cron.ts"
-		},
-		"./cron-github": {
-			"types": "./src/cron-github.ts",
-			"import": "./src/cron-github.ts"
-		},
-		"./cron-reddit": {
-			"types": "./src/cron-reddit.ts",
-			"import": "./src/cron-reddit.ts"
-		},
-		"./cron-twitter": {
-			"types": "./src/cron-twitter.ts",
-			"import": "./src/cron-twitter.ts"
+			"types": "./src/cron/index.ts",
+			"import": "./src/cron/index.ts"
 		},
 		"./infrastructure": {
 			"types": "./src/infrastructure/index.ts",
@@ -87,8 +75,8 @@
 			"import": "./src/connection-delete.ts"
 		},
 		"./routes": {
-			"types": "./src/routes.ts",
-			"import": "./src/routes.ts"
+			"types": "./src/routes/index.ts",
+			"import": "./src/routes/index.ts"
 		}
 	},
 	"dependencies": {
