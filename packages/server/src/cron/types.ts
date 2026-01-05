@@ -1,4 +1,4 @@
-export type { NormalizeError, PlatformGroups, PlatformProcessResult, ProcessingError, RawSnapshot } from "../sync/types";
+export type { NormalizeError, PlatformGroups, PlatformProcessResult, ProcessingError, RawSnapshot } from "../sync";
 
 export type CronResult = {
 	processed_accounts: number;

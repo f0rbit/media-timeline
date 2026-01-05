@@ -87,8 +87,8 @@
 			"import": "./src/routes/index.ts"
 		},
 		"./sync": {
-			"types": "./src/sync/index.ts",
-			"import": "./src/sync/index.ts"
+			"types": "./src/sync.ts",
+			"import": "./src/sync.ts"
 		}
 	},
 	"dependencies": {
