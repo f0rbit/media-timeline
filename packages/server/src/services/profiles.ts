@@ -3,7 +3,7 @@ import { accounts, profileFilters, profiles, users } from "@media/schema";
 import { and, eq } from "drizzle-orm";
 import { requireAccountOwnership, requireProfileOwnership } from "../auth-ownership";
 import type { Database } from "../db";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { type ProfileTimelineOptions, type ProfileTimelineResult, generateProfileTimeline } from "../timeline";
 import { type Result, ok, uuid } from "../utils";
 import type { ServiceError } from "../utils/route-helpers";

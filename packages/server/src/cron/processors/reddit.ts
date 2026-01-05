@@ -3,7 +3,7 @@ import type { RedditCommentsStore, RedditMetaStore, RedditPostsStore } from "@me
 import { createLogger } from "../../logger";
 import { mergeByKey } from "../../merge";
 import type { RedditFetchResult, RedditProviderLike } from "../../platforms/reddit";
-import type { AccountWithUser } from "../../platforms/registry";
+import type { AccountWithUser } from "@media/schema";
 import { createRedditCommentsStore, createRedditMetaStore, createRedditPostsStore } from "../../storage";
 import { type Result, ok, pipe } from "../../utils";
 import { type ProcessError, type StoreStats, formatFetchError, storeMeta as genericStoreMeta, storeWithMerge } from "../platform-processor";

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import type { AppContext } from "@media/server/infrastructure";
+import type { AppContext } from "@media/server/infrastructure/context";
 import { decodeOAuthState, encodeOAuthState, validateOAuthQueryKey, validateOAuthRequest } from "@media/server/oauth-helpers";
 import { authRoutes } from "@media/server/routes";
 import { Hono } from "hono";

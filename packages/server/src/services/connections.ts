@@ -5,9 +5,9 @@ import { requireAccountOwnership, requireProfileOwnership } from "../auth-owners
 import { deleteConnection } from "../connection-delete";
 import { processRedditAccount } from "../cron/processors/reddit";
 import type { Database } from "../db";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { createLogger } from "../logger";
-import type { AccountWithUser } from "../platforms/registry";
+import type { AccountWithUser } from "@media/schema";
 import { RedditProvider } from "../platforms/reddit";
 import { refreshRedditToken } from "../routes/auth";
 import { createGitHubMetaStore, createRedditMetaStore } from "../storage";

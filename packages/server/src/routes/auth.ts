@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import type { AuthContext } from "../auth";
 import type { Bindings } from "../bindings";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { type OAuthCallbackConfig, type OAuthSecrets, type OAuthState, createOAuthCallback, encodeOAuthState, getFrontendUrl, validateOAuthQueryKeyAndProfile } from "../oauth-helpers";
 import { getCredentials, markCredentialsVerified } from "../services/credentials";
 import { pipe } from "../utils";

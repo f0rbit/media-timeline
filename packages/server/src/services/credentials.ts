@@ -1,6 +1,6 @@
 import { type Platform, platformCredentials } from "@media/schema";
 import { and, eq } from "drizzle-orm";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { decrypt, encrypt, uuid } from "../utils";
 
 export type CredentialInput = {

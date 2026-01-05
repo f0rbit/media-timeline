@@ -1,6 +1,6 @@
 import { errors, type GitHubRaw as LegacyGitHubRaw } from "@media/schema";
 import type { ProviderFactory } from "@media/server/cron";
-import type { GitHubProviderLike } from "@media/server/infrastructure";
+import type { GitHubProviderLike } from "@media/server/infrastructure/context";
 import { BlueskyMemoryProvider, DevpadMemoryProvider, GitHubMemoryProvider, RedditMemoryProvider, TwitterMemoryProvider, YouTubeMemoryProvider } from "@media/server/platforms";
 import type { GitHubFetchResult } from "@media/server/platforms/github";
 import { ok } from "@media/server/utils";

@@ -2,7 +2,7 @@ import type { ServiceError as SchemaServiceError } from "@media/schema";
 import type { Context } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { AuthContext } from "../auth";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import type { Result } from "../utils";
 
 export const getContext = <C extends { get: (k: "appContext") => AppContext }>(c: C): AppContext => {

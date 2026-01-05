@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { type AuthContext, authMiddleware, getAuth, optionalAuthMiddleware } from "./auth";
 import { type Bindings, createContextFromBindings } from "./bindings";
-import type { AppContext } from "./infrastructure";
+import type { AppContext } from "./infrastructure/context";
 import { requestContextMiddleware } from "./request-context";
 import { defaultProviderFactory } from "./platforms";
 import type { ProviderFactory } from "./platforms/types";
@@ -87,5 +87,5 @@ export function createApiApp(env: Bindings, config: ApiAppConfig = {}) {
 }
 
 export type { Bindings as MediaBindings } from "./bindings";
-export type { AppContext } from "./infrastructure";
+export type { AppContext } from "./infrastructure/context";
 export type { ProviderFactory } from "./platforms/types";

@@ -184,6 +184,17 @@ export type NewUser = InferInsertModel<typeof users>;
 export type Account = InferSelectModel<typeof accounts>;
 export type NewAccount = InferInsertModel<typeof accounts>;
 
+export type AccountWithUser = {
+	id: string;
+	profile_id: string;
+	platform: string;
+	platform_user_id: string | null;
+	access_token_encrypted: string;
+	refresh_token_encrypted: string | null;
+	user_id: string;
+	last_fetched_at?: string | null;
+};
+
 export type ApiKey = InferSelectModel<typeof apiKeys>;
 export type NewApiKey = InferInsertModel<typeof apiKeys>;
 

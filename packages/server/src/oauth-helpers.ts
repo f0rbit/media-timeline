@@ -4,7 +4,7 @@ import type { Context } from "hono";
 import type { AuthContext } from "./auth";
 import type { Bindings } from "./bindings";
 import type { Database } from "./db";
-import type { AppContext } from "./infrastructure";
+import type { AppContext } from "./infrastructure/context";
 import { createLogger } from "./logger";
 import { type FetchError, type Result, encrypt, err, hash_api_key, ok, pipe, to_nullable, try_catch, try_catch_async, uuid } from "./utils";
 

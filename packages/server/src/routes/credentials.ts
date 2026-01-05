@@ -5,7 +5,7 @@ import { z } from "zod";
 import { type AuthContext, getAuth } from "../auth";
 import type { Bindings } from "../bindings";
 import { badRequest, notFound, serverError } from "../http-errors";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { createLogger } from "../logger";
 import { deleteCredentials, getCredentials, hasCredentials, markCredentialsVerified, saveCredentials } from "../services/credentials";
 import { encrypt, uuid } from "../utils";

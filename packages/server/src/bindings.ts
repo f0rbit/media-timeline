@@ -3,7 +3,7 @@
 import { create_cloudflare_backend } from "@f0rbit/corpus/cloudflare";
 import * as schema from "@media/schema/database";
 import { drizzle } from "drizzle-orm/d1";
-import type { AppContext } from "./infrastructure";
+import type { AppContext } from "./infrastructure/context";
 import type { ProviderFactory } from "./platforms/types";
 
 export type Bindings = {

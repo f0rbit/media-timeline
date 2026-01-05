@@ -1,6 +1,6 @@
 import * as schema from "@media/schema/database";
 import { connectionRoutes, profileRoutes, timelineRoutes } from "@media/server";
-import type { AppContext } from "@media/server/infrastructure";
+import type { AppContext } from "@media/server/infrastructure/context";
 import { credentialRoutes } from "@media/server/routes";
 import { hash_api_key } from "@media/server/utils";
 import { sql } from "drizzle-orm";

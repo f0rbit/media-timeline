@@ -1,4 +1,4 @@
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { createLogger } from "../logger";
 import { GitHubProvider } from "../platforms";
 import { RedditProvider } from "../platforms/reddit";

@@ -2,7 +2,7 @@ import type { CorpusError as LibCorpusError } from "@f0rbit/corpus";
 import { DateGroupSchema, accounts, errors, profiles } from "@media/schema";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { type CorpusError, RawDataSchema, createRawStore, createTimelineStore } from "../storage";
 import { type Result, err, ok, pipe } from "../utils";
 import type { ServiceError } from "../utils/route-helpers";

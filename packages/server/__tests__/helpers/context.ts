@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import * as schema from "@media/schema/database";
-import type { AppContext } from "@media/server/infrastructure";
+import type { AppContext } from "@media/server/infrastructure/context";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { migrate } from "drizzle-orm/bun-sqlite/migrator";
 import { createTestCorpus } from "./corpus";

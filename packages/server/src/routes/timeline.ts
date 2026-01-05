@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { type AuthContext, getAuth } from "../auth";
 import type { Bindings } from "../bindings";
 import { badRequest, forbidden } from "../http-errors";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { getRawPlatformData, getTimeline } from "../services/timeline";
 import { getContext, handleResult } from "../utils/route-helpers";
 

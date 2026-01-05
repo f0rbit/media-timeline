@@ -3,7 +3,7 @@ import { BlueskyRawSchema, type CommitGroup, type CronError, DevpadRawSchema, ty
 import { eq, sql } from "drizzle-orm";
 import { accounts, rateLimits } from "@media/schema";
 import type { Database } from "./db";
-import type { AppContext } from "./infrastructure";
+import type { AppContext } from "./infrastructure/context";
 import { processGitHubAccount } from "./cron/processors/github";
 import { processRedditAccount } from "./cron/processors/reddit";
 import { processTwitterAccount } from "./cron/processors/twitter";
@@ -11,7 +11,7 @@ import { createLogger } from "./logger";
 import { type CronProcessor, getPlatformCapabilities, getPlatformsWithMultiStore, GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
-import type { AccountWithUser } from "./platforms/registry";
+import type { AccountWithUser } from "@media/schema";
 import type { ProviderError, ProviderFactory } from "./platforms/types";
 import { type RateLimitState, type RawData, createRawStore, createTimelineStore, rawStoreId, shouldFetch } from "./storage";
 import { groupByDate, groupCommits, loadGitHubDataForAccount, loadRedditDataForAccount, loadTwitterDataForAccount, normalizeGitHub, normalizeReddit, normalizeTwitter } from "./timeline";

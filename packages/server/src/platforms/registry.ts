@@ -1,7 +1,7 @@
 import type { Backend } from "@f0rbit/corpus";
-import { PLATFORMS, type Platform, type TimelineItem } from "@media/schema";
+import { PLATFORMS, type AccountWithUser, type Platform, type TimelineItem } from "@media/schema";
 import type { StoreType } from "../connection-delete";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import type { Result } from "../utils";
 
 export type LoadFunction<T = unknown> = (backend: Backend, accountId: string) => Promise<T>;
@@ -10,17 +10,6 @@ export type NormalizeFunction<T = unknown> = (data: T, username?: string) => Tim
 type PlatformProcessResult = {
 	meta_version: string;
 	stats: Record<string, unknown>;
-};
-
-export type AccountWithUser = {
-	id: string;
-	profile_id: string;
-	platform: string;
-	platform_user_id: string | null;
-	access_token_encrypted: string;
-	refresh_token_encrypted: string | null;
-	user_id: string;
-	last_fetched_at?: string | null;
 };
 
 export type CronProcessor = {
@@ -35,8 +24,6 @@ export interface PlatformConfig {
 	storeTypes: readonly StoreType[];
 	displayName: string;
 	hasOAuth: boolean;
-	loader?: LoadFunction;
-	normalizer?: NormalizeFunction;
 }
 
 export const PLATFORM_REGISTRY: Record<Platform, PlatformConfig> = {
@@ -86,15 +73,3 @@ export const getPlatformCapabilities = (platform: Platform): PlatformConfig => P
 export const getPlatformsWithOAuth = (): Platform[] => PLATFORMS.filter(p => PLATFORM_REGISTRY[p].hasOAuth);
 
 export const getPlatformsWithMultiStore = (): Platform[] => PLATFORMS.filter(p => PLATFORM_REGISTRY[p].hasMultiStore);
-
-export const getNormalizer = (platform: Platform): NormalizeFunction | undefined => PLATFORM_REGISTRY[platform]?.normalizer;
-
-export const getLoader = (platform: Platform): LoadFunction | undefined => PLATFORM_REGISTRY[platform]?.loader;
-
-export const registerLoader = (platform: Platform, loader: LoadFunction): void => {
-	PLATFORM_REGISTRY[platform].loader = loader;
-};
-
-export const registerNormalizer = (platform: Platform, normalizer: NormalizeFunction): void => {
-	PLATFORM_REGISTRY[platform].normalizer = normalizer;
-};
