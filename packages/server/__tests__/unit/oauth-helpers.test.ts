@@ -49,86 +49,91 @@ describe("decodeOAuthStateData", () => {
 	});
 
 	describe("error cases", () => {
-		it("returns no_state error for undefined state", () => {
+		it("returns bad_request error for undefined state", () => {
 			const result = decodeOAuthStateData(undefined);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("no_state");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("Missing state");
 			}
 		});
 
-		it("returns invalid_base64 error for malformed base64", () => {
+		it("returns parse_error for malformed base64", () => {
 			const result = decodeOAuthStateData("not-valid-base64!!!");
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("invalid_base64");
+				expect(result.error.kind).toBe("parse_error");
 			}
 		});
 
-		it("returns invalid_json error for valid base64 but invalid JSON", () => {
+		it("returns parse_error for valid base64 but invalid JSON", () => {
 			const state = btoa("not json at all");
 			const result = decodeOAuthStateData(state);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("invalid_json");
+				expect(result.error.kind).toBe("parse_error");
 			}
 		});
 
-		it("returns missing_user_id error when user_id is missing", () => {
+		it("returns bad_request error when user_id is missing", () => {
 			const state = encodeState({ profile_id: "p1", nonce: "abc" });
 			const result = decodeOAuthStateData(state);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_user_id");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("user_id");
 			}
 		});
 
-		it("returns missing_user_id error when user_id is empty", () => {
+		it("returns bad_request error when user_id is empty", () => {
 			const state = encodeState({ user_id: "", profile_id: "p1", nonce: "abc" });
 			const result = decodeOAuthStateData(state);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_user_id");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("user_id");
 			}
 		});
 
-		it("returns missing_profile_id error when profile_id is missing", () => {
+		it("returns bad_request error when profile_id is missing", () => {
 			const state = encodeState({ user_id: "u1", nonce: "abc" });
 			const result = decodeOAuthStateData(state);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_profile_id");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("profile_id");
 			}
 		});
 
-		it("returns missing_profile_id error when profile_id is empty", () => {
+		it("returns bad_request error when profile_id is empty", () => {
 			const state = encodeState({ user_id: "u1", profile_id: "", nonce: "abc" });
 			const result = decodeOAuthStateData(state);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_profile_id");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("profile_id");
 			}
 		});
 
-		it("returns missing_required_key error when required key is missing", () => {
+		it("returns bad_request error when required key is missing", () => {
 			const state = encodeState({ user_id: "u1", profile_id: "p1", nonce: "abc" });
 			const result = decodeOAuthStateData<{ repo: string }>(state, ["repo"]);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_required_key");
-				expect((result.error as { kind: "missing_required_key"; key: string }).key).toBe("repo");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("repo");
 			}
 		});
 
-		it("returns missing_required_key error when required key is empty", () => {
+		it("returns bad_request error when required key is empty", () => {
 			const state = encodeState({
 				user_id: "u1",
 				profile_id: "p1",
@@ -139,7 +144,7 @@ describe("decodeOAuthStateData", () => {
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_required_key");
+				expect(result.error.kind).toBe("bad_request");
 			}
 		});
 	});
@@ -302,34 +307,35 @@ describe("validateTokenResponse", () => {
 	});
 
 	describe("error cases", () => {
-		it("returns missing_access_token for null response", () => {
+		it("returns bad_request for null response", () => {
 			const result = validateTokenResponse(null);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_access_token");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("access_token");
 			}
 		});
 
-		it("returns missing_access_token for undefined response", () => {
+		it("returns bad_request for undefined response", () => {
 			const result = validateTokenResponse(undefined);
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_access_token");
+				expect(result.error.kind).toBe("bad_request");
 			}
 		});
 
-		it("returns missing_access_token for non-object response", () => {
+		it("returns bad_request for non-object response", () => {
 			const result = validateTokenResponse("not an object");
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_access_token");
+				expect(result.error.kind).toBe("bad_request");
 			}
 		});
 
-		it("returns missing_access_token when access_token is missing", () => {
+		it("returns bad_request when access_token is missing", () => {
 			const response = {
 				token_type: "Bearer",
 			};
@@ -337,11 +343,11 @@ describe("validateTokenResponse", () => {
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_access_token");
+				expect(result.error.kind).toBe("bad_request");
 			}
 		});
 
-		it("returns missing_access_token when access_token is empty string", () => {
+		it("returns bad_request when access_token is empty string", () => {
 			const response = {
 				access_token: "",
 				token_type: "Bearer",
@@ -350,11 +356,11 @@ describe("validateTokenResponse", () => {
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_access_token");
+				expect(result.error.kind).toBe("bad_request");
 			}
 		});
 
-		it("returns missing_access_token when access_token is not a string", () => {
+		it("returns bad_request when access_token is not a string", () => {
 			const response = {
 				access_token: 12345,
 				token_type: "Bearer",
@@ -363,11 +369,11 @@ describe("validateTokenResponse", () => {
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("missing_access_token");
+				expect(result.error.kind).toBe("bad_request");
 			}
 		});
 
-		it("returns invalid_token_type for unsupported token type", () => {
+		it("returns bad_request for unsupported token type", () => {
 			const response = {
 				access_token: "token123",
 				token_type: "Basic",
@@ -376,12 +382,12 @@ describe("validateTokenResponse", () => {
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("invalid_token_type");
-				expect((result.error as { kind: "invalid_token_type"; got: string }).got).toBe("Basic");
+				expect(result.error.kind).toBe("bad_request");
+				expect(result.error.message).toContain("Basic");
 			}
 		});
 
-		it("returns invalid_token_type when token_type is not a string", () => {
+		it("returns bad_request when token_type is not a string", () => {
 			const response = {
 				access_token: "token123",
 				token_type: 123,
@@ -390,7 +396,7 @@ describe("validateTokenResponse", () => {
 
 			expect(result.ok).toBe(false);
 			if (!result.ok) {
-				expect(result.error.kind).toBe("invalid_token_type");
+				expect(result.error.kind).toBe("bad_request");
 			}
 		});
 	});

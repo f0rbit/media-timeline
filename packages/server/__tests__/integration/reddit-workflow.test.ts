@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { processRedditAccount } from "@media/server/cron-reddit";
+import { processRedditAccount } from "@media/server/cron";
 import { RedditMemoryProvider } from "@media/server/platforms/reddit-memory";
 import { loadRedditDataForAccount, normalizeReddit } from "@media/server/timeline";
 import { at, first, unwrap } from "@media/server/utils";
