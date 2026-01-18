@@ -2,10 +2,13 @@
 
 import { configureErrorLogging } from "@media/schema";
 import { createLogger } from "./logger";
-import { getRequestContext } from "./request-context";
 
 const errorLog = createLogger("errors");
 
+// Configure error logging with a custom logger.
+// Note: Request context (requestId, userId, path) should be passed explicitly
+// via the ctx parameter when calling error functions, as we no longer use
+// AsyncLocalStorage for automatic context propagation.
 configureErrorLogging({
 	logger: ({ error, context }) => {
 		errorLog.error(`[${error.kind}] ${error.message || ""}`, {
@@ -19,15 +22,7 @@ configureErrorLogging({
 			stack: context.stack?.split("\n").slice(2, 6).join("\n"),
 		});
 	},
-	contextProvider: () => {
-		const reqCtx = getRequestContext();
-		return {
-			requestId: reqCtx?.requestId,
-			userId: reqCtx?.userId,
-			path: reqCtx?.path,
-			method: reqCtx?.method,
-		};
-	},
+	// No contextProvider - pass context explicitly when calling error functions
 });
 
 export { createApiApp, type ApiAppConfig, type MediaBindings, type AppContext, type ProviderFactory } from "./app";
@@ -69,8 +64,8 @@ export {
 // Request context
 export {
 	getRequestContext,
-	runWithRequestContext,
 	generateRequestId,
 	requestContextMiddleware,
 	setRequestUserId,
+	type RequestContext,
 } from "./request-context";
