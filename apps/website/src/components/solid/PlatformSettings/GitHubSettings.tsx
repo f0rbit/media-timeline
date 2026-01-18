@@ -1,6 +1,6 @@
 import { type GitHubRepo, connections } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
-import ChevronIcon from "../ChevronIcon";
+import { Collapsible, Checkbox } from "@f0rbit/ui";
 import { useSettings } from "./useSettings";
 
 type GitHubSettingsData = { hidden_repos?: string[] };
@@ -12,7 +12,7 @@ type Props = {
 };
 
 export default function GitHubSettings(props: Props) {
-	const { expanded, setExpanded, updateSetting } = useSettings(props.accountId, props.onUpdate);
+	const { updateSetting } = useSettings(props.accountId, props.onUpdate);
 	const [repoUpdating, setRepoUpdating] = createSignal<string | null>(null);
 
 	const [repos] = createResource(async () => {
@@ -43,58 +43,52 @@ export default function GitHubSettings(props: Props) {
 		return allRepos.filter(r => !hidden.has(r.full_name)).length;
 	};
 
-	const toggleExpanded = () => setExpanded(!expanded());
-
 	return (
-		<div class="settings-section">
-			<button type="button" class="settings-header" onClick={toggleExpanded}>
-				<ChevronIcon expanded={expanded()} />
-				<h6 class="settings-title tertiary text-sm font-medium">Repository Visibility</h6>
-				<Show when={repos()?.length} keyed>
-					{count => (
+		<Collapsible
+			trigger={
+				<>
+					<span class="settings-title">Repository Visibility</span>
+					<Show when={repos()?.length}>
 						<span class="muted text-xs">
-							({visibleCount()}/{count} visible)
+							({visibleCount()}/{repos()?.length} visible)
 						</span>
+					</Show>
+				</>
+			}
+		>
+			<div class="settings-content">
+				<Show when={repos.loading}>
+					<p class="muted text-sm">Loading repositories...</p>
+				</Show>
+				<Show when={repos.error}>
+					<p class="error-icon text-sm">Failed to load repositories</p>
+				</Show>
+				<Show when={repos()} keyed>
+					{repoList => (
+						<Show when={repoList.length > 0} fallback={<p class="muted text-sm">No repositories found yet. Refresh to fetch data.</p>}>
+							<div class="repo-list">
+								<For each={repoList}>
+									{repo => {
+										const isHidden = () => hiddenRepos().has(repo.full_name);
+										const isUpdating = () => repoUpdating() === repo.full_name;
+										return (
+											<div class="repo-item">
+												<Checkbox checked={!isHidden()} onChange={() => toggleRepo(repo.full_name)} label={repo.full_name} disabled={isUpdating()} class={`mono text-sm ${isHidden() ? "opacity-50" : ""}`} />
+												<Show when={repo.is_private}>
+													<span class="repo-private muted text-xs">(private)</span>
+												</Show>
+												<Show when={isHidden()}>
+													<span class="muted text-xs">(hidden)</span>
+												</Show>
+											</div>
+										);
+									}}
+								</For>
+							</div>
+						</Show>
 					)}
 				</Show>
-			</button>
-
-			<Show when={expanded()}>
-				<div class="settings-content">
-					<Show when={repos.loading}>
-						<p class="muted text-sm">Loading repositories...</p>
-					</Show>
-					<Show when={repos.error}>
-						<p class="error-icon text-sm">Failed to load repositories</p>
-					</Show>
-					<Show when={repos()} keyed>
-						{repoList => (
-							<Show when={repoList.length > 0} fallback={<p class="muted text-sm">No repositories found yet. Refresh to fetch data.</p>}>
-								<div class="repo-list">
-									<For each={repoList}>
-										{repo => {
-											const isHidden = () => hiddenRepos().has(repo.full_name);
-											const isUpdating = () => repoUpdating() === repo.full_name;
-											return (
-												<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
-													<input type="checkbox" checked={!isHidden()} onChange={() => toggleRepo(repo.full_name)} disabled={isUpdating()} />
-													<span class="repo-name mono text-sm">{repo.full_name}</span>
-													<Show when={repo.is_private}>
-														<span class="repo-private muted text-xs">(private)</span>
-													</Show>
-													<Show when={isHidden()}>
-														<span class="muted text-xs">(hidden)</span>
-													</Show>
-												</label>
-											);
-										}}
-									</For>
-								</div>
-							</Show>
-						)}
-					</Show>
-				</div>
-			</Show>
-		</div>
+			</div>
+		</Collapsible>
 	);
 }

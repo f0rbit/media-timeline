@@ -1,0 +1,16 @@
+/* Map media-timeline tokens to UI library tokens */
+:root {
+	/* UI lib uses these, media-timeline defines similar */
+	--bg: var(--bg-primary);
+	--fg: var(--text-primary);
+	--fg-muted: var(--text-secondary);
+	--fg-subtle: var(--text-tertiary);
+	--fg-faint: var(--text-muted);
+	--accent: var(--text-link);
+	--border: var(--input-border);
+	--bg-alt: var(--input-background);
+
+	/* Map status colors */
+	--success: var(--item-green);
+	--error: var(--item-red);
+}

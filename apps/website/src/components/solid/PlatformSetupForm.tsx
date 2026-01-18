@@ -1,6 +1,7 @@
 import { connections } from "@/utils/api";
 import { formatPlatformName } from "@/utils/formatters";
 import { Show, createSignal } from "solid-js";
+import { FormField, Input } from "@f0rbit/ui";
 
 export type Platform = "github" | "bluesky" | "youtube" | "devpad" | "reddit" | "twitter";
 
@@ -76,15 +77,12 @@ export default function PlatformSetupForm(props: Props) {
 
 	return (
 		<form onSubmit={handleSubmit} class="setup-form">
-			<div class="form-row">
-				<label class="tertiary text-sm">{config().tokenLabel}</label>
-				<input type="password" value={token()} onInput={e => setToken(e.currentTarget.value)} placeholder={config().tokenPlaceholder} required />
-			</div>
-			<div class="form-row">
-				<label class="tertiary text-sm">{config().usernameLabel} (optional)</label>
-				<input type="text" value={username()} onInput={e => setUsername(e.currentTarget.value)} placeholder={config().usernamePlaceholder} />
-			</div>
-			<small class="muted text-xs">{config().helpText}</small>
+			<FormField label={config().tokenLabel} id="platform-token" required>
+				<Input id="platform-token" type="password" value={token()} onInput={e => setToken(e.currentTarget.value)} placeholder={config().tokenPlaceholder} />
+			</FormField>
+			<FormField label={`${config().usernameLabel} (optional)`} id="platform-username" description={config().helpText}>
+				<Input id="platform-username" value={username()} onInput={e => setUsername(e.currentTarget.value)} placeholder={config().usernamePlaceholder} />
+			</FormField>
 			<Show when={error()}>
 				<p class="error-icon text-sm">{error()}</p>
 			</Show>

@@ -1,5 +1,7 @@
+import type { Backend } from "@f0rbit/corpus";
 import type { Platform } from "@media/schema";
-import type { LoadFunction } from "../platforms/registry";
+
+export type LoadFunction<T = unknown> = (backend: Backend, accountId: string) => Promise<T>;
 
 // Re-export from platform-specific files
 export { loadGitHubData, type GitHubTimelineData, type CommitWithRepo, type PRWithRepo } from "../platforms/github/timeline";

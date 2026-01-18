@@ -1,4 +1,5 @@
 import { Show, createSignal } from "solid-js";
+import { Button } from "@f0rbit/ui";
 
 type User = {
 	id: string;
@@ -26,18 +27,11 @@ export default function AuthStatus(props: Props) {
 
 	return (
 		<div class="user-info">
-			<Show
-				when={isAuthenticated()}
-				fallback={
-					<button onClick={handleLogin} class="auth-btn login-btn">
-						Login
-					</button>
-				}
-			>
+			<Show when={isAuthenticated()} fallback={<Button onClick={handleLogin}>Login</Button>}>
 				<Show when={user()}>{u => <span class="user-name">{u().name || u().email || "User"}</span>}</Show>
-				<button onClick={handleLogout} class="auth-btn logout-btn">
+				<Button variant="secondary" onClick={handleLogout}>
 					Logout
-				</button>
+				</Button>
 			</Show>
 		</div>
 	);

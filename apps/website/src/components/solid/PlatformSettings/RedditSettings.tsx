@@ -1,6 +1,6 @@
 import { connections } from "@/utils/api";
 import { For, Show, createResource, createSignal } from "solid-js";
-import ChevronIcon from "../ChevronIcon";
+import { Collapsible, Checkbox } from "@f0rbit/ui";
 import { useSettings } from "./useSettings";
 
 type RedditSettingsData = {
@@ -16,7 +16,7 @@ type Props = {
 };
 
 export default function RedditSettings(props: Props) {
-	const { expanded, setExpanded, updateSetting } = useSettings(props.accountId, props.onUpdate);
+	const { updateSetting } = useSettings(props.accountId, props.onUpdate);
 	const [subredditUpdating, setSubredditUpdating] = createSignal<string | null>(null);
 
 	const [subreddits] = createResource(async () => {
@@ -53,73 +53,61 @@ export default function RedditSettings(props: Props) {
 		return allSubreddits.filter((s: string) => !hidden.has(s)).length;
 	};
 
-	const toggleExpanded = () => setExpanded(!expanded());
+	const triggerContent = (
+		<>
+			<span class="settings-title tertiary text-sm font-medium">Reddit Settings</span>
+			<Show when={subreddits()?.length} keyed>
+				{count => (
+					<span class="muted text-xs">
+						({visibleCount()}/{count} subreddits visible)
+					</span>
+				)}
+			</Show>
+		</>
+	);
 
 	return (
-		<div class="settings-section">
-			<button type="button" class="settings-header" onClick={toggleExpanded}>
-				<ChevronIcon expanded={expanded()} />
-				<h6 class="settings-title tertiary text-sm font-medium">Reddit Settings</h6>
-				<Show when={subreddits()?.length} keyed>
-					{count => (
-						<span class="muted text-xs">
-							({visibleCount()}/{count} subreddits visible)
-						</span>
-					)}
-				</Show>
-			</button>
-
-			<Show when={expanded()}>
-				<div class="settings-content">
-					{/* Global toggles */}
-					<div class="filter-toggles">
-						<label class="filter-toggle">
-							<input type="checkbox" checked={hideComments()} onChange={toggleHideComments} />
-							<span class="text-sm">Hide comments (show posts only)</span>
-						</label>
-						<label class="filter-toggle">
-							<input type="checkbox" checked={hideNsfw()} onChange={toggleHideNsfw} />
-							<span class="text-sm">Hide NSFW content</span>
-						</label>
-					</div>
-
-					{/* Subreddit visibility */}
-					<div class="subsection">
-						<h6 class="tertiary text-xs font-medium" style={{ "margin-top": "8px", "margin-bottom": "4px" }}>
-							Subreddit Visibility
-						</h6>
-						<Show when={subreddits.loading}>
-							<p class="muted text-sm">Loading subreddits...</p>
-						</Show>
-						<Show when={subreddits.error}>
-							<p class="error-icon text-sm">Failed to load subreddits</p>
-						</Show>
-						<Show when={subreddits()} keyed>
-							{subredditList => (
-								<Show when={subredditList.length > 0} fallback={<p class="muted text-sm">No subreddits found yet. Refresh to fetch data.</p>}>
-									<div class="repo-list">
-										<For each={subredditList}>
-											{subreddit => {
-												const isHidden = () => hiddenSubreddits().has(subreddit);
-												const isUpdating = () => subredditUpdating() === subreddit;
-												return (
-													<label class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
-														<input type="checkbox" checked={!isHidden()} onChange={() => toggleSubreddit(subreddit)} disabled={isUpdating()} />
-														<span class="repo-name mono text-sm">r/{subreddit}</span>
-														<Show when={isHidden()}>
-															<span class="muted text-xs">(hidden)</span>
-														</Show>
-													</label>
-												);
-											}}
-										</For>
-									</div>
-								</Show>
-							)}
-						</Show>
-					</div>
+		<Collapsible trigger={triggerContent}>
+			<div class="settings-content">
+				<div class="filter-toggles">
+					<Checkbox checked={hideComments()} onChange={toggleHideComments} label="Hide comments (show posts only)" />
+					<Checkbox checked={hideNsfw()} onChange={toggleHideNsfw} label="Hide NSFW content" />
 				</div>
-			</Show>
-		</div>
+
+				<div class="subsection">
+					<h6 class="tertiary text-xs font-medium" style={{ "margin-top": "8px", "margin-bottom": "4px" }}>
+						Subreddit Visibility
+					</h6>
+					<Show when={subreddits.loading}>
+						<p class="muted text-sm">Loading subreddits...</p>
+					</Show>
+					<Show when={subreddits.error}>
+						<p class="error-icon text-sm">Failed to load subreddits</p>
+					</Show>
+					<Show when={subreddits()} keyed>
+						{subredditList => (
+							<Show when={subredditList.length > 0} fallback={<p class="muted text-sm">No subreddits found yet. Refresh to fetch data.</p>}>
+								<div class="repo-list">
+									<For each={subredditList}>
+										{subreddit => {
+											const isHidden = () => hiddenSubreddits().has(subreddit);
+											const isUpdating = () => subredditUpdating() === subreddit;
+											return (
+												<div class={`repo-item ${isHidden() ? "repo-hidden" : ""}`}>
+													<Checkbox checked={!isHidden()} onChange={() => toggleSubreddit(subreddit)} disabled={isUpdating()} label={`r/${subreddit}`} />
+													<Show when={isHidden()}>
+														<span class="muted text-xs">(hidden)</span>
+													</Show>
+												</div>
+											);
+										}}
+									</For>
+								</div>
+							</Show>
+						)}
+					</Show>
+				</div>
+			</div>
+		</Collapsible>
 	);
 }

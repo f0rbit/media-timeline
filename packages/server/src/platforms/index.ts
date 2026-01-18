@@ -1,6 +1,5 @@
 // Re-export providers, normalizers, and memory providers
 
-export * from "./registry";
 export { BlueskyMemoryProvider, BlueskyProvider, type BlueskyProviderConfig, normalizeBluesky } from "./bluesky";
 export { DevpadMemoryProvider, DevpadProvider, normalizeDevpad } from "./devpad";
 export { type GitHubFetchResult, GitHubProvider, type GitHubProviderConfig } from "./github";

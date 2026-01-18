@@ -1,4 +1,5 @@
 import { api, apiUrls, initMockAuth } from "@/utils/api";
+import { Badge, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, Empty, FormField, Input, Spinner } from "@f0rbit/ui";
 import { For, Show, createResource, createSignal } from "solid-js";
 import { isServer } from "solid-js/web";
 
@@ -112,12 +113,12 @@ export default function ProfileList(props: ProfileListProps) {
 		<div class="flex-col">
 			<div class="flex-row justify-between items-center">
 				<h6 class="secondary font-medium">Your Profiles</h6>
-				<button type="button" class="oauth-button" onClick={() => setShowCreateForm(true)} style={{ padding: "6px 12px", "font-size": "0.75rem" }}>
+				<Button size="sm" onClick={() => setShowCreateForm(true)}>
 					<span class="flex-row" style={{ gap: "4px" }}>
 						<PlusIcon />
 						Create Profile
 					</span>
-				</button>
+				</Button>
 			</div>
 
 			<Show when={showCreateForm()}>
@@ -133,7 +134,10 @@ export default function ProfileList(props: ProfileListProps) {
 			</Show>
 
 			<Show when={profiles.loading}>
-				<p class="tertiary">Loading profiles...</p>
+				<div class="loading-state">
+					<Spinner size="md" />
+					<p class="tertiary">Loading profiles...</p>
+				</div>
 			</Show>
 
 			<Show when={profiles.error}>
@@ -141,10 +145,7 @@ export default function ProfileList(props: ProfileListProps) {
 			</Show>
 
 			<Show when={!profiles.loading && !profiles.error && profiles()?.length === 0}>
-				<div class="empty-state">
-					<p class="muted">No profiles yet.</p>
-					<p class="muted text-sm">Create a profile to share a curated timeline with specific platforms visible.</p>
-				</div>
+				<Empty title="No profiles yet" description="Create a profile to share a curated timeline with specific platforms visible." />
 			</Show>
 
 			<Show when={!profiles.loading && !profiles.error && (profiles()?.length ?? 0) > 0}>
@@ -194,47 +195,47 @@ function ProfileCard(props: ProfileCardProps) {
 	const endpoint = apiUrls.profiles(`/${props.profile.slug}/timeline`);
 
 	return (
-		<div class={`card ${props.isCurrent ? "card-active" : ""}`}>
-			<div class="flex-col" style={{ gap: "8px" }}>
-				<div class="flex-row justify-between items-start">
-					<div class="flex-col" style={{ gap: "2px" }}>
-						<div class="flex-row items-center" style={{ gap: "8px" }}>
-							<h6 class="secondary font-medium">{props.profile.name}</h6>
-							<Show when={props.isCurrent}>
-								<span class="badge-active">Currently Viewing</span>
-							</Show>
-						</div>
-						<span class="muted text-sm">/{props.profile.slug}</span>
-					</div>
-					<div class="flex-row icons">
-						<button class="icon-btn" onClick={props.onView} title="View timeline">
-							<EyeIcon />
-						</button>
-						<button class="icon-btn" onClick={props.onEdit} title="Edit profile">
-							<EditIcon />
-						</button>
-						<button class="icon-btn" onClick={props.onDelete} title="Delete profile">
-							<TrashIcon />
-						</button>
-					</div>
-				</div>
-
-				<Show when={props.profile.description}>
-					<p class="tertiary text-sm">{props.profile.description}</p>
-				</Show>
-
-				<div class="flex-row items-center" style={{ gap: "8px", "margin-top": "4px" }}>
-					<code class="text-xs mono truncate" style={{ flex: "1", padding: "4px 8px", background: "var(--input-background)", "border-radius": "4px", border: "1px solid var(--input-border)" }}>
-						{endpoint}
-					</code>
-					<button class="icon-btn" onClick={props.onCopy} title={props.copied ? "Copied!" : "Copy endpoint"}>
-						<Show when={props.copied} fallback={<CopyIcon />}>
-							<CheckIcon />
+		<Card class={props.isCurrent ? "card-active" : ""}>
+			<CardHeader class="flex-row justify-between items-start">
+				<div class="flex-col" style={{ gap: "2px" }}>
+					<div class="flex-row items-center" style={{ gap: "8px" }}>
+						<CardTitle>{props.profile.name}</CardTitle>
+						<Show when={props.isCurrent}>
+							<Badge variant="success">Currently Viewing</Badge>
 						</Show>
-					</button>
+					</div>
+					<CardDescription>/{props.profile.slug}</CardDescription>
 				</div>
-			</div>
-		</div>
+				<div class="flex-row icons">
+					<Button icon variant="ghost" label="View timeline" onClick={props.onView}>
+						<EyeIcon />
+					</Button>
+					<Button icon variant="ghost" label="Edit profile" onClick={props.onEdit}>
+						<EditIcon />
+					</Button>
+					<Button icon variant="ghost" label="Delete profile" onClick={props.onDelete}>
+						<TrashIcon />
+					</Button>
+				</div>
+			</CardHeader>
+
+			<Show when={props.profile.description}>
+				<CardContent>
+					<p class="tertiary text-sm">{props.profile.description}</p>
+				</CardContent>
+			</Show>
+
+			<CardFooter class="flex-row items-center" style={{ gap: "8px" }}>
+				<code class="text-xs mono truncate" style={{ flex: "1", padding: "4px 8px", background: "var(--input-background)", "border-radius": "4px", border: "1px solid var(--input-border)" }}>
+					{endpoint}
+				</code>
+				<Button icon variant="ghost" label={props.copied ? "Copied!" : "Copy endpoint"} onClick={props.onCopy}>
+					<Show when={props.copied} fallback={<CopyIcon />}>
+						<CheckIcon />
+					</Show>
+				</Button>
+			</CardFooter>
+		</Card>
 	);
 }
 
@@ -284,39 +285,40 @@ function CreateProfileForm(props: CreateProfileFormProps) {
 	};
 
 	return (
-		<div class="card">
-			<form class="flex-col" style={{ gap: "12px" }} onSubmit={handleSubmit}>
-				<h6 class="secondary font-medium">Create New Profile</h6>
+		<Card>
+			<form onSubmit={handleSubmit}>
+				<CardHeader>
+					<CardTitle>Create New Profile</CardTitle>
+				</CardHeader>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Name</label>
-					<input type="text" value={name()} onInput={e => handleNameChange(e.currentTarget.value)} placeholder="My Public Timeline" />
-				</div>
+				<CardContent class="flex-col" style={{ gap: "12px" }}>
+					<FormField label="Name" id="create-profile-name">
+						<Input id="create-profile-name" value={name()} onInput={e => handleNameChange(e.currentTarget.value)} placeholder="My Public Timeline" />
+					</FormField>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Slug (URL path)</label>
-					<input type="text" value={slug()} onInput={e => setSlug(e.currentTarget.value)} placeholder="my-public-timeline" />
-				</div>
+					<FormField label="Slug (URL path)" id="create-profile-slug">
+						<Input id="create-profile-slug" value={slug()} onInput={e => setSlug(e.currentTarget.value)} placeholder="my-public-timeline" />
+					</FormField>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Description (optional)</label>
-					<input type="text" value={description()} onInput={e => setDescription(e.currentTarget.value)} placeholder="A brief description" />
-				</div>
+					<FormField label="Description (optional)" id="create-profile-description">
+						<Input id="create-profile-description" value={description()} onInput={e => setDescription(e.currentTarget.value)} placeholder="A brief description" />
+					</FormField>
 
-				<Show when={error()}>
-					<p class="error-icon text-sm">{error()}</p>
-				</Show>
+					<Show when={error()}>
+						<p class="error-icon text-sm">{error()}</p>
+					</Show>
+				</CardContent>
 
-				<div class="flex-row" style={{ gap: "8px", "justify-content": "flex-end" }}>
-					<button type="button" class="button-reset tertiary" onClick={props.onCancel}>
+				<CardFooter class="flex-row" style={{ gap: "8px", "justify-content": "flex-end" }}>
+					<Button variant="secondary" onClick={props.onCancel}>
 						Cancel
-					</button>
-					<button type="submit" disabled={submitting()}>
-						{submitting() ? "Creating..." : "Create Profile"}
-					</button>
-				</div>
+					</Button>
+					<Button type="submit" loading={submitting()}>
+						Create Profile
+					</Button>
+				</CardFooter>
 			</form>
-		</div>
+		</Card>
 	);
 }
 
@@ -358,39 +360,40 @@ function EditProfileForm(props: EditProfileFormProps) {
 	};
 
 	return (
-		<div class="card">
-			<form class="flex-col" style={{ gap: "12px" }} onSubmit={handleSubmit}>
-				<h6 class="secondary font-medium">Edit Profile</h6>
+		<Card>
+			<form onSubmit={handleSubmit}>
+				<CardHeader>
+					<CardTitle>Edit Profile</CardTitle>
+				</CardHeader>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Name</label>
-					<input type="text" value={name()} onInput={e => setName(e.currentTarget.value)} placeholder="My Public Timeline" />
-				</div>
+				<CardContent class="flex-col" style={{ gap: "12px" }}>
+					<FormField label="Name" id="edit-profile-name">
+						<Input id="edit-profile-name" value={name()} onInput={e => setName(e.currentTarget.value)} placeholder="My Public Timeline" />
+					</FormField>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Slug (URL path)</label>
-					<input type="text" value={slug()} onInput={e => setSlug(e.currentTarget.value)} placeholder="my-public-timeline" />
-				</div>
+					<FormField label="Slug (URL path)" id="edit-profile-slug">
+						<Input id="edit-profile-slug" value={slug()} onInput={e => setSlug(e.currentTarget.value)} placeholder="my-public-timeline" />
+					</FormField>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Description (optional)</label>
-					<input type="text" value={description()} onInput={e => setDescription(e.currentTarget.value)} placeholder="A brief description" />
-				</div>
+					<FormField label="Description (optional)" id="edit-profile-description">
+						<Input id="edit-profile-description" value={description()} onInput={e => setDescription(e.currentTarget.value)} placeholder="A brief description" />
+					</FormField>
 
-				<Show when={error()}>
-					<p class="error-icon text-sm">{error()}</p>
-				</Show>
+					<Show when={error()}>
+						<p class="error-icon text-sm">{error()}</p>
+					</Show>
+				</CardContent>
 
-				<div class="flex-row" style={{ gap: "8px", "justify-content": "flex-end" }}>
-					<button type="button" class="button-reset tertiary" onClick={props.onCancel}>
+				<CardFooter class="flex-row" style={{ gap: "8px", "justify-content": "flex-end" }}>
+					<Button variant="secondary" onClick={props.onCancel}>
 						Cancel
-					</button>
-					<button type="submit" disabled={submitting()}>
-						{submitting() ? "Saving..." : "Save Changes"}
-					</button>
-				</div>
+					</Button>
+					<Button type="submit" loading={submitting()}>
+						Save Changes
+					</Button>
+				</CardFooter>
 			</form>
-		</div>
+		</Card>
 	);
 }
 

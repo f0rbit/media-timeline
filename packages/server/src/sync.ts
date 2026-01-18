@@ -1,17 +1,17 @@
 import type { Backend } from "@f0rbit/corpus";
 import { BlueskyRawSchema, type CommitGroup, type CronError, DevpadRawSchema, type Platform, type TimelineItem, YouTubeRawSchema } from "@media/schema";
-import { eq, sql } from "drizzle-orm";
 import { accounts, rateLimits } from "@media/schema";
-import type { Database } from "./db";
-import type { AppContext } from "./infrastructure/context";
+import type { AccountWithUser } from "@media/schema";
+import { eq, sql } from "drizzle-orm";
 import { processGitHubAccount } from "./cron/processors/github";
 import { processRedditAccount } from "./cron/processors/reddit";
 import { processTwitterAccount } from "./cron/processors/twitter";
+import type { Database } from "./db";
+import type { AppContext } from "./infrastructure/context";
 import { createLogger } from "./logger";
-import { type CronProcessor, getPlatformCapabilities, getPlatformsWithMultiStore, GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
+import { GitHubProvider, normalizeBluesky, normalizeDevpad, normalizeYouTube } from "./platforms";
 import { RedditProvider } from "./platforms/reddit";
 import { TwitterProvider } from "./platforms/twitter";
-import type { AccountWithUser } from "@media/schema";
 import type { ProviderError, ProviderFactory } from "./platforms/types";
 import { type RateLimitState, type RawData, createRawStore, createTimelineStore, rawStoreId, shouldFetch } from "./storage";
 import { groupByDate, groupCommits, loadGitHubDataForAccount, loadRedditDataForAccount, loadTwitterDataForAccount, normalizeGitHub, normalizeReddit, normalizeTwitter } from "./timeline";
@@ -53,6 +53,29 @@ export type ProcessingError = {
 	kind: string;
 	message?: string;
 };
+
+export type CronProcessor = {
+	shouldFetch: (account: AccountWithUser, lastFetchedAt: string | null) => boolean;
+	createProvider: (ctx: AppContext) => unknown;
+	processAccount: (backend: Backend, accountId: string, token: string, provider: unknown, account?: AccountWithUser) => Promise<Result<PlatformProcessResult, ProcessingError>>;
+};
+
+type PlatformCapabilities = {
+	fetchIntervalDays?: number;
+};
+
+const PLATFORM_CAPABILITIES: Record<Platform, PlatformCapabilities> = {
+	github: {},
+	reddit: {},
+	twitter: { fetchIntervalDays: 3 },
+	bluesky: {},
+	youtube: {},
+	devpad: {},
+};
+
+const MULTI_STORE_PLATFORMS: Platform[] = ["github", "reddit", "twitter"];
+
+const getPlatformCapabilities = (platform: Platform): PlatformCapabilities => PLATFORM_CAPABILITIES[platform];
 
 // ============================================================================
 // Account Processor
@@ -305,10 +328,7 @@ const logTimeline = createLogger("sync:timeline");
 
 type TimelineEntry = TimelineItem | CommitGroup;
 
-const isMultiStore = (platform: string): boolean => {
-	const multiStorePlatforms = getPlatformsWithMultiStore();
-	return multiStorePlatforms.includes(platform as Platform);
-};
+const isMultiStore = (platform: string): boolean => MULTI_STORE_PLATFORMS.includes(platform as Platform);
 
 export const groupSnapshotsByPlatform = (snapshots: RawSnapshot[]): PlatformGroups => ({
 	github: snapshots.filter(s => s.platform === "github"),

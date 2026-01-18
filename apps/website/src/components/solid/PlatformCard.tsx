@@ -1,6 +1,7 @@
 import type { ConnectionWithSettings } from "@/utils/api";
 import { apiUrls } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
+import { Status, Button } from "@f0rbit/ui";
 import { Match, Show, Switch } from "solid-js";
 import ConnectionActions from "./ConnectionActions";
 import PlatformIcon from "./PlatformIcon";
@@ -12,7 +13,9 @@ import TwitterSettings from "./PlatformSettings/TwitterSettings";
 import YouTubeSettings from "./PlatformSettings/YouTubeSettings";
 import PlatformSetupForm, { type Platform } from "./PlatformSetupForm";
 import RedditCredentialsForm from "./RedditCredentialsForm";
-import StatusBadge, { type ConnectionState } from "./StatusBadge";
+
+type ConnectionState = "not_configured" | "inactive" | "active" | "error";
+const mapState = (s: ConnectionState): "active" | "inactive" | "error" => (s === "not_configured" ? "inactive" : s);
 
 type Props = {
 	platform: Platform;
@@ -47,9 +50,7 @@ function TwitterOAuthButton(props: { profileId: string }) {
 	return (
 		<div class="oauth-setup">
 			<p class="muted text-sm">Connect your Twitter/X account to sync your tweets.</p>
-			<button type="button" onClick={handleConnect} class="oauth-button">
-				Connect with Twitter/X
-			</button>
+			<Button onClick={handleConnect}>Connect with Twitter/X</Button>
 		</div>
 	);
 }
@@ -63,9 +64,7 @@ function GitHubOAuthButton(props: { profileId: string }) {
 	return (
 		<div class="oauth-setup">
 			<p class="muted text-sm">Connect your GitHub account to sync your commits and pull requests.</p>
-			<button type="button" onClick={handleConnect} class="oauth-button">
-				Connect with GitHub
-			</button>
+			<Button onClick={handleConnect}>Connect with GitHub</Button>
 		</div>
 	);
 }
@@ -138,7 +137,7 @@ export default function PlatformCard(props: Props) {
 					</div>
 				</div>
 				<div class="flex-row items-center" style={{ gap: "8px" }}>
-					<StatusBadge state={state()} />
+					<Status state={mapState(state())} />
 					<Show when={props.connection} keyed>
 						{connection => <ConnectionActions accountId={connection.account_id} isActive={connection.is_active} state={state() as "active" | "inactive"} onAction={props.onConnectionChange} />}
 					</Show>

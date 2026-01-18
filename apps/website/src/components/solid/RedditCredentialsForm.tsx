@@ -1,5 +1,6 @@
 import { api } from "@/utils/api";
 import { Show, createSignal } from "solid-js";
+import { Button, FormField, Input } from "@f0rbit/ui";
 
 type RedditCredentialsFormProps = {
 	profileId: string;
@@ -80,28 +81,25 @@ export default function RedditCredentialsForm(props: RedditCredentialsFormProps)
 			</Show>
 
 			<form onSubmit={handleSubmit} class="flex-col" style={{ gap: "12px", "margin-top": "12px" }}>
-				<div class="form-row">
-					<label class="text-sm tertiary">Your Reddit Username</label>
-					<input type="text" value={redditUsername()} onInput={e => setRedditUsername(e.currentTarget.value)} placeholder="e.g., spez" disabled={submitting()} />
-				</div>
+				<FormField label="Your Reddit Username" id="reddit-username">
+					<Input id="reddit-username" value={redditUsername()} onInput={e => setRedditUsername(e.currentTarget.value)} placeholder="e.g., spez" disabled={submitting()} />
+				</FormField>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Client ID</label>
-					<input type="text" value={clientId()} onInput={e => setClientId(e.currentTarget.value)} placeholder="e.g., AbCdEfGhIjKlMn" disabled={submitting()} />
-				</div>
+				<FormField label="Client ID" id="client-id">
+					<Input id="client-id" value={clientId()} onInput={e => setClientId(e.currentTarget.value)} placeholder="e.g., AbCdEfGhIjKlMn" disabled={submitting()} />
+				</FormField>
 
-				<div class="form-row">
-					<label class="text-sm tertiary">Client Secret</label>
-					<input type="password" value={clientSecret()} onInput={e => setClientSecret(e.currentTarget.value)} placeholder="Enter your client secret" disabled={submitting()} />
-				</div>
+				<FormField label="Client Secret" id="client-secret">
+					<Input id="client-secret" type="password" value={clientSecret()} onInput={e => setClientSecret(e.currentTarget.value)} placeholder="Enter your client secret" disabled={submitting()} />
+				</FormField>
 
 				<Show when={error()}>
 					<p class="error-icon text-sm">{error()}</p>
 				</Show>
 
-				<button type="submit" class="oauth-button" disabled={submitting()} style={{ "margin-top": "4px" }}>
-					{submitting() ? "Connecting..." : "Connect Reddit"}
-				</button>
+				<Button type="submit" loading={submitting()} style={{ "margin-top": "4px" }}>
+					Connect Reddit
+				</Button>
 			</form>
 		</div>
 	);

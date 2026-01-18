@@ -1,5 +1,6 @@
 import { type DashboardStats as Stats, calculateActivityByWeek, calculateContentTypes, calculateDashboardStats, calculatePlatformDistribution, getItemsForDate, getRecentItems } from "@/utils/analytics";
 import { type ApiResult, type ProfileTimelineResponse, initMockAuth, profiles } from "@/utils/api";
+import { Empty, Spinner } from "@f0rbit/ui";
 import { Show, createSignal } from "solid-js";
 import { createResource } from "solid-js";
 import ActivityChart, { ActivityPreview } from "./ActivityChart";
@@ -47,18 +48,19 @@ export default function Dashboard(props: DashboardProps) {
 	return (
 		<div class="dashboard">
 			<Show when={!props.profileSlug}>
-				<div class="empty-state">
-					<h3>No profile selected</h3>
-					<p class="muted">Select a profile from the dropdown above to view your dashboard.</p>
-					<a href="/connections" class="oauth-button">
+				<Empty title="No profile selected" description="Select a profile from the dropdown above to view your dashboard.">
+					<a href="/connections" class="btn">
 						Manage Profiles
 					</a>
-				</div>
+				</Empty>
 			</Show>
 
 			<Show when={props.profileSlug}>
 				<Show when={data.loading}>
-					<p class="tertiary">Loading dashboard...</p>
+					<div class="loading-state">
+						<Spinner size="md" />
+						<p class="tertiary">Loading dashboard...</p>
+					</div>
 				</Show>
 
 				<Show when={data.error}>
@@ -113,16 +115,14 @@ function DashboardContent(props: DashboardContentProps) {
 	return (
 		<>
 			<Show when={stats().totalEntries === 0}>
-				<div class="empty-state">
-					<h3>No activity data yet</h3>
-					<p class="muted">Your dashboard will show analytics once you connect platforms and run a sync.</p>
-					<a href="/connections" class="oauth-button">
+				<Empty title="No activity data yet" description="Your dashboard will show analytics once you connect platforms and run a sync.">
+					<a href="/connections" class="btn">
 						Connect Platforms
 					</a>
 					<p class="text-sm muted" style={{ "margin-top": "1rem" }}>
 						Data syncs automatically every 5 minutes.
 					</p>
-				</div>
+				</Empty>
 			</Show>
 
 			<Show when={stats().totalEntries > 0}>
