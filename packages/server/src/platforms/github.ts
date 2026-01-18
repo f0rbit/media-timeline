@@ -241,7 +241,8 @@ export class GitHubProvider {
 				per_page: 100,
 			})) as OctokitResponse<BranchData[]>;
 			return branches.map(b => b.name);
-		} catch {
+		} catch (error) {
+			log.warn("Failed to fetch branches", { owner, repo, error });
 			return [];
 		}
 	}
@@ -307,7 +308,9 @@ export class GitHubProvider {
 						files_changed: commit.files?.length,
 					});
 				}
-			} catch {}
+			} catch (error) {
+				log.warn("Failed to fetch commits for branch", { owner, repo: name, branch, error });
+			}
 		}
 
 		return {
@@ -378,7 +381,8 @@ export class GitHubProvider {
 				total_prs: prsWithCommits.length,
 				fetched_at: new Date().toISOString(),
 			};
-		} catch {
+		} catch (error) {
+			log.warn("Failed to fetch PRs for repo", { owner, repo: name, error });
 			return {
 				owner,
 				repo: name,
@@ -398,7 +402,8 @@ export class GitHubProvider {
 				per_page: 250,
 			})) as OctokitResponse<PRCommitData[]>;
 			return commits.map(c => c.sha);
-		} catch {
+		} catch (error) {
+			log.warn("Failed to fetch PR commits", { owner, repo, prNumber, error });
 			return [];
 		}
 	}

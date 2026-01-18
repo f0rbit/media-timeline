@@ -2,6 +2,7 @@ import { type Backend, type Parser, type Store, create_corpus, define_store, jso
 import {
 	BlueskyRawSchema,
 	DevpadRawSchema,
+	errors,
 	type GitHubMetaStore,
 	GitHubMetaStoreSchema,
 	GitHubRawSchema,
@@ -9,12 +10,14 @@ import {
 	GitHubRepoCommitsStoreSchema,
 	type GitHubRepoPRsStore,
 	GitHubRepoPRsStoreSchema,
+	type ParseError,
 	type RedditCommentsStore,
 	RedditCommentsStoreSchema,
 	type RedditMetaStore,
 	RedditMetaStoreSchema,
 	type RedditPostsStore,
 	RedditPostsStoreSchema,
+	type StoreError,
 	TimelineSchema,
 	type TwitterMetaStore,
 	TwitterMetaStoreSchema,
@@ -23,11 +26,11 @@ import {
 	YouTubeRawSchema,
 } from "@media/schema";
 import { z } from "zod";
-import { type Result, err, ok } from "./utils";
+import { type Result, ok } from "./utils";
 
 const STORAGE_PREFIX = "media";
 
-export type CorpusError = { kind: "store_not_found"; store_id: string };
+export type CorpusError = StoreError | ParseError;
 
 const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, schema: Parser<TData>): Result<{ store: Store<TData>; id: TId }, CorpusError> => {
 	const corpus = create_corpus()
@@ -35,7 +38,7 @@ const createTypedStore = <TData, TId extends string>(backend: Backend, id: TId, 
 		.with_store(define_store(id, json_codec(schema)))
 		.build();
 	const store = corpus.stores[id];
-	if (!store) return err({ kind: "store_not_found", store_id: id });
+	if (!store) return errors.storeError("get", `Store not found: ${id}`);
 	return ok({ store, id });
 };
 
@@ -76,9 +79,9 @@ export type ParsedStoreId =
 	| { type: "twitter_tweets"; accountId: string }
 	| { type: "raw"; platform: string; accountId: string };
 
-export const parseStoreId = (storeId: string): Result<ParsedStoreId, { kind: "invalid_store_id"; storeId: string }> => {
+export const parseStoreId = (storeId: string): Result<ParsedStoreId, ParseError> => {
 	const parts = storeId.split("/");
-	if (parts[0] !== STORAGE_PREFIX) return err({ kind: "invalid_store_id", storeId });
+	if (parts[0] !== STORAGE_PREFIX) return errors.parseError(`Invalid store ID prefix: ${storeId}`);
 
 	const [, type, id, subtype, ...rest] = parts;
 
@@ -92,7 +95,7 @@ export const parseStoreId = (storeId: string): Result<ParsedStoreId, { kind: "in
 	if (type === "twitter" && id && subtype === "tweets") return ok({ type: "twitter_tweets", accountId: id });
 	if (type === "raw" && id && subtype) return ok({ type: "raw", platform: id, accountId: subtype });
 
-	return err({ kind: "invalid_store_id", storeId });
+	return errors.parseError(`Invalid store ID format: ${storeId}`);
 };
 
 export const rawStoreId = STORE_PATTERNS.raw;
@@ -123,15 +126,65 @@ export type RedditCommentsStoreResult = { store: Store<RedditCommentsStore>; id:
 export type TwitterMetaStoreResult = { store: Store<TwitterMetaStore>; id: TwitterMetaStoreId };
 export type TwitterTweetsStoreResult = { store: Store<TwitterTweetsStore>; id: TwitterTweetsStoreId };
 
+export type StoreType = "raw" | "timeline" | "github_meta" | "github_commits" | "github_prs" | "reddit_meta" | "reddit_posts" | "reddit_comments" | "twitter_meta" | "twitter_tweets";
+
+export function createStore(backend: Backend, type: "raw", platform: string, accountId: string): Result<RawStore, CorpusError>;
+export function createStore(backend: Backend, type: "timeline", userId: string): Result<TimelineStore, CorpusError>;
+export function createStore(backend: Backend, type: "github_meta", accountId: string): Result<GitHubMetaStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: "github_commits", accountId: string, owner: string, repo: string): Result<GitHubCommitsStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: "github_prs", accountId: string, owner: string, repo: string): Result<GitHubPRsStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: "reddit_meta", accountId: string): Result<RedditMetaStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: "reddit_posts", accountId: string): Result<RedditPostsStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: "reddit_comments", accountId: string): Result<RedditCommentsStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: "twitter_meta", accountId: string): Result<TwitterMetaStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: "twitter_tweets", accountId: string): Result<TwitterTweetsStoreResult, CorpusError>;
+export function createStore(backend: Backend, type: StoreType, arg0?: string, arg1?: string, arg2?: string): Result<unknown, CorpusError> {
+	const a0 = arg0 ?? "";
+	const a1 = arg1 ?? "";
+	const a2 = arg2 ?? "";
+	switch (type) {
+		case "raw":
+			return createTypedStore(backend, rawStoreId(a0, a1), RawDataSchema);
+		case "timeline":
+			return createTypedStore(backend, timelineStoreId(a0), TimelineDataSchema);
+		case "github_meta":
+			return createTypedStore(backend, githubMetaStoreId(a0), GitHubMetaStoreSchema);
+		case "github_commits":
+			return createTypedStore(backend, githubCommitsStoreId(a0, a1, a2), GitHubRepoCommitsStoreSchema);
+		case "github_prs":
+			return createTypedStore(backend, githubPRsStoreId(a0, a1, a2), GitHubRepoPRsStoreSchema);
+		case "reddit_meta":
+			return createTypedStore(backend, redditMetaStoreId(a0), RedditMetaStoreSchema);
+		case "reddit_posts":
+			return createTypedStore(backend, redditPostsStoreId(a0), RedditPostsStoreSchema);
+		case "reddit_comments":
+			return createTypedStore(backend, redditCommentsStoreId(a0), RedditCommentsStoreSchema);
+		case "twitter_meta":
+			return createTypedStore(backend, twitterMetaStoreId(a0), TwitterMetaStoreSchema);
+		case "twitter_tweets":
+			return createTypedStore(backend, twitterTweetsStoreId(a0), TwitterTweetsStoreSchema);
+	}
+}
+
+/** @deprecated Use createStore(backend, 'raw', platform, accountId) instead */
 export const createRawStore = (backend: Backend, platform: string, accountId: string) => createTypedStore(backend, rawStoreId(platform, accountId), RawDataSchema);
+/** @deprecated Use createStore(backend, 'timeline', userId) instead */
 export const createTimelineStore = (backend: Backend, userId: string) => createTypedStore(backend, timelineStoreId(userId), TimelineDataSchema);
+/** @deprecated Use createStore(backend, 'github_meta', accountId) instead */
 export const createGitHubMetaStore = (backend: Backend, accountId: string) => createTypedStore(backend, githubMetaStoreId(accountId), GitHubMetaStoreSchema);
+/** @deprecated Use createStore(backend, 'github_commits', accountId, owner, repo) instead */
 export const createGitHubCommitsStore = (backend: Backend, accountId: string, owner: string, repo: string) => createTypedStore(backend, githubCommitsStoreId(accountId, owner, repo), GitHubRepoCommitsStoreSchema);
+/** @deprecated Use createStore(backend, 'github_prs', accountId, owner, repo) instead */
 export const createGitHubPRsStore = (backend: Backend, accountId: string, owner: string, repo: string) => createTypedStore(backend, githubPRsStoreId(accountId, owner, repo), GitHubRepoPRsStoreSchema);
+/** @deprecated Use createStore(backend, 'reddit_meta', accountId) instead */
 export const createRedditMetaStore = (backend: Backend, accountId: string) => createTypedStore(backend, redditMetaStoreId(accountId), RedditMetaStoreSchema);
+/** @deprecated Use createStore(backend, 'reddit_posts', accountId) instead */
 export const createRedditPostsStore = (backend: Backend, accountId: string) => createTypedStore(backend, redditPostsStoreId(accountId), RedditPostsStoreSchema);
+/** @deprecated Use createStore(backend, 'reddit_comments', accountId) instead */
 export const createRedditCommentsStore = (backend: Backend, accountId: string) => createTypedStore(backend, redditCommentsStoreId(accountId), RedditCommentsStoreSchema);
+/** @deprecated Use createStore(backend, 'twitter_meta', accountId) instead */
 export const createTwitterMetaStore = (backend: Backend, accountId: string) => createTypedStore(backend, twitterMetaStoreId(accountId), TwitterMetaStoreSchema);
+/** @deprecated Use createStore(backend, 'twitter_tweets', accountId) instead */
 export const createTwitterTweetsStore = (backend: Backend, accountId: string) => createTypedStore(backend, twitterTweetsStoreId(accountId), TwitterTweetsStoreSchema);
 
 export const listTwitterStoreIds = (accountId: string): string[] => [twitterMetaStoreId(accountId), twitterTweetsStoreId(accountId)];

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import type { TwitterTweetsStore } from "@media/schema";
-import { type TwitterProcessResult, processTwitterAccount } from "@media/server/cron-twitter";
+import { type TwitterProcessResult, processTwitterAccount } from "@media/server/cron";
 import { ACCOUNTS, PROFILES, TWITTER_FIXTURES, USERS, makeTwitterTweet } from "./fixtures";
 import { type TestContext, createTestContext, seedAccount, seedProfile, seedUser } from "./setup";
 

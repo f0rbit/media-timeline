@@ -17,9 +17,11 @@ export {
 	type DeepPartial,
 } from "@f0rbit/corpus";
 
-import { type FetchError, type Result, err, ok, pipe, try_catch, try_catch_async } from "@f0rbit/corpus";
+import { type FetchError, type Result, ok, pipe, try_catch, try_catch_async } from "@f0rbit/corpus";
+import { errors, type ParseError } from "@media/schema";
 import type { Context } from "hono";
 import type { z } from "zod";
+import { createLogger } from "./logger";
 
 export const safeJsonParse = <T>(value: string, schema: z.ZodType<T>): T | undefined => {
 	try {
@@ -124,7 +126,7 @@ export const minutes_ago = (minutes: number): string => {
 export const extract_date_key = (timestamp: string): string => new Date(timestamp).toISOString().split("T")[0] ?? "";
 
 // Encoding utilities
-export type DecodeError = { kind: "invalid_base64"; input: string } | { kind: "invalid_hex"; input: string };
+export type DecodeError = { kind: "invalid_base64"; input: string } | ParseError;
 
 export const to_base64 = (bytes: Uint8Array): string => btoa(String.fromCharCode(...bytes));
 export const from_base64 = (str: string): Result<Uint8Array, DecodeError> =>
@@ -134,9 +136,9 @@ export const from_base64 = (str: string): Result<Uint8Array, DecodeError> =>
 	);
 
 export const to_hex = (bytes: Uint8Array): string => Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
-export const from_hex = (str: string): Result<Uint8Array, DecodeError> => {
+export const from_hex = (str: string): Result<Uint8Array, ParseError> => {
 	if (str.length % 2 !== 0 || !/^[0-9a-fA-F]*$/.test(str)) {
-		return err({ kind: "invalid_hex", input: str.slice(0, 50) });
+		return errors.parseError(`Invalid hex string: ${str.slice(0, 50)}`);
 	}
 	const matches = str.match(/.{1,2}/g);
 	if (!matches) return ok(new Uint8Array(0));
@@ -164,11 +166,12 @@ export const random_sha = (): string => Array.from({ length: 40 }, () => Math.fl
 
 // Background task utilities
 export const safeWaitUntil = (c: Context, task: () => Promise<void>, taskName: string): void => {
+	const log = createLogger(taskName);
 	try {
 		c.executionCtx.waitUntil(task());
 	} catch {
-		task().catch(err => {
-			console.error(`[${taskName}] Background task failed:`, err);
+		task().catch(error => {
+			log.error("Background task failed", { error });
 		});
 	}
 };

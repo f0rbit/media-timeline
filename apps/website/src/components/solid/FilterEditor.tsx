@@ -1,5 +1,6 @@
 import { apiUrls } from "@/utils/api";
 import { For, Show, createMemo, createResource, createSignal } from "solid-js";
+import { Modal, ModalHeader, ModalTitle, ModalBody, Button, Empty, FormField, Input, Select, Spinner } from "@f0rbit/ui";
 import PlatformIcon from "./PlatformIcon";
 
 type Filter = {
@@ -24,6 +25,7 @@ type Account = {
 type FilterEditorProps = {
 	profileId: string;
 	accounts: Account[];
+	isOpen: boolean;
 	onClose: () => void;
 };
 
@@ -111,7 +113,7 @@ export default function FilterEditor(props: FilterEditorProps) {
 			});
 
 			if (!res.ok) {
-				const data = await res.json();
+				const data = (await res.json()) as { error?: string; message?: string };
 				throw new Error(data.error ?? data.message ?? "Failed to add filter");
 			}
 
@@ -132,7 +134,7 @@ export default function FilterEditor(props: FilterEditorProps) {
 			});
 
 			if (!res.ok) {
-				const data = await res.json();
+				const data = (await res.json()) as { error?: string; message?: string };
 				throw new Error(data.error ?? data.message ?? "Failed to remove filter");
 			}
 
@@ -147,96 +149,78 @@ export default function FilterEditor(props: FilterEditorProps) {
 		addFilter();
 	};
 
-	const handleOverlayClick = (e: MouseEvent) => {
-		if (e.target === e.currentTarget) props.onClose();
-	};
-
-	const handleOverlayKeyDown = (e: KeyboardEvent) => {
-		if (e.key === "Escape") props.onClose();
-	};
-
 	return (
-		<div class="filter-editor-overlay" onClick={handleOverlayClick} onKeyDown={handleOverlayKeyDown}>
-			<div class="filter-editor-card">
-				<div class="filter-editor-header">
-					<h3>Content Filters</h3>
-					<button class="icon-btn" onClick={props.onClose} type="button" aria-label="Close">
-						<CloseIcon />
-					</button>
-				</div>
+		<Modal open={props.isOpen} onClose={props.onClose}>
+			<ModalHeader>
+				<ModalTitle>Content Filters</ModalTitle>
+			</ModalHeader>
 
-				<div class="filter-editor-content">
-					<Show when={filters.loading}>
+			<ModalBody>
+				<Show when={filters.loading}>
+					<div class="loading-state">
+						<Spinner size="sm" />
 						<p class="tertiary text-sm">Loading filters...</p>
-					</Show>
+					</div>
+				</Show>
 
-					<Show when={filters.error}>
-						<p class="error-icon text-sm">Failed to load filters</p>
-					</Show>
+				<Show when={filters.error}>
+					<p class="error-icon text-sm">Failed to load filters</p>
+				</Show>
 
-					<Show when={!filters.loading && !filters.error}>
-						<div class="filter-list">
-							<Show when={(filters()?.length ?? 0) === 0}>
-								<p class="muted text-sm">No filters configured. Add filters to include or exclude specific content.</p>
-							</Show>
-
-							<For each={filters()}>{filter => <FilterItem filter={filter} accounts={props.accounts} onRemove={() => removeFilter(filter.id)} />}</For>
-						</div>
-					</Show>
-
-					<form class="filter-add-form" onSubmit={handleSubmit}>
-						<h6 class="secondary font-medium">Add Filter</h6>
-
-						<div class="filter-form-row">
-							<label class="text-sm tertiary">Account</label>
-							<select value={accountId()} onChange={e => handleAccountChange(e.currentTarget.value)}>
-								<For each={[...groupedAccounts().entries()]}>
-									{([platform, accounts]) => (
-										<optgroup label={formatPlatformLabel(platform)}>
-											<For each={accounts}>{account => <option value={account.id}>{account.platform_username ?? account.id.slice(0, 8)}</option>}</For>
-										</optgroup>
-									)}
-								</For>
-							</select>
-						</div>
-
-						<div class="filter-form-row">
-							<label class="text-sm tertiary">Filter Type</label>
-							<div class="filter-type-toggle">
-								<button type="button" class={`filter-type-btn ${filterType() === "include" ? "filter-type-include active" : ""}`} onClick={() => setFilterType("include")}>
-									Include
-								</button>
-								<button type="button" class={`filter-type-btn ${filterType() === "exclude" ? "filter-type-exclude active" : ""}`} onClick={() => setFilterType("exclude")}>
-									Exclude
-								</button>
-							</div>
-						</div>
-
-						<div class="filter-form-row">
-							<label class="text-sm tertiary">Filter Key</label>
-							<select value={filterKey()} onChange={e => setFilterKey(e.currentTarget.value)}>
-								<For each={availableFilterKeys()}>{key => <option value={key}>{FILTER_KEY_LABELS[key] ?? key}</option>}</For>
-							</select>
-						</div>
-
-						<div class="filter-form-row">
-							<label class="text-sm tertiary">Value</label>
-							<input type="text" value={filterValue()} onInput={e => setFilterValue(e.currentTarget.value)} placeholder={getPlaceholder(filterKey())} />
-						</div>
-
-						<Show when={error()}>
-							<p class="error-icon text-sm">{error()}</p>
+				<Show when={!filters.loading && !filters.error}>
+					<div class="filter-list">
+						<Show when={(filters()?.length ?? 0) === 0}>
+							<Empty title="No filters configured" description="Add filters to include or exclude specific content." />
 						</Show>
 
-						<div class="filter-form-actions">
-							<button type="submit" disabled={adding() || !filterValue().trim()}>
-								{adding() ? "Adding..." : "Add Filter"}
+						<For each={filters()}>{filter => <FilterItem filter={filter} accounts={props.accounts} onRemove={() => removeFilter(filter.id)} />}</For>
+					</div>
+				</Show>
+
+				<form class="filter-add-form" onSubmit={handleSubmit}>
+					<h6 class="secondary font-medium">Add Filter</h6>
+
+					<FormField label="Account">
+						<Select value={accountId()} onChange={e => handleAccountChange(e.currentTarget.value)}>
+							<For each={[...groupedAccounts().entries()]}>
+								{([platform, accounts]) => (
+									<optgroup label={formatPlatformLabel(platform)}>
+										<For each={accounts}>{account => <option value={account.id}>{account.platform_username ?? account.id.slice(0, 8)}</option>}</For>
+									</optgroup>
+								)}
+							</For>
+						</Select>
+					</FormField>
+
+					<FormField label="Filter Type">
+						<div class="filter-type-toggle">
+							<button type="button" class={`filter-type-btn ${filterType() === "include" ? "filter-type-include active" : ""}`} onClick={() => setFilterType("include")}>
+								Include
+							</button>
+							<button type="button" class={`filter-type-btn ${filterType() === "exclude" ? "filter-type-exclude active" : ""}`} onClick={() => setFilterType("exclude")}>
+								Exclude
 							</button>
 						</div>
-					</form>
-				</div>
-			</div>
-		</div>
+					</FormField>
+
+					<FormField label="Filter Key">
+						<Select value={filterKey()} onChange={e => setFilterKey(e.currentTarget.value)}>
+							<For each={availableFilterKeys()}>{key => <option value={key}>{FILTER_KEY_LABELS[key] ?? key}</option>}</For>
+						</Select>
+					</FormField>
+
+					<FormField label="Value" error={error() ?? undefined}>
+						<Input type="text" value={filterValue()} onInput={e => setFilterValue(e.currentTarget.value)} placeholder={getPlaceholder(filterKey())} error={!!error()} />
+					</FormField>
+
+					<div class="filter-form-actions">
+						<Button type="submit" disabled={adding() || !filterValue().trim()} loading={adding()}>
+							Add Filter
+						</Button>
+					</div>
+				</form>
+			</ModalBody>
+		</Modal>
 	);
 }
 
@@ -262,9 +246,9 @@ function FilterItem(props: FilterItemProps) {
 					<span class="filter-item-account muted text-xs">({account()?.platform_username})</span>
 				</Show>
 			</div>
-			<button class="icon-btn filter-item-remove" onClick={props.onRemove} title="Remove filter">
+			<Button icon variant="ghost" onClick={props.onRemove} label="Remove filter">
 				<CloseIcon size={14} />
-			</button>
+			</Button>
 		</div>
 	);
 }

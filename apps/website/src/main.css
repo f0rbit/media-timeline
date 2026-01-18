@@ -151,7 +151,7 @@ button.active {
 
 a:hover,
 .label-modal:hover,
-button:hover {
+button:not(.btn):hover {
 	filter: var(--hover-filter);
 }
 
@@ -382,19 +382,6 @@ p.description {
 	vertical-align: middle;
 }
 
-.spinner {
-	animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-	0% {
-		transform: rotate(0deg);
-	}
-	100% {
-		transform: rotate(360deg);
-	}
-}
-
 .success-icon {
 	color: oklch(from var(--item-green) 0.8 0.15 h);
 }
@@ -463,28 +450,16 @@ details[open] .down-arrow {
 	transition: opacity 0.15s;
 }
 
-.empty-state {
-	text-align: center;
-	padding: 40px 20px;
+/* Old empty-state styles removed - now using @f0rbit/ui Empty component */
+
+.loading-state {
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	gap: 0.75rem;
+	padding: 2rem;
 	color: var(--text-muted);
-}
-
-.empty-state h3 {
-	color: var(--text-secondary);
-	font-size: 1.125rem;
-	font-weight: 500;
-	margin-bottom: 8px;
-}
-
-.empty-state p {
-	margin-bottom: 16px;
-	max-width: 400px;
-	margin-left: auto;
-	margin-right: auto;
-}
-
-.empty-state .oauth-button {
-	margin-top: 8px;
 }
 
 /* ==========================================================================
@@ -589,36 +564,9 @@ form section label {
 	margin-bottom: 4px;
 }
 
-.form-row {
-	display: flex;
-	flex-direction: column;
-	gap: 4px;
-}
+/* Old .form-row styles removed - now using @f0rbit/ui FormField component */
 
-.form-row input[type="text"],
-.form-row input[type="password"] {
-	padding: 8px;
-	width: 100%;
-}
-
-.filter-toggles {
-	display: flex;
-	flex-direction: column;
-	gap: 8px;
-}
-
-.filter-toggle {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	cursor: pointer;
-}
-
-.filter-toggle input[type="checkbox"] {
-	width: 16px;
-	height: 16px;
-	cursor: pointer;
-}
+/* Old .filter-toggles and .filter-toggle styles removed - now using @f0rbit/ui Checkbox component */
 
 /* ==========================================================================
    BUTTONS
@@ -632,56 +580,7 @@ form section label {
 	outline: inherit;
 }
 
-button[type="submit"] {
-	background: var(--text-link);
-	color: var(--bg-primary);
-	border: none;
-	border-radius: 4px;
-	padding: 8px 16px;
-	cursor: pointer;
-	font-size: smaller;
-}
-
-button[type="submit"]:hover {
-	filter: var(--hover-filter);
-}
-
-button[type="submit"]:disabled {
-	opacity: 0.6;
-	cursor: not-allowed;
-}
-
-button.icon-btn {
-	background: none;
-	border: none;
-	padding: 4px;
-	cursor: pointer;
-	color: var(--text-link);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-}
-
-button.icon-btn:disabled {
-	opacity: 0.5;
-	cursor: not-allowed;
-}
-
-.oauth-button {
-	background: var(--text-link);
-	color: var(--bg-primary);
-	border: none;
-	border-radius: 4px;
-	padding: 10px 16px;
-	cursor: pointer;
-	font-size: 0.875rem;
-	font-weight: 500;
-	width: fit-content;
-}
-
-.oauth-button:hover {
-	filter: var(--hover-filter);
-}
+/* Old button styles removed - now using @f0rbit/ui Button component */
 
 /* ==========================================================================
    CARDS & CONTAINERS
@@ -811,32 +710,7 @@ nav {
    AUTH STATUS
    ========================================================================== */
 
-.auth-btn {
-	background: none;
-	border: 1px solid var(--input-border);
-	border-radius: 4px;
-	padding: 4px 12px;
-	font-size: 0.875rem;
-	cursor: pointer;
-	color: var(--text-link);
-	transition: all 0.15s;
-}
-
-.auth-btn:hover {
-	border-color: var(--text-link);
-	filter: var(--hover-filter);
-}
-
-.login-btn {
-	margin-left: 8px;
-}
-
-.logout-btn {
-	background: none;
-	border: none;
-	padding: 4px 8px;
-	font-size: 0.75rem;
-}
+/* Old auth button styles removed - now using @f0rbit/ui Button component */
 
 .user-info {
 	display: flex;
@@ -1106,52 +980,10 @@ footer {
 	}
 }
 
-.status-active {
-	color: oklch(from var(--item-green) 0.85 0.1 h);
-}
-.status-inactive {
-	color: var(--text-muted);
-}
-.status-error {
-	color: var(--item-red);
-}
-
 .platform-card {
 	display: flex;
 	flex-direction: column;
 	gap: 0;
-}
-
-.status-badge {
-	display: inline-flex;
-	align-items: center;
-	gap: 4px;
-	font-size: 0.75rem;
-	padding: 2px 8px;
-	border-radius: 12px;
-	background: var(--input-background);
-	border: 1px solid var(--input-border);
-	white-space: nowrap;
-	line-height: 1;
-	vertical-align: middle;
-}
-
-.status-badge .status-icon {
-	font-size: 0.5rem;
-	line-height: 1;
-}
-
-.status-badge .status-label {
-	line-height: 1;
-}
-
-.status-inactive .status-icon,
-.status-not-connected .status-icon {
-	color: var(--text-muted);
-}
-
-.status-error .status-icon {
-	color: oklch(from var(--item-red) 0.6 0.15 h);
 }
 
 .setup-form {
@@ -1175,42 +1007,13 @@ footer {
 	gap: 8px;
 }
 
-.settings-header {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	cursor: pointer;
-	background: none;
-	border: none;
-	padding: 4px 0;
-	width: 100%;
-	text-align: left;
-	color: inherit;
-}
-
-.settings-header:hover {
-	filter: none;
-}
-
-.settings-header:hover .settings-title {
-	color: var(--text-secondary);
-}
+/* Old .settings-header styles removed - now using @f0rbit/ui Collapsible component */
 
 .settings-content {
 	display: flex;
 	flex-direction: column;
 	gap: 8px;
 	padding-left: 24px;
-}
-
-.chevron-icon {
-	flex-shrink: 0;
-	color: var(--text-muted);
-	transition: transform 0.2s ease;
-}
-
-.chevron-icon.expanded {
-	transform: rotate(90deg);
 }
 
 .settings-title {
@@ -2059,101 +1862,6 @@ footer {
 	padding-top: 0.5rem;
 }
 
-/* ==========================================================================
-   MODAL
-   ========================================================================== */
-
-.modal-overlay {
-	position: fixed;
-	inset: 0;
-	background: rgba(0, 0, 0, 0.5);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	z-index: 1000;
-	padding: 1rem;
-}
-
-.modal-card {
-	background: var(--bg-primary);
-	border: 1px solid var(--input-border);
-	border-radius: 8px;
-	box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-	width: 100%;
-	max-width: 480px;
-	max-height: calc(100vh - 2rem);
-	overflow-y: auto;
-}
-
-.modal-header {
-	display: flex;
-	justify-content: space-between;
-	align-items: center;
-	padding: 1rem 1.25rem;
-	border-bottom: 1px solid var(--input-border);
-}
-
-.modal-header h3 {
-	margin: 0;
-}
-
-.modal-close {
-	background: none;
-	border: none;
-	padding: 4px;
-	cursor: pointer;
-	color: var(--text-muted);
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	border-radius: 4px;
-}
-
-.modal-close:hover {
-	color: var(--text-primary);
-	background: var(--input-background);
-}
-
-.modal-form {
-	display: flex;
-	flex-direction: column;
-	gap: 1rem;
-	padding: 1.25rem;
-}
-
-.modal-form textarea {
-	resize: vertical;
-	min-height: 60px;
-	padding: 8px;
-	width: 100%;
-}
-
-.modal-actions {
-	display: flex;
-	justify-content: flex-end;
-	gap: 0.75rem;
-	margin-top: 0.5rem;
-}
-
-.btn-secondary {
-	background: var(--input-background);
-	color: var(--text-secondary);
-	border: 1px solid var(--input-border);
-	border-radius: 4px;
-	padding: 8px 16px;
-	cursor: pointer;
-	font-size: smaller;
-}
-
-.btn-secondary:hover {
-	background: var(--input-border);
-}
-
-.btn-secondary:disabled {
-	opacity: 0.6;
-	cursor: not-allowed;
-}
-
 .required {
 	color: oklch(from var(--item-red) 0.6 0.15 h);
 }
@@ -2177,29 +1885,10 @@ footer {
    PROFILE SELECTOR
    ========================================================================== */
 
-.profile-selector {
-	position: relative;
-	display: inline-block;
-}
-
 .profile-selector-button {
 	display: flex;
 	align-items: center;
 	gap: 6px;
-	background: none;
-	border: 1px solid var(--input-border);
-	border-radius: 4px;
-	padding: 4px 10px;
-	cursor: pointer;
-	color: var(--text-secondary);
-	font-size: 0.875rem;
-	transition: border-color 0.15s, color 0.15s;
-}
-
-.profile-selector-button:hover {
-	border-color: var(--text-link);
-	color: var(--text-primary);
-	filter: none;
 }
 
 .profile-selector-icon {
@@ -2212,88 +1901,6 @@ footer {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
-}
-
-.profile-selector-chevron {
-	color: var(--text-muted);
-	flex-shrink: 0;
-	transition: transform 0.15s;
-}
-
-.profile-selector-button[aria-expanded="true"] .profile-selector-chevron {
-	transform: rotate(180deg);
-}
-
-.profile-selector-dropdown {
-	position: absolute;
-	top: calc(100% + 4px);
-	right: 0;
-	min-width: 180px;
-	background: var(--bg-primary);
-	border: 1px solid var(--input-border);
-	border-radius: 4px;
-	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-	z-index: 100;
-	padding: 4px 0;
-}
-
-.profile-selector-item {
-	display: flex;
-	align-items: center;
-	gap: 8px;
-	width: 100%;
-	padding: 8px 12px;
-	background: none;
-	border: none;
-	cursor: pointer;
-	color: var(--text-secondary);
-	font-size: 0.875rem;
-	text-align: left;
-	text-decoration: none;
-	transition: background 0.1s;
-}
-
-.profile-selector-item:hover {
-	background: var(--input-background);
-	filter: none;
-}
-
-.profile-selector-item.active {
-	color: var(--text-primary);
-	text-decoration: none;
-}
-
-.profile-selector-radio {
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	width: 14px;
-	height: 14px;
-	flex-shrink: 0;
-	color: var(--text-link);
-}
-
-.profile-selector-divider {
-	height: 1px;
-	background: var(--input-border);
-	margin: 4px 0;
-}
-
-.profile-selector-loading {
-	color: var(--text-muted);
-	cursor: default;
-}
-
-.profile-selector-loading:hover {
-	background: none;
-}
-
-.profile-selector-create {
-	color: var(--text-link);
-}
-
-.profile-selector-create:hover {
-	color: var(--text-link);
 }
 
 .profile-selector-create-link {
@@ -2333,40 +1940,9 @@ footer {
 	}
 }
 
-/* Login button - matches profile-selector-button styling */
-.auth-btn {
-	display: flex;
-	align-items: center;
-	gap: 6px;
-	background: none;
-	border: 1px solid var(--input-border);
-	border-radius: 4px;
-	padding: 4px 14px;
-	cursor: pointer;
-	color: var(--text-secondary);
-	font-size: 0.875rem;
-	transition: border-color 0.15s, color 0.15s;
-}
+/* Old auth-btn styles removed - now using @f0rbit/ui Button component */
 
-.auth-btn:hover {
-	border-color: var(--text-link);
-	color: var(--text-primary);
-}
-
-/* ==========================================================================
-   ACTIVE BADGE
-   ========================================================================== */
-
-.badge-active {
-	font-size: 0.625rem;
-	font-weight: 600;
-	padding: 0.125rem 0.375rem;
-	border-radius: 0.25rem;
-	background: oklch(from var(--text-link) l c h / 0.15);
-	color: var(--text-link);
-	text-transform: uppercase;
-	white-space: nowrap;
-}
+/* Old badge-active styles removed - now using @f0rbit/ui Badge component */
 
 .card-active {
 	border-color: var(--text-link);

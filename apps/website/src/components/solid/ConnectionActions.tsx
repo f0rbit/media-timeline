@@ -1,4 +1,5 @@
 import { connections } from "@/utils/api";
+import { Button } from "@f0rbit/ui";
 import { Show, createSignal } from "solid-js";
 
 type Props = {
@@ -55,21 +56,21 @@ export default function ConnectionActions(props: Props) {
 		<>
 			<div class="flex-row icons">
 				<Show when={props.state === "active"}>
-					<button class="icon-btn" onClick={handleRefresh} disabled={refreshing()} title="Refresh data">
+					<Button icon variant="ghost" label="Refresh data" onClick={handleRefresh} disabled={refreshing()}>
 						<RefreshIcon spinning={refreshing()} />
-					</button>
-					<button class="icon-btn" onClick={handleToggle} disabled={toggling()} title="Pause syncing">
+					</Button>
+					<Button icon variant="ghost" label="Pause syncing" onClick={handleToggle} disabled={toggling()}>
 						<PauseIcon />
-					</button>
+					</Button>
 				</Show>
 				<Show when={props.state === "inactive"}>
-					<button class="icon-btn" onClick={handleToggle} disabled={toggling()} title="Resume syncing">
+					<Button icon variant="ghost" label="Resume syncing" onClick={handleToggle} disabled={toggling()}>
 						<PlayIcon />
-					</button>
+					</Button>
 				</Show>
-				<button class="icon-btn" onClick={handleDelete} disabled={deleting()} title="Remove connection">
+				<Button icon variant="ghost" label="Remove connection" onClick={handleDelete} disabled={deleting()}>
 					<TrashIcon />
-				</button>
+				</Button>
 			</div>
 			<Show when={error()}>
 				<small class="error-text">{error()}</small>

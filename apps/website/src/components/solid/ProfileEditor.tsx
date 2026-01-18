@@ -1,4 +1,5 @@
 import { Show, createSignal } from "solid-js";
+import { Modal, ModalHeader, ModalTitle, ModalBody, ModalFooter, Button, FormField, Input, Textarea } from "@f0rbit/ui";
 
 export type Profile = {
 	id: string;
@@ -67,11 +68,11 @@ export default function ProfileEditor(props: ProfileEditorProps) {
 			});
 
 			if (!res.ok) {
-				const data = await res.json();
+				const data = (await res.json()) as { error?: string; message?: string };
 				throw new Error(data.error || data.message || "Failed to save");
 			}
 
-			const saved = await res.json();
+			const saved = (await res.json()) as Profile;
 			props.onSave(saved);
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "An error occurred");
@@ -80,72 +81,40 @@ export default function ProfileEditor(props: ProfileEditorProps) {
 		}
 	};
 
-	const handleOverlayClick = (e: MouseEvent) => {
-		if (e.target === e.currentTarget) props.onClose();
-	};
-
-	const handleKeyDown = (e: KeyboardEvent) => {
-		if (e.key === "Escape") props.onClose();
-	};
-
 	return (
-		<div class="modal-overlay" onClick={handleOverlayClick} onKeyDown={handleKeyDown}>
-			<div class="modal-card">
-				<div class="modal-header">
-					<h3>{isEditMode() ? "Edit Profile" : "Create Profile"}</h3>
-					<button class="modal-close" onClick={props.onClose} type="button" aria-label="Close">
-						<CloseIcon />
-					</button>
-				</div>
+		<Modal open={true} onClose={props.onClose}>
+			<ModalHeader>
+				<ModalTitle>{isEditMode() ? "Edit Profile" : "Create Profile"}</ModalTitle>
+			</ModalHeader>
 
-				<form onSubmit={handleSubmit} class="modal-form">
-					<div class="form-row">
-						<label class="tertiary text-sm">
-							Name <span class="required">*</span>
-						</label>
-						<input type="text" value={name()} onInput={e => setName(e.currentTarget.value)} placeholder="My Profile" required maxLength={100} />
-					</div>
+			<ModalBody>
+				<form onSubmit={handleSubmit} class="stack gap-md">
+					<FormField label="Name" required>
+						<Input value={name()} onInput={e => setName(e.currentTarget.value)} placeholder="My Profile" maxLength={100} />
+					</FormField>
 
-					<div class="form-row">
-						<label class="tertiary text-sm">
-							Slug <span class="required">*</span>
-						</label>
-						<input type="text" value={slug()} onInput={e => handleSlugInput(e.currentTarget.value)} placeholder="my-profile" required maxLength={50} class={slugError() ? "input-error" : ""} />
-						<Show when={slugError()} fallback={<small class="muted text-xs">lowercase letters, numbers, and hyphens only</small>}>
-							<small class="error-text text-xs">{slugError()}</small>
-						</Show>
-					</div>
+					<FormField label="Slug" required error={slugError() ?? undefined} description={slugError() ? undefined : "lowercase letters, numbers, and hyphens only"}>
+						<Input value={slug()} onInput={e => handleSlugInput(e.currentTarget.value)} placeholder="my-profile" maxLength={50} error={!!slugError()} />
+					</FormField>
 
-					<div class="form-row">
-						<label class="tertiary text-sm">Description</label>
-						<textarea value={description()} onInput={e => setDescription(e.currentTarget.value)} placeholder="A brief description of this profile..." rows={3} maxLength={500} />
-					</div>
+					<FormField label="Description">
+						<Textarea value={description()} onInput={e => setDescription(e.currentTarget.value)} placeholder="A brief description of this profile..." rows={3} maxLength={500} />
+					</FormField>
 
 					<Show when={error()}>
-						<div class="form-error">
-							<span class="error-icon text-sm">{error()}</span>
-						</div>
+						<div class="form-error">{error()}</div>
 					</Show>
-
-					<div class="modal-actions">
-						<button type="button" class="btn-secondary" onClick={props.onClose} disabled={saving()}>
-							Cancel
-						</button>
-						<button type="submit" disabled={!canSubmit()}>
-							{saving() ? "Saving..." : isEditMode() ? "Save Changes" : "Create Profile"}
-						</button>
-					</div>
 				</form>
-			</div>
-		</div>
-	);
-}
+			</ModalBody>
 
-function CloseIcon() {
-	return (
-		<svg class="lucide" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-			<path d="M18 6 6 18" />
-			<path d="m6 6 12 12" />
-		</svg>
+			<ModalFooter>
+				<Button variant="secondary" onClick={props.onClose} disabled={saving()}>
+					Cancel
+				</Button>
+				<Button onClick={handleSubmit} disabled={!canSubmit()}>
+					{saving() ? "Saving..." : isEditMode() ? "Save Changes" : "Create Profile"}
+				</Button>
+			</ModalFooter>
+		</Modal>
 	);
 }

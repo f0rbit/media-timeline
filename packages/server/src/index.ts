@@ -1,5 +1,35 @@
 // Main exports for @media/server package
 
+import { configureErrorLogging } from "@media/schema";
+import { createLogger } from "./logger";
+import { getRequestContext } from "./request-context";
+
+const errorLog = createLogger("errors");
+
+configureErrorLogging({
+	logger: ({ error, context }) => {
+		errorLog.error(`[${error.kind}] ${error.message || ""}`, {
+			error_kind: error.kind,
+			...error,
+			request_id: context.requestId,
+			user_id: context.userId,
+			operation: context.operation,
+			path: context.path,
+			timestamp: context.timestamp,
+			stack: context.stack?.split("\n").slice(2, 6).join("\n"),
+		});
+	},
+	contextProvider: () => {
+		const reqCtx = getRequestContext();
+		return {
+			requestId: reqCtx?.requestId,
+			userId: reqCtx?.userId,
+			path: reqCtx?.path,
+			method: reqCtx?.method,
+		};
+	},
+});
+
 export { createApiApp, type ApiAppConfig, type MediaBindings, type AppContext, type ProviderFactory } from "./app";
 export { createUnifiedApp, handleScheduled, type UnifiedApp, type ApiHandler, type AstroEnv } from "./worker";
 export { type Bindings, createContextFromBindings } from "./bindings";
@@ -16,7 +46,7 @@ export {
 	type VerifyOptions,
 	type VerifyResponse,
 } from "./auth";
-export { timelineRoutes, connectionRoutes, authRoutes, profileRoutes } from "./routes";
+export { timelineRoutes, connectionRoutes, authRoutes, profileRoutes } from "./routes/index";
 export { createDb, type Database } from "./db";
 export { hash_api_key } from "./utils";
 
@@ -35,3 +65,12 @@ export {
 	updateOnSuccess,
 	updateOnFailure,
 } from "./rate-limits";
+
+// Request context
+export {
+	getRequestContext,
+	runWithRequestContext,
+	generateRequestId,
+	requestContextMiddleware,
+	setRequestUserId,
+} from "./request-context";

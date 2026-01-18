@@ -2,7 +2,7 @@ import type { Context } from "hono";
 import { getCookie } from "hono/cookie";
 import { createMiddleware } from "hono/factory";
 import type { Bindings } from "./bindings";
-import type { AppContext } from "./infrastructure";
+import type { AppContext } from "./infrastructure/context";
 import { type FetchError, pipe } from "./utils";
 
 const JWT_PREFIX = "Bearer jwt:";

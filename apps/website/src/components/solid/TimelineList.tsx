@@ -1,5 +1,6 @@
 import { type ApiResult, type CommitGroup, type PRCommit, type ProfileTimelineResponse, type PullRequestPayload, type TimelineGroup, type TimelineItem, initMockAuth, profiles } from "@/utils/api";
 import { formatRelativeTime } from "@/utils/formatters";
+import { Badge, Empty, Spinner } from "@f0rbit/ui";
 import ArrowBigUp from "lucide-solid/icons/arrow-big-up";
 import ChevronDown from "lucide-solid/icons/chevron-down";
 import ChevronRight from "lucide-solid/icons/chevron-right";
@@ -69,7 +70,10 @@ export default function TimelineList(props: TimelineListProps) {
 		<Show when={profileSlug()} fallback={<NoProfileSelected />}>
 			<div class="timeline">
 				<Show when={data.loading}>
-					<p class="tertiary">Loading timeline...</p>
+					<div class="loading-state">
+						<Spinner size="md" />
+						<p class="tertiary">Loading timeline...</p>
+					</div>
 				</Show>
 
 				<Show when={data.error}>
@@ -91,10 +95,9 @@ export default function TimelineList(props: TimelineListProps) {
 function NoProfileSelected() {
 	return (
 		<div class="timeline">
-			<div class="empty-state">
-				<p>No profile selected. Please select a profile to view your timeline.</p>
+			<Empty title="No profile selected" description="Please select a profile to view your timeline.">
 				<a href="/connections">Go to Connections</a>
-			</div>
+			</Empty>
 		</div>
 	);
 }
@@ -129,16 +132,14 @@ function TimelineGroups(props: TimelineGroupsProps) {
 
 function EmptyTimeline() {
 	return (
-		<div class="empty-state">
-			<h3>No timeline data yet</h3>
-			<p class="muted">Your timeline will populate once you connect platforms and run a sync.</p>
-			<a href="/connections" class="oauth-button">
+		<Empty title="No timeline data yet" description="Your timeline will populate once you connect platforms and run a sync.">
+			<a href="/connections" class="btn">
 				Connect Platforms
 			</a>
 			<p class="text-sm muted" style={{ "margin-top": "1rem" }}>
 				Data syncs automatically every 5 minutes.
 			</p>
-		</div>
+		</Empty>
 	);
 }
 
@@ -403,7 +404,7 @@ function RedditPostRow(props: { item: TimelineItem }) {
 					</span>
 					<Show when={payload().has_media}>
 						<span>·</span>
-						<span class="reddit-media-badge">media</span>
+						<Badge variant="info">media</Badge>
 					</Show>
 				</div>
 			</div>
@@ -453,7 +454,7 @@ function RedditCommentRow(props: { item: TimelineItem }) {
 				<div class="flex-row items-center text-xs" style={{ gap: "0.375rem" }}>
 					<span class="muted nowrap shrink-0">{formatRelativeTime(props.item.timestamp)}</span>
 					<Show when={payload().is_op}>
-						<span class="reddit-op-badge">OP</span>
+						<Badge variant="accent">OP</Badge>
 					</Show>
 				</div>
 				<Show
@@ -507,7 +508,7 @@ function GenericRow(props: { item: TimelineItem }) {
 			<div class="flex-col" style={{ gap: "0.25rem", flex: 1, "min-width": 0 }}>
 				<div class="flex-row justify-between items-start" style={{ gap: "1rem" }}>
 					<div class="flex-row items-center" style={{ gap: "0.5rem" }}>
-						<span class="timeline-type-badge">{props.item.type}</span>
+						<Badge>{props.item.type}</Badge>
 						<Show when={props.item.url} fallback={<span>{props.item.title}</span>}>
 							<a href={props.item.url} target="_blank" rel="noopener noreferrer">
 								{props.item.title}

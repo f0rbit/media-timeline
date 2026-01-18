@@ -1,5 +1,6 @@
 import { type Connection, connections } from "@/utils/api";
 import { formatPlatformName, formatRelativeTime } from "@/utils/formatters";
+import { Button } from "@f0rbit/ui";
 import { Show, createSignal } from "solid-js";
 import PlatformIcon from "./PlatformIcon";
 
@@ -56,12 +57,12 @@ export default function ConnectionCard(props: Props) {
 					</div>
 				</div>
 				<div class="flex-row icons">
-					<button class="icon-btn" onClick={handleRefresh} disabled={refreshing()} title="Refresh data">
+					<Button icon variant="ghost" label="Refresh data" onClick={handleRefresh} disabled={refreshing()}>
 						<RefreshIcon spinning={refreshing()} />
-					</button>
-					<button class="icon-btn" onClick={handleDelete} disabled={deleting()} title="Remove connection">
+					</Button>
+					<Button icon variant="ghost" label="Remove connection" onClick={handleDelete} disabled={deleting()}>
 						<TrashIcon />
-					</button>
+					</Button>
 				</div>
 			</div>
 

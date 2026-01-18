@@ -1,11 +1,11 @@
-import { type ProfileId, type UserId, accountId, profileId } from "@media/schema";
+import { type ProfileId, type UserId, accountId, errors, profileId } from "@media/schema";
 import { accounts, profileFilters, profiles, users } from "@media/schema";
 import { and, eq } from "drizzle-orm";
-import { requireAccountOwnership } from "../auth-ownership";
+import { requireAccountOwnership, requireProfileOwnership } from "../auth-ownership";
 import type { Database } from "../db";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { type ProfileTimelineOptions, type ProfileTimelineResult, generateProfileTimeline } from "../timeline";
-import { type Result, err, ok, uuid } from "../utils";
+import { type Result, ok, uuid } from "../utils";
 import type { ServiceError } from "../utils/route-helpers";
 
 type ProfileWithRelations = {
@@ -49,20 +49,6 @@ type FilterWithPlatform = {
 	filter_key: string;
 	filter_value: string;
 	created_at: string;
-};
-
-const requireProfileOwnership = async (db: Database, uid: UserId, profId: ProfileId): Promise<Result<{ profile_id: ProfileId }, ServiceError>> => {
-	const profile = await db.select({ id: profiles.id, user_id: profiles.user_id }).from(profiles).where(eq(profiles.id, profId)).get();
-
-	if (!profile) {
-		return err({ kind: "not_found", resource: "profile" });
-	}
-
-	if (profile.user_id !== uid) {
-		return err({ kind: "forbidden", message: "You do not own this profile" });
-	}
-
-	return ok({ profile_id: profileId(profile.id) });
 };
 
 const checkSlugUniqueness = async (db: Database, uid: string, slug: string, excludeProfileId?: string): Promise<boolean> => {
@@ -155,7 +141,7 @@ export const createProfile = async (ctx: AppContext, uid: UserId, user: UserInfo
 
 	const isUnique = await checkSlugUniqueness(ctx.db, uid, input.slug);
 	if (!isUnique) {
-		return err({ kind: "conflict", message: "A profile with this slug already exists" });
+		return errors.conflict("profile", "A profile with this slug already exists");
 	}
 
 	const now = new Date().toISOString();
@@ -182,7 +168,7 @@ export const getProfile = async (ctx: AppContext, uid: UserId, profId: ProfileId
 
 	const profile = await loadProfileWithRelations(ctx.db, profId, uid);
 	if (!profile) {
-		return err({ kind: "not_found", resource: "profile" });
+		return errors.notFound("profile");
 	}
 
 	return ok({ profile });
@@ -193,13 +179,13 @@ export const updateProfile = async (ctx: AppContext, uid: UserId, profId: Profil
 	if (!ownershipResult.ok) return ownershipResult;
 
 	if (Object.keys(updates).length === 0) {
-		return err({ kind: "bad_request", message: "No fields to update" });
+		return errors.badRequest("No fields to update");
 	}
 
 	if (updates.slug) {
 		const isUnique = await checkSlugUniqueness(ctx.db, uid, updates.slug, profId);
 		if (!isUnique) {
-			return err({ kind: "conflict", message: "A profile with this slug already exists" });
+			return errors.conflict("profile", "A profile with this slug already exists");
 		}
 	}
 
@@ -254,9 +240,9 @@ export const addProfileFilter = async (ctx: AppContext, uid: UserId, profId: Pro
 	const accId = accountId(input.account_id);
 	const accountOwnership = await requireAccountOwnership(ctx.db, uid, accId);
 	if (!accountOwnership.ok) {
-		const { status } = accountOwnership.error;
-		if (status === 404) return err({ kind: "not_found", resource: "account" });
-		return err({ kind: "forbidden", message: "You do not own this account" });
+		const { kind } = accountOwnership.error;
+		if (kind === "not_found") return errors.notFound("account");
+		return errors.forbidden("You do not own this account");
 	}
 
 	const account = await ctx.db.select({ platform: accounts.platform }).from(accounts).where(eq(accounts.id, input.account_id)).get();
@@ -297,7 +283,7 @@ export const deleteProfileFilter = async (ctx: AppContext, uid: UserId, profId: 
 		.get();
 
 	if (!filter) {
-		return err({ kind: "not_found", resource: "filter" });
+		return errors.notFound("filter");
 	}
 
 	await ctx.db.delete(profileFilters).where(eq(profileFilters.id, filterId));
@@ -320,7 +306,7 @@ export const getProfileTimeline = async (ctx: AppContext, uid: UserId, slug: str
 		.get();
 
 	if (!profile) {
-		return err({ kind: "not_found", resource: "profile" });
+		return errors.notFound("profile");
 	}
 
 	const result = await generateProfileTimeline({
@@ -333,13 +319,13 @@ export const getProfileTimeline = async (ctx: AppContext, uid: UserId, slug: str
 
 	if (!result.ok) {
 		const error = result.error;
-		if (error.kind === "profile_not_found") {
-			return err({ kind: "not_found", resource: "profile" });
+		if (error.kind === "not_found") {
+			return errors.notFound("profile");
 		}
-		if (error.kind === "timeline_generation_failed") {
-			return err({ kind: "timeline_generation_failed", message: error.message });
+		if (error.kind === "store_error") {
+			return errors.storeError("timeline_generation", error.message);
 		}
-		return err({ kind: "timeline_generation_failed", message: "Timeline generation failed" });
+		return errors.storeError("timeline_generation", "Timeline generation failed");
 	}
 
 	return ok(result.value);

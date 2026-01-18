@@ -4,19 +4,13 @@ import { z } from "zod";
 import { type AuthContext, getAuth } from "../auth";
 import type { Bindings } from "../bindings";
 import { badRequest } from "../http-errors";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
 import { addProfileFilter, createProfile, deleteProfile, deleteProfileFilter, getProfile, getProfileTimeline, listProfileFilters, listProfiles, updateProfile } from "../services/profiles";
-import { handleResult, handleResultNoContent } from "../utils/route-helpers";
+import { getContext, handleResult, handleResultNoContent } from "../utils/route-helpers";
 
 type Variables = {
 	auth: AuthContext;
 	appContext: AppContext;
-};
-
-const getContext = (c: { get: (k: "appContext") => AppContext }): AppContext => {
-	const ctx = c.get("appContext");
-	if (!ctx) throw new Error("AppContext not set");
-	return ctx;
 };
 
 const ProfileTimelineQuerySchema = z.object({

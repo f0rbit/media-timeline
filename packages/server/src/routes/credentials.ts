@@ -5,19 +5,17 @@ import { z } from "zod";
 import { type AuthContext, getAuth } from "../auth";
 import type { Bindings } from "../bindings";
 import { badRequest, notFound, serverError } from "../http-errors";
-import type { AppContext } from "../infrastructure";
+import type { AppContext } from "../infrastructure/context";
+import { createLogger } from "../logger";
 import { deleteCredentials, getCredentials, hasCredentials, markCredentialsVerified, saveCredentials } from "../services/credentials";
 import { encrypt, uuid } from "../utils";
+import { getContext } from "../utils/route-helpers";
+
+const log = createLogger("credentials");
 
 type Variables = {
 	auth: AuthContext;
 	appContext: AppContext;
-};
-
-const getContext = (c: { get: (k: "appContext") => AppContext }): AppContext => {
-	const ctx = c.get("appContext");
-	if (!ctx) throw new Error("AppContext not set");
-	return ctx;
 };
 
 const verifyProfileOwnership = async (ctx: AppContext, profileId: string, userId: string): Promise<boolean> => {
@@ -85,7 +83,7 @@ const authenticateWithReddit = async (clientId: string, clientSecret: string, us
 
 	if (!tokenResponse.ok) {
 		const errorText = await tokenResponse.text();
-		console.error("[reddit-auth] Token request failed:", tokenResponse.status, errorText);
+		log.error("Reddit token request failed", { status: tokenResponse.status, response: errorText });
 		return { ok: false, error: "Invalid Reddit credentials. Please check your Client ID and Secret." };
 	}
 
@@ -271,7 +269,7 @@ credentialRoutes.post("/:platform", async c => {
 				message: "Reddit connected successfully!",
 			});
 		} catch (error) {
-			console.error("[credentials] Reddit setup failed:", error);
+			log.error("Reddit setup failed", { error });
 			return serverError(c, "Failed to setup Reddit connection");
 		}
 	}
@@ -292,7 +290,7 @@ credentialRoutes.post("/:platform", async c => {
 			message: `Credentials saved. Click 'Connect with ${platform.charAt(0).toUpperCase() + platform.slice(1)}' to complete setup.`,
 		});
 	} catch (error) {
-		console.error("[credentials] Failed to save:", error);
+		log.error("Failed to save credentials", { error });
 		return serverError(c, "Failed to save credentials");
 	}
 });

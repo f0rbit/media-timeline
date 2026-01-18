@@ -1,3 +1,4 @@
+import { Checkbox } from "@f0rbit/ui";
 import { connections } from "@/utils/api";
 import { createSignal } from "solid-js";
 
@@ -27,18 +28,9 @@ export default function BlueskySettings(props: Props) {
 		<div class="settings-section">
 			<h6 class="settings-title tertiary text-sm font-medium">Content Filters</h6>
 			<div class="filter-toggles">
-				<label class="filter-toggle">
-					<input type="checkbox" checked={true} disabled />
-					<span class="secondary text-sm">Include my posts</span>
-				</label>
-				<label class="filter-toggle">
-					<input type="checkbox" checked={includeReplies()} onChange={e => updateSetting("include_replies", e.currentTarget.checked)} disabled={updating()} />
-					<span class="secondary text-sm">Include replies</span>
-				</label>
-				<label class="filter-toggle">
-					<input type="checkbox" checked={includeReposts()} onChange={e => updateSetting("include_reposts", e.currentTarget.checked)} disabled={updating()} />
-					<span class="secondary text-sm">Include reposts</span>
-				</label>
+				<Checkbox checked={true} onChange={() => {}} label="Include my posts" disabled />
+				<Checkbox checked={includeReplies()} onChange={() => updateSetting("include_replies", !includeReplies())} label="Include replies" disabled={updating()} />
+				<Checkbox checked={includeReposts()} onChange={() => updateSetting("include_reposts", !includeReposts())} label="Include reposts" disabled={updating()} />
 			</div>
 		</div>
 	);

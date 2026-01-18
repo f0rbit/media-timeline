@@ -1,3 +1,4 @@
+import { Checkbox } from "@f0rbit/ui";
 import { connections } from "@/utils/api";
 import { createSignal } from "solid-js";
 
@@ -26,10 +27,7 @@ export default function DevpadSettings(props: Props) {
 		<div class="settings-section">
 			<h6 class="settings-title tertiary text-sm font-medium">Project Filters</h6>
 			<div class="filter-toggles">
-				<label class="filter-toggle">
-					<input type="checkbox" checked={allProjects()} onChange={e => updateSetting("all_projects", e.currentTarget.checked)} disabled={updating()} />
-					<span class="secondary text-sm">Include all projects</span>
-				</label>
+				<Checkbox checked={allProjects()} onChange={() => updateSetting("all_projects", !allProjects())} label="Include all projects" disabled={updating()} />
 			</div>
 			<p class="muted text-xs">Project-level filtering coming soon.</p>
 		</div>

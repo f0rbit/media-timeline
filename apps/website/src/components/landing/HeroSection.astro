@@ -12,8 +12,8 @@ import PlatformOrbit from "./PlatformOrbit";
 			Aggregate activity from GitHub, Reddit, Twitter, and more into a single, beautiful timeline.
 		</p>
 		<div class="hero-cta">
-			<a href="/connections" class="btn-primary">Get Started</a>
-			<a href="#preview" class="btn-secondary">View Demo</a>
+			<a href="/connections" class="btn">Get Started</a>
+			<a href="#preview" class="btn btn-secondary">View Demo</a>
 		</div>
 	</div>
 </section>
@@ -59,39 +59,6 @@ import PlatformOrbit from "./PlatformOrbit";
 		margin-top: 8px;
 	}
 
-	.btn-primary,
-	.btn-secondary {
-		line-height: 1rem;
-		padding: 5px 16px;
-		border-radius: 4px;
-		font-size: 0.875rem;
-		text-decoration: none;
-		transition: background 0.15s, color 0.15s, border-color 0.15s;
-		padding-bottom: 4px;
-	}
-
-	.btn-primary {
-		color: var(--text-link);
-		border: 1px solid var(--text-link);
-	}
-
-	.btn-primary:hover {
-		background: var(--text-link);
-		color: var(--bg-primary);
-		filter: none;
-	}
-
-	.btn-secondary {
-		color: var(--text-secondary);
-		border: 1px solid var(--input-border);
-	}
-
-	.btn-secondary:hover {
-		color: var(--text-primary);
-		border-color: var(--text-tertiary);
-		filter: none;
-	}
-
 	@media (max-width: 768px) {
 		.hero-section {
 			padding: 4rem 0;
@@ -104,11 +71,6 @@ import PlatformOrbit from "./PlatformOrbit";
 		.hero-cta {
 			flex-direction: column;
 			width: 100%;
-		}
-
-		.btn-primary,
-		.btn-secondary {
-			text-align: center;
 		}
 	}
 </style>

@@ -1,12 +1,7 @@
+import type { ApiError, AuthExpiredError, BadRequestError, NetworkError, ParseError, RateLimitedError } from "@media/schema";
 import type { Result } from "../utils";
 
-export type ProviderError =
-	| { kind: "rate_limited"; retry_after: number }
-	| { kind: "auth_expired"; message: string }
-	| { kind: "network_error"; cause: Error }
-	| { kind: "api_error"; status: number; message: string }
-	| { kind: "parse_error"; message: string }
-	| { kind: "unknown_platform"; platform: string };
+export type ProviderError = RateLimitedError | AuthExpiredError | NetworkError | ApiError | ParseError | BadRequestError;
 
 export type FetchResult<T> = Result<T, ProviderError>;
 

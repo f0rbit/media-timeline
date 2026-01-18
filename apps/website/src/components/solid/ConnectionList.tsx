@@ -1,4 +1,5 @@
 import { type ConnectionWithSettings, type ProfileSummary, connections, initMockAuth } from "@/utils/api";
+import { Empty, Spinner } from "@f0rbit/ui";
 import { For, Show, createResource, createSignal } from "solid-js";
 import { isServer } from "solid-js/web";
 import PlatformCard from "./PlatformCard";
@@ -16,12 +17,11 @@ type ConnectionListProps = {
 
 function NoProfileSelectedError() {
 	return (
-		<div class="error-state">
-			<p class="error-icon">No profile selected. Please select a profile or create one.</p>
-			<a href="/connections" class="btn btn-primary">
+		<Empty title="No profile selected" description="Please select a profile or create one.">
+			<a href="/connections" class="btn">
 				Manage Profiles
 			</a>
-		</div>
+		</Empty>
 	);
 }
 
@@ -109,7 +109,10 @@ export default function ConnectionList(props: ConnectionListProps) {
 
 			<Show when={hasValidProfile()}>
 				<Show when={data.loading}>
-					<p class="tertiary">Loading connections...</p>
+					<div class="loading-state">
+						<Spinner size="md" />
+						<p class="tertiary">Loading connections...</p>
+					</div>
 				</Show>
 
 				<Show when={data.error}>
